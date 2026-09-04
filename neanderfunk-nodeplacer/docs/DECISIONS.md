@@ -425,3 +425,31 @@ Status: **offen** / **entschieden** / **verworfen**.
   Firmware-Schluessel wirken hier nicht mehr als zweiter Anker. Wer
   `nodeplacer.good_signatures` in der site.conf setzt, bestimmt damit das
   gesamte Sicherheitsniveau des Verfahrens.
+
+## D-031 Vertrauensanker ist der aktive Autoupdater-Branch
+
+* Status: **entschieden** (adorfer, 2026-09-04)
+* Die Steuerdatei wird mit den Schluesseln **und** der Mindestzahl
+  Signaturen des Branches geprueft, auf dem der Knoten laut Flash steht
+  (`autoupdater.settings.branch`, dann `autoupdater.<branch>.pubkey` und
+  `.good_signatures`).
+* Begruendung: wer eine Firmware fuer diesen Knoten freigeben darf, darf
+  ihn auch verschieben. Ein Knoten auf `stable` mit drei geforderten
+  Signaturen verlangt drei auch fuer die Steuerdatei; einer auf `broken`
+  mit einer verlangt eine.
+* `nodeplacer.good_signatures` und `nodeplacer.pubkeys` in site.conf sind
+  damit **optionale Overrides** und laut adorfer "eher nicht sinnvoll".
+  Der Override gewinnt, wenn er gesetzt ist; das ist getestet.
+* Vorher war `nodeplacer.good_signatures` Pflicht in site.conf, waehrend
+  die Schluessel schon auf den Branch zurueckfielen. Das war unsymmetrisch
+  und haette bei einem Knoten im `broken`-Branch eine unpassende Schwelle
+  erzwungen.
+* Fail closed: fehlt der aktive Branch in der Autoupdater-Konfiguration
+  und steht auch nichts in site.conf, bricht `nodeplacer-fetch` mit
+  Konfigurationsfehler ab, statt eine Schwelle zu raten.
+* Hinweis zur Formulierung im Auftrag: dort stand als Beispiel, ein Knoten
+  im `broken`-Branch mit dort zwei geforderten Signaturen solle "dann 3"
+  verlangen. Umgesetzt ist die Regel aus dem Satz davor, also der Wert des
+  **aktiven** Branches, hier also zwei. Die Alternative waere das Maximum
+  ueber alle konfigurierten Branches; das ist eine Zeile Aenderung, falls
+  gewuenscht.

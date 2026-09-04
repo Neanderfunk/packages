@@ -260,3 +260,27 @@ scheitern lassen.
 
 Nach dem Test: Paket deinstalliert, UCI zurueckgesetzt, Manifeste und
 Firmware-Datei entfernt, Knoten unveraendert in `nef-21_dias`.
+
+### Protokoll 2026-09-04: Vertrauensanker aktiver Autoupdater-Branch (D-031)
+
+Auf dem Testknoten in `nef-21_dias`. Lokal: aktiver Branch `stable` mit
+Schwelle 3, Branch `broken` mit Schwelle 1, je fuenf Community-Schluessel.
+Als Schluessel fuer die Steuerdatei die drei Testschluessel per UCI-Delta,
+zwei Manifeste, eines mit drei und eines mit einer Signatur. Geprueft mit
+`nodeplacer-fetch`, also ohne jeden Flash.
+
+| Fall | Konfiguration | Manifest | Erwartet | Ergebnis |
+|---|---|---|---|---|
+| A | nichts in site.conf, Branch `stable` | 3 Signaturen | angenommen | exit 0 |
+| A | dito | 1 Signatur | abgelehnt | exit 3, "only carried 1 valid signature" |
+| B | Branch im Delta auf `broken` (Schwelle 1) | 1 Signatur | angenommen | exit 0 |
+| C | Override `good_signatures=1`, Branch `stable` | 1 Signatur | angenommen | exit 0 |
+| C | ohne Override, Branch `stable` | 1 Signatur | abgelehnt | exit 3 |
+| D | weder Schluessel noch Schwelle gesetzt | 3 Testsignaturen | abgelehnt | exit 3, "0 valid signatures" (es gelten die Community-Schluessel) |
+| E | aktiver Branch existiert nicht | beliebig | Konfigurationsfehler | exit 1, "no autoupdater branch configured to take the keys and the signature threshold from" |
+
+B ist der Nachweis fuer die Regel: derselbe Knoten, dasselbe Manifest,
+nur der aktive Branch anders, und die Schwelle folgt. C zeigt, dass das
+Override gewinnt, wenn es gesetzt ist. E zeigt das Verhalten fail closed.
+
+Danach Paket deinstalliert, UCI zurueckgesetzt, Knoten unveraendert.

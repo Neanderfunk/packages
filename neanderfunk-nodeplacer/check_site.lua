@@ -2,19 +2,22 @@
 --
 -- nodeplacer = {
 --   mirrors = { 'http://firmware.example.org/nodeplacer', ... },  -- required
---   good_signatures = 2,                                           -- required
+--   good_signatures = 2,          -- optional; default: threshold of the autoupdater branch
 --   pubkeys = { '<hex>', ... },   -- optional; default: pubkeys of the autoupdater branch
 --   disable = 0,                  -- optional; default 0
 -- }
 
 need_string_array_match(in_site({'nodeplacer', 'mirrors'}), '^http://')
 
-need_number(in_site({'nodeplacer', 'good_signatures'}))
+-- Both are optional overrides. By default the control file is verified with
+-- the keys and the threshold of the autoupdater branch the node is running,
+-- so that whoever may release a firmware may also move the node (D-031).
+local good_signatures = need_number(in_site({'nodeplacer', 'good_signatures'}), false)
 
 local pubkeys = need_string_array_match(in_site({'nodeplacer', 'pubkeys'}), '^%x+$', false)
-if pubkeys then
-	need(in_site({'nodeplacer', 'good_signatures'}), function(good_signatures)
-		return good_signatures <= #pubkeys
+if pubkeys and good_signatures then
+	need(in_site({'nodeplacer', 'good_signatures'}), function(gs)
+		return gs <= #pubkeys
 	end, nil, string.format('be less than or equal to the number of public keys (%d)', #pubkeys))
 end
 

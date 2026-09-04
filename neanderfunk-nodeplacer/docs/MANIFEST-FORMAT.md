@@ -147,10 +147,14 @@ Zeile mit derselben Node-ID zu wiederholen ist kein Fortsetzungsmechanismus
 
 * Nach `---` je Zeile eine Hex-Signatur, erzeugt mit `ecdsasign` ueber den
   Teil vor `---` (genau wie `contrib/sign.sh` es tut).
-* Gueltig, wenn mindestens `good_signatures` (aus site.conf) Paare
-  (Pubkey, Signatur) passen.
-* Pubkeys: `nodeplacer.pubkeys` aus site.conf, sonst die Pubkeys des
-  aktuell konfigurierten Autoupdater-Branches.
+* Schluessel und Mindestzahl kommen aus dem **aktiven
+  Autoupdater-Branch** des Knotens, also aus
+  `autoupdater.<settings.branch>.pubkey` und `.good_signatures` (D-031).
+  Wer eine Firmware fuer den Knoten freigeben darf, darf ihn auch
+  verschieben. Auf einem Knoten im Branch `stable` mit drei geforderten
+  Signaturen braucht die Steuerdatei also drei.
+* `nodeplacer.pubkeys` und `nodeplacer.good_signatures` in site.conf
+  ueberschreiben das, sind aber selten sinnvoll.
 
 ## Dateiname auf dem Server
 

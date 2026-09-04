@@ -179,6 +179,24 @@ static void load_pubkeys(struct settings *settings, const char **pubkeys_str, si
 	}
 }
 
+/* The autoupdater branch section the node is currently running, or NULL */
+static struct uci_section * autoupdater_branch(struct uci_context *ctx, const char **branch_name) {
+	struct uci_package *ap;
+	if (uci_load(ctx, "autoupdater", &ap) != UCI_OK)
+		return NULL;
+
+	struct uci_section *as = uci_lookup_section(ctx, ap, "settings");
+	const char *branch = as ? uci_lookup_option_string(ctx, as, "branch") : NULL;
+	struct uci_section *bs = branch ? uci_lookup_section(ctx, ap, branch) : NULL;
+	if (!bs || strcmp(bs->type, "branch"))
+		return NULL;
+
+	if (branch_name)
+		*branch_name = branch;
+
+	return bs;
+}
+
 static void load_settings(struct settings *settings) {
 	struct uci_context *ctx = uci_alloc_context();
 	if (!ctx) {
@@ -202,8 +220,6 @@ static void load_settings(struct settings *settings) {
 		exit(EXIT_CONFIG);
 	}
 
-	settings->good_signatures = load_positive_number(ctx, s, "good_signatures");
-
 	if (settings->n_mirrors == 0) {
 		settings->mirrors = load_string_list(ctx, s, "mirror", &settings->n_mirrors);
 		if (settings->n_mirrors == 0) {
@@ -212,27 +228,33 @@ static void load_settings(struct settings *settings) {
 		}
 	}
 
+	const char *own_threshold = uci_lookup_option_string(ctx, s, "good_signatures");
+
 	size_t n_pubkeys_str;
 	const char **pubkeys_str = load_string_list(ctx, s, "pubkey", &n_pubkeys_str);
 
-	if (n_pubkeys_str == 0) {
-		/* fall back to the pubkeys of the configured autoupdater branch */
-		struct uci_package *ap;
-		if (uci_load(ctx, "autoupdater", &ap) != UCI_OK) {
-			fputs("nodeplacer-fetch: error: no pubkeys configured and unable to load autoupdater config\n", stderr);
+	/* Trust anchor: by default the control file is verified with the keys
+	 * and the threshold of the autoupdater branch this node is running.
+	 * Whoever may release a firmware for this node may also move it.
+	 * The site configuration can override either, but usually should not. */
+	if (!own_threshold || n_pubkeys_str == 0) {
+		const char *branch = NULL;
+		struct uci_section *bs = autoupdater_branch(ctx, &branch);
+		if (!bs) {
+			fputs("nodeplacer-fetch: error: no autoupdater branch configured to take the keys "
+			      "and the signature threshold from, and none given in the site configuration\n", stderr);
 			exit(EXIT_CONFIG);
 		}
 
-		struct uci_section *as = uci_lookup_section(ctx, ap, "settings");
-		const char *branch = as ? uci_lookup_option_string(ctx, as, "branch") : NULL;
-		struct uci_section *bs = branch ? uci_lookup_section(ctx, ap, branch) : NULL;
-		if (!bs || strcmp(bs->type, "branch")) {
-			fputs("nodeplacer-fetch: error: no pubkeys configured and no autoupdater branch to borrow them from\n", stderr);
-			exit(EXIT_CONFIG);
-		}
+		if (!own_threshold)
+			settings->good_signatures = load_positive_number(ctx, bs, "good_signatures");
 
-		pubkeys_str = load_string_list(ctx, bs, "pubkey", &n_pubkeys_str);
+		if (n_pubkeys_str == 0)
+			pubkeys_str = load_string_list(ctx, bs, "pubkey", &n_pubkeys_str);
 	}
+
+	if (own_threshold)
+		settings->good_signatures = load_positive_number(ctx, s, "good_signatures");
 
 	load_pubkeys(settings, pubkeys_str, n_pubkeys_str);
 	free(pubkeys_str);

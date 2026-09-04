@@ -37,9 +37,11 @@ nodeplacer = {
     'http://firmware.example.org/nodeplacer',
     'http://[2001:db8::1]/nodeplacer',
   },
-  good_signatures = 2,
-  -- optional, default: pubkeys of the configured autoupdater branch
+  -- Optional overrides, normally left out: without them the control file
+  -- is verified with the keys and the threshold of the autoupdater branch
+  -- this node runs, so whoever may release a firmware may also move it.
   -- pubkeys = { '<hex>', '<hex>' },
+  -- good_signatures = 2,
   -- optional, default 0; node owners may set nodeplacer.settings.disable=1
   -- disable = 0,
 },

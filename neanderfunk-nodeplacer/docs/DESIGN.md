@@ -131,11 +131,18 @@ Sonderfaelle:
 
 * Verfahren wie im Autoupdater: alles vor `---` zeilenweise hashen,
   Zeilen danach sind Signaturen, n-of-m gegen Pubkeys.
-* Pubkeys: standardmaessig die des aktuell konfigurierten Autoupdater-
-  Branches (`autoupdater.<branch>.pubkey`). Optional eigener Satz in
-  site.conf (`nodeplacer.pubkeys`), falls die Community die
-  Umzugs-Befugnis enger fassen will als die Firmware-Signatur.
-* Mindestanzahl: `nodeplacer.good_signatures` aus site.conf (Pflicht).
+* **Vertrauensanker ist der aktive Autoupdater-Branch** (D-031). Sowohl die
+  Schluessel als auch die Mindestzahl gueltiger Signaturen kommen aus
+  `autoupdater.<settings.branch>`: wer eine Firmware fuer diesen Knoten
+  freigeben darf, darf ihn auch verschieben. Laeuft der Knoten auf
+  `stable` mit drei geforderten Signaturen, braucht auch die Steuerdatei
+  drei; laeuft er auf `broken` mit einer, genuegt eine.
+* `nodeplacer.pubkeys` und `nodeplacer.good_signatures` in site.conf sind
+  optionale Overrides und in aller Regel nicht sinnvoll. Sie sind fuer den
+  Fall gedacht, dass eine Community die Umzugs-Befugnis bewusst anders
+  fassen will als die Firmware-Freigabe.
+* Fehlt der aktive Branch in der Autoupdater-Konfiguration und ist auch
+  nichts in site.conf gesetzt, bricht der Helfer ab (fail closed).
 * Implementierung ueber **libecdsautil**, das wegen des Autoupdaters auf
   jedem Knoten liegt. Download, Hashen und Pruefung erledigt ein kleiner
   C-Helfer `nodeplacer-fetch`, der aus der Autoupdater-Codebasis
@@ -253,18 +260,19 @@ nodeplacer = {
     'http://firmware.ffnef.de/nodeplacer',
     'http://[fd66:666e:6566:640a::733]/nodeplacer',
   },
-  good_signatures = 2,
-  -- optional, sonst Pubkeys des Autoupdater-Branches:
+  -- optionale Overrides, normalerweise weglassen: ohne sie gelten
+  -- Schluessel und Schwelle des aktiven Autoupdater-Branches (D-031)
   -- pubkeys = { '<hex>', '<hex>' },
+  -- good_signatures = 2,
   -- optional, Default 0:
   -- disable = 0,
 },
 ```
 
 `check_site.lua` prueft: `mirrors` Array von `^http://` (spaeter auch
-`https://`/`//` wie 2025.1), `good_signatures` Zahl und, falls `pubkeys`
-gesetzt, `<= #pubkeys`. Alles `in_site`, nicht in Domains (Multidomain:
-gleiche Mirrors fuer alle Domains einer Firmware).
+`https://`/`//` wie 2025.1), und falls die Overrides gesetzt sind,
+`good_signatures` als Zahl sowie `<= #pubkeys`. Alles `in_site`, nicht in
+Domains (Multidomain: gleiche Mirrors fuer alle Domains einer Firmware).
 
 ## 9. UCI und Zustand auf dem Knoten
 
@@ -275,8 +283,8 @@ geschrieben):
 config nodeplacer 'settings'
     option disable '0'          # aus site.conf beim Upgrade gesetzt, falls nicht vorhanden
     list mirror 'http://...'    # aus site.conf, wird bei jedem Upgrade neu geschrieben
-    option good_signatures '2'
-    list pubkey '<hex>'         # optional
+    option good_signatures '2'  # nur wenn site.conf es vorgibt, sonst nicht gesetzt
+    list pubkey '<hex>'         # dito
 ```
 
 `settings.disable` ist die einzige Option, die der Besitzer aendert und die

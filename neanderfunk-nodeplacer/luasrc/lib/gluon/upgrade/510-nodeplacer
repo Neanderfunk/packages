@@ -24,8 +24,17 @@ end
 -- every upgrade, like the autoupdater branch sections
 uci:section('nodeplacer', 'nodeplacer', 'settings', {
 	mirror = site.nodeplacer.mirrors(),
-	good_signatures = site.nodeplacer.good_signatures(),
 })
+
+-- Keys and threshold are optional overrides. Where site.conf says nothing,
+-- the option is removed so that nodeplacer-fetch falls back to the
+-- autoupdater branch the node is running (D-031).
+local good_signatures = site.nodeplacer.good_signatures()
+if good_signatures then
+	uci:set('nodeplacer', 'settings', 'good_signatures', good_signatures)
+else
+	uci:delete('nodeplacer', 'settings', 'good_signatures')
+end
 
 local pubkeys = site.nodeplacer.pubkeys()
 if pubkeys then
