@@ -284,3 +284,27 @@ nur der aktive Branch anders, und die Schwelle folgt. C zeigt, dass das
 Override gewinnt, wenn es gesetzt ist. E zeigt das Verhalten fail closed.
 
 Danach Paket deinstalliert, UCI zurueckgesetzt, Knoten unveraendert.
+
+### Protokoll 2026-09-04: Zielschwelle folgt eigenem Vertrauensniveau (D-032/D-033)
+
+Anlass: auf 192.168.158.101 (aktiver Branch `broken`, dort Schwelle 1;
+`nodeplacer.good_signatures=2` als Override) wurde ein realer Umzug nach
+`02_met` (Zielbranch `stable`, lokal mit fuenf Schluesseln und Schwelle 3
+konfiguriert, aber gerade nicht aktiv) faelschlich abgelehnt: der Autoupdater
+verlangte 3 Signaturen fuer das Zielmanifest, obwohl die Steuerdatei selbst
+schon mit 2 als ausreichend akzeptiert worden war.
+
+Nach dem Fix, alles mit `nodeplacer -n`:
+
+| Test | Aufbau | Ergebnis |
+|---|---|---|
+| Erfolg | echtes, live signiertes `nodeplacer.manifest`, Ziel `02_met` stable | `branch stable: 5 pubkeys, 2 signatures required` (statt 3), Autoupdater akzeptiert das nur zweifach signierte `stable.manifest` von 02_met, laedt und prueft das Image |
+| Nach dem Erfolg | `uci get autoupdater.stable.good_signatures` | `3` (Flash-Wert, sauber restauriert), `uci changes autoupdater` ohne `stable.*` |
+| Echter Fehlschlag | Testschluessel als Override, Ziel-Mirror `http://[::1]/nichts-hier` (404) | Steuerdatei akzeptiert (2/2 Testsignaturen), Autoupdater scheitert ("no usable mirror found", exit 1) |
+| Nach dem Fehlschlag | `uci get autoupdater.stable.good_signatures` | `3`, `uci changes autoupdater` ohne `stable.*` |
+
+Nebenbefund beim Testen: `opkg remove` erzeugt auf diesem Image erneut
+Whiteouts (D-Fund vom selben Tag, andere Ursache: hier bewusst zum
+Deinstallieren am Testende, nicht durch ein Buildscript). Manuell entfernt,
+Knoten am Ende wieder ohne jede nodeplacer-Spur, `nef-21_dias`, 0 offene
+UCI-Aenderungen.

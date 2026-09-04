@@ -18,9 +18,13 @@ A node that finds its own node id in the verified body switches:
 * `firmware`: installs the target domain's image via the regular autoupdater
   (`autoupdater -f --force-version -b <branch> <mirror...>`). Branch name,
   signing keys (`pubkey=`) and signature threshold (`good_signatures=`) of
-  the target domain are independent of each other; each one that is left
-  out keeps this node's own value. Overrides live in the UCI delta and are
-  gone after the reboot.
+  the target domain are independent of each other. Left out, the threshold
+  defaults to this node's own current trust level - the same one that just
+  verified `nodeplacer.manifest` itself - not whatever value happens to be
+  locally configured under the target branch name, which may belong to a
+  branch this node is not currently running. Overrides live in the UCI
+  delta and are gone after the reboot; so is any change from an attempt
+  that does not end in a real flash (a dry run, or a failed real one).
 
 Whoever can sign the manifest can point a node at almost any firmware, so
 the signature under `nodeplacer.manifest` is the only trust anchor of this

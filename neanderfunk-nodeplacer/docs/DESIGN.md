@@ -71,7 +71,10 @@ Autoupdate-Server der Zieldomain liegt.
      `<branch>`. Sie muss existieren; bei gleicher Community ist das der
      Normalfall.
 4. Der Autoupdater prueft das Firmware-Manifest der Zieldomain, laedt das
-   Image, prueft Hash und `sysupgrade --test`, flasht und rebootet.
+   Image, prueft Hash und `sysupgrade --test`, flasht und rebootet
+   (D-032: die dafuer geltende Signaturschwelle ist das eigene aktuelle
+   Vertrauensniveau des Knotens, nicht ein zufaellig lokal unter dem
+   Zielbranch-Namen konfigurierter Wert, siehe unten).
 5. Nach dem Boot schreibt die neue Firmware ihre eigenen Mirrors und
    Pubkeys aus ihrer site.conf nach UCI. `settings.branch` bleibt erhalten.
 
@@ -86,6 +89,18 @@ gibt nur an, was abweicht:
 | Schluesseln | `pubkey=` | ueberschreibt `pubkey` der Branch-Section im Delta |
 | Schwelle | `good_signatures=` | ueberschreibt `good_signatures` im Delta |
 
+**Default der Schwelle (D-032):** Ohne `good_signatures=` im Eintrag ist
+die Schwelle **nicht** der Wert, der zufaellig schon lokal unter dem
+Zielbranch-Namen konfiguriert ist (der kann von einem Branch stammen, den
+der Knoten gerade gar nicht faehrt, also veraltet oder unpassend sein).
+Massgeblich ist stattdessen das eigene aktuelle Vertrauensniveau des
+Knotens: derselbe Wert, der schon `nodeplacer.manifest` selbst pruefte
+(site.conf-Override `nodeplacer.good_signatures`, sonst die Schwelle des
+**aktiven** Autoupdater-Branches, D-031). Wer eine Steuerdatei mit N
+Signaturen unterschreiben kann, darf den Knoten auch auf eine Firmware
+schicken, die nur N Signaturen traegt - unabhaengig davon, welchen
+Zielbranch-Namen die Firmware dort verwendet.
+
 Alles davon landet **nur im UCI-Delta** (`uci set` ohne `commit`, also
 `/tmp/.uci`). libuci wendet das Delta beim Laden an, der Autoupdater sieht
 die Werte, nach dem Reboot sind sie weg. Das gilt jetzt auch, wenn die
@@ -94,11 +109,17 @@ Schluessel dann stillschweigend ignoriert.
 
 Sonderfaelle:
 
-* Branch existiert lokal nicht: `pubkey=` ist Pflicht, sonst Abbruch. Fehlt
-  `good_signatures=`, muessen alle uebergebenen Schluessel unterschrieben
-  haben.
+* Branch existiert lokal nicht: `pubkey=` ist Pflicht, sonst Abbruch.
 * Schwelle groesser als die Zahl der wirksamen Schluessel: Abbruch mit
   Logmeldung, bevor der Autoupdater startet.
+* Ein Lauf, der nicht mit einem echten Flash endet - ein `-n`-Trockenlauf
+  oder ein fehlgeschlagener echter Lauf (Mirror nicht erreichbar,
+  Firmware-Manifest ungenuegend signiert, `sysupgrade --test` scheitert) -
+  hinterlaesst **keine** Spur im UCI-Delta (D-032): der Autoupdater laeuft
+  als Kindprozess, und `uci:revert()` setzt die Branch-Section danach exakt
+  auf den Flash-Stand zurueck. Ohne das wuerde eine ueberschriebene, zu
+  niedrige Schwelle bis zum naechsten Reboot auch fuer den regulaeren,
+  per Cron laufenden Autoupdater gelten.
 * Wechsel auf eine Firmware mit anderem Major-Compat (sehr alte Knoten):
   `sysupgrade --test` scheitert, der Autoupdater bricht ab. Solche Knoten
   brauchen einen Zwischenschritt (erst Update in der alten Domain).

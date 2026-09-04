@@ -463,3 +463,58 @@ Status: **offen** / **entschieden** / **verworfen**.
   Tippfehler. Es gilt der Wert des **aktiven** Branches, im Beispiel also
   zwei. Ein Maximum ueber alle konfigurierten Branches ist ausdruecklich
   nicht gemeint.
+
+## D-032 Zielschwelle folgt dem eigenen Vertrauensniveau, nicht dem Zielbranch-Namen
+
+* Status: **entschieden** (adorfer, 2026-09-04, echter Bug auf dem
+  Testknoten gefunden und behoben)
+* Fehler: Ohne `good_signatures=` im Eintrag fiel die Schwelle fuer die
+  Zielfirmware bisher auf `autoupdater.<zielbranch>.good_signatures`
+  zurueck, sofern der Branch-Name lokal bereits existierte. Auf dem
+  Testknoten (aktiver Branch `broken`, dort Schwelle 1,
+  `nodeplacer.good_signatures=2` als Override) fuehrte das dazu, dass ein
+  Umzug mit Zielbranch `stable` die dort schon konfigurierte, aber fuer
+  diesen Vorgang voellig unbeteiligte Schwelle 3 verlangte, statt der 2,
+  mit der die Steuerdatei selbst gerade erfolgreich geprueft worden war.
+* Korrektur: Standardwert der Zielschwelle ist jetzt das eigene aktuelle
+  Vertrauensniveau des Knotens, exakt derselbe Wert, der schon zur
+  Pruefung von `nodeplacer.manifest` diente (`nodeplacer.good_signatures`
+  als Override, sonst die Schwelle des **aktiven** Autoupdater-Branches,
+  D-031). Wer eine Steuerdatei mit N Signaturen unterschreiben kann, darf
+  den Knoten auch auf eine mit N Signaturen versehene Firmware schicken -
+  unabhaengig vom Namen des Zielbranches. `good_signatures=` im Eintrag
+  bleibt ein explizites Override obendrauf.
+* Klargestellt (adorfer): `branch=` im Eintrag beeinflusst **nur**, unter
+  welchem Namen der spaeter aufgerufene Autoupdater die Firmware am neuen
+  Mirror sucht (`<mirror>/<branch>.manifest`); es hat nichts mit dieser
+  Schwelle zu tun (siehe Klarstellung in D-031).
+* Auf dem Testknoten nachgewiesen: mit dem Fix wurde das echte, nur mit
+  zwei Signaturen versehene `stable.manifest` von `02_met.key` akzeptiert
+  (Log: "2 signatures required", nicht mehr 3).
+
+## D-033 Kein UCI-Rueckstand nach einem nicht-flashenden Lauf
+
+* Status: **entschieden** (adorfer, 2026-09-04)
+* Zusaetzlich zum Fehler in D-032 fiel auf: weder ein `-n`-Trockenlauf noch
+  ein fehlgeschlagener echter Lauf setzten das UCI-Delta der
+  Autoupdater-Branch-Section zurueck. Eine ueberschriebene (zu niedrige
+  oder fremde) Schwelle oder Schluesselliste blieb bis zum naechsten
+  Reboot aktiv - und haette in der Zwischenzeit auch den regulaeren, per
+  Cron laufenden Autoupdater beeinflusst, obwohl gar keine Firmware
+  installiert wurde.
+* Korrektur: der Autoupdater laeuft jetzt in beiden Faellen (`-n` und
+  echt) als Kindprozess (`os.execute`, also fork+exec+wait) statt per
+  `exec()`. Bei einem echten, erfolgreichen Lauf rebootet die Maschine
+  ohnehin, bevor irgendein Lua-Code danach liefe - das Delta wird beim
+  naechsten Boot ganz normal frisch aus dem Flash gelesen. In jedem
+  anderen Fall (Fehlschlag, oder `-n`, das definitionsgemaess nie
+  flasht) kehrt die Kontrolle zurueck, und `uci:revert('autoupdater',
+  <branch>)` verwirft genau das Delta dieser einen Section, ohne
+  zusaetzliche Eintraege in `uci changes` zu hinterlassen.
+* Verworfen: alte Werte manuell merken und per `uci:set()` zurueckschreiben
+  (erster Vorschlag adorfer). Funktional gleichwertig, aber `uci:revert()`
+  ist einfacher, weniger fehleranfaellig und hinterlaesst kein Journal.
+* Auf dem Testknoten nachgewiesen: nach einem erzwungenen Fehlschlag
+  (unerreichbarer Zielmirror) stand `autoupdater.stable.good_signatures`
+  wieder auf dem Flash-Wert, `uci changes autoupdater` zeigte keine
+  `stable.*`-Eintraege mehr.

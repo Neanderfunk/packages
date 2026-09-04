@@ -206,10 +206,6 @@ elseif entry.method == 'firmware' then
 		os.exit(1)
 	end
 
-	-- Keys and threshold of the target domain. Both are independent of each
-	-- other and of the branch name: the target may keep the branch but be
-	-- signed by other keys, or use the same keys with a different threshold.
-	-- Whatever the manifest does not mention keeps this node's own value.
 	local have_branch = uci:get('autoupdater', branch) ~= nil
 
 	if not have_branch and not entry.pubkeys then
@@ -217,19 +213,20 @@ elseif entry.method == 'firmware' then
 		os.exit(1)
 	end
 
-	-- work out what the autoupdater would run with, and refuse before
-	-- touching anything: a half-applied override would also break the
-	-- node's regular autoupdater until the next reboot
+	-- The signature threshold is a trust decision, not a property of the
+	-- branch name: by default it is this node's own current operational
+	-- trust level, i.e. exactly what was required to accept the control
+	-- file itself (site.conf override, else the ACTIVE autoupdater
+	-- branch's good_signatures) - not whatever autoupdater.<branch>
+	-- .good_signatures already happens to hold, which may belong to a
+	-- branch this node is not currently running and so may be stale or
+	-- unrelated to the present move. The manifest entry may still
+	-- override it explicitly (D-030/D-031).
+	local own_threshold = tonumber(uci:get('nodeplacer', 'settings', 'good_signatures'))
+		or tonumber(uci:get('autoupdater', uci:get('autoupdater', 'settings', 'branch'), 'good_signatures'))
+
 	local keys = entry.pubkeys or uci:get_list('autoupdater', branch, 'pubkey') or {}
-	local threshold = entry.good_signatures
-	if not threshold then
-		if have_branch then
-			threshold = tonumber(uci:get('autoupdater', branch, 'good_signatures'))
-		else
-			-- no local value to keep: demand all supplied keys
-			threshold = #keys
-		end
-	end
+	local threshold = entry.good_signatures or own_threshold
 
 	if not threshold or threshold < 1 or threshold > #keys then
 		log(string.format('branch %s would run with %d pubkeys and a threshold of %s, refusing',
@@ -237,9 +234,17 @@ elseif entry.method == 'firmware' then
 		os.exit(1)
 	end
 
-	-- Anything written here goes to the UCI delta only (/tmp/.uci); it
-	-- applies to this single autoupdater run and is gone after the reboot
-	-- (D-012).
+	-- Anything written here goes to the UCI delta only (/tmp/.uci); it is
+	-- meant to apply to this single autoupdater run. uci:revert() discards
+	-- just this section's pending delta afterwards, restoring exactly what
+	-- was on flash (nothing, or the node's own values) - so a failed
+	-- attempt, or a -n run, which must never leave a trace, cannot affect
+	-- the node's regular, cron-triggered autoupdater before the next
+	-- reboot (D-012).
+	local function restore()
+		uci:revert('autoupdater', branch)
+	end
+
 	if not have_branch then
 		uci:section('autoupdater', 'branch', branch, {
 			name = branch,
@@ -247,16 +252,13 @@ elseif entry.method == 'firmware' then
 			pubkey = keys,
 			good_signatures = threshold,
 		})
-		uci:save('autoupdater')
-	elseif entry.pubkeys or entry.good_signatures then
+	else
 		if entry.pubkeys then
 			uci:set('autoupdater', branch, 'pubkey', entry.pubkeys)
 		end
-		if entry.good_signatures then
-			uci:set('autoupdater', branch, 'good_signatures', entry.good_signatures)
-		end
-		uci:save('autoupdater')
+		uci:set('autoupdater', branch, 'good_signatures', threshold)
 	end
+	uci:save('autoupdater')
 
 	log(string.format('branch %s: %d pubkeys, %d signatures required%s',
 		branch, #keys, threshold,
@@ -272,25 +274,32 @@ elseif entry.method == 'firmware' then
 	-- -f: ignore 'enabled' and the update probability
 	-- --force-version: the target usually has the same version number
 	-- mirrors on the command line replace the configured ones, in order
-	local argv = {[0] = 'autoupdater', '-f', '--force-version', '-b', branch}
-	for _, mirror in ipairs(entry.mirrors) do
-		table.insert(argv, mirror)
+	--
+	-- Run as a child (fork+wait via os.execute), not exec(): on a real
+	-- success sysupgrade reboots the whole machine and control never
+	-- returns here, so restoring the branch section above is moot - the
+	-- next boot reads it fresh from flash anyway. On any other outcome -
+	-- a failed attempt, or -n, which never flashes - control does return,
+	-- and the override must be undone (D-012).
+	local function shquote(v)
+		return "'" .. v:gsub("'", '') .. "'"
 	end
 
+	local cmd = 'autoupdater -f --force-version -b ' .. shquote(branch)
 	if no_action then
-		-- autoupdater -n leaves the verified image in /tmp; run it as a
-		-- child so we can clean up afterwards and report its status
-		local cmd = "autoupdater -n -f --force-version -b '" .. branch .. "'"
-		for _, mirror in ipairs(entry.mirrors) do
-			cmd = cmd .. " '" .. mirror:gsub("'", '') .. "'"
-		end
-		local au_rc = exit_status(os.execute(cmd))
+		cmd = cmd .. ' -n'
+	end
+	for _, mirror in ipairs(entry.mirrors) do
+		cmd = cmd .. ' ' .. shquote(mirror)
+	end
+
+	local au_rc = exit_status(os.execute(cmd))
+	restore()
+	if no_action then
 		os.remove('/tmp/firmware.bin')
 		log('no-action run finished, autoupdater exit ' .. au_rc)
-		os.exit(au_rc)
+	else
+		log('autoupdater did not flash (exit ' .. au_rc .. '), restored branch ' .. branch)
 	end
-
-	unistd.execp('autoupdater', argv)
-	log('failed to execute autoupdater')
-	os.exit(1)
+	os.exit(au_rc)
 end

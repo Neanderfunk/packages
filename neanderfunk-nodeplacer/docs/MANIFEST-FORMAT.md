@@ -75,7 +75,7 @@ Nur bei Multidomain-Firmware ausfuehrbar.
 | `mirror` | ja | ja | Autoupdater-Mirror der Zieldomain (Basis-URL, unter der `<branch>.manifest` und die Images liegen). Reihenfolge = Reihenfolge, in der der Autoupdater sie probiert (er mischt Kommandozeilen-Mirrors nicht). |
 | `branch` | nein | nein | Autoupdater-Branch auf dem Zielserver. Fehlt er, gilt der aktuelle `autoupdater.settings.branch` des Knotens. |
 | `pubkey` | nein | ja | Signaturschluessel, mit denen das Firmware-Manifest der Zieldomain geprueft wird. Fehlt der Key, gelten die Schluessel des Knotens. |
-| `good_signatures` | nein | nein | Wie viele gueltige Signaturen das Firmware-Manifest der Zieldomain tragen muss. Fehlt der Key, gilt der Wert des Knotens. |
+| `good_signatures` | nein | nein | Wie viele gueltige Signaturen das Firmware-Manifest der Zieldomain tragen muss. Fehlt der Key, gilt das eigene aktuelle Vertrauensniveau des Knotens (D-032) - derselbe Wert, mit dem `nodeplacer.manifest` selbst schon geprueft wurde -, **nicht** ein zufaellig lokal unter dem Zielbranch-Namen konfigurierter Wert. |
 
 ### Branch, Schluessel und Schwelle sind unabhaengig
 
