@@ -447,9 +447,8 @@ Status: **offen** / **entschieden** / **verworfen**.
 * Fail closed: fehlt der aktive Branch in der Autoupdater-Konfiguration
   und steht auch nichts in site.conf, bricht `nodeplacer-fetch` mit
   Konfigurationsfehler ab, statt eine Schwelle zu raten.
-* Hinweis zur Formulierung im Auftrag: dort stand als Beispiel, ein Knoten
-  im `broken`-Branch mit dort zwei geforderten Signaturen solle "dann 3"
-  verlangen. Umgesetzt ist die Regel aus dem Satz davor, also der Wert des
-  **aktiven** Branches, hier also zwei. Die Alternative waere das Maximum
-  ueber alle konfigurierten Branches; das ist eine Zeile Aenderung, falls
-  gewuenscht.
+* Geprueft und bestaetigt (adorfer): im Auftrag stand als Beispiel, ein
+  Knoten im `broken`-Branch solle "dann 3" verlangen; das war ein
+  Tippfehler. Es gilt der Wert des **aktiven** Branches, im Beispiel also
+  zwei. Ein Maximum ueber alle konfigurierten Branches ist ausdruecklich
+  nicht gemeint.
