@@ -59,3 +59,13 @@ weekly reboot sheduled on thursday morning. See [](gluon-weeklyreboot/README.md)
 
 WIFI-Neighborcheck. restarts wifi no wifi mesh neighbours are seen after
 initially there were at lease two neighbours. See [](gluon-wificheck/README.md)
+
+### nodeplacer ###
+
+moves individual nodes to another domain of the same community, controlled by a
+signed manifest on the community's firmware servers (same signing tools and keys
+as the autoupdater manifest). A node that finds its own node id listed either
+switches domain locally (multi-domain firmware) or installs the target domain's
+firmware through the regular autoupdater. Documentation in nodeplacer/docs/;
+development happens in https://github.com/Adorfer/nodeplacer-dev, the directory
+here is generated and must not be edited.
