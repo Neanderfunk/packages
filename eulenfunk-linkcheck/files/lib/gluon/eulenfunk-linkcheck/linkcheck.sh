@@ -47,10 +47,14 @@ valuecheck ()
     fi
   fi
 }
+## script start
 
 #do not run run while node is firmware flashing
 upgrade_started='/tmp/autoupdate.lock'
 [ -f ${upgrade_started} ] && exit
+
+ifnameseparator=','  # charcters like . - # or even : may cause issues
+
 
 # 1) running over existing batman-interface, looking for direct neighbors
 batversion=$(batctl -v |cut -d" " -f 2|grep -o '[0-9]\+'| tr -d '\012\015')
@@ -121,15 +125,15 @@ if [ "$gluontarget" != "mediatek" ]; then
 
   # create flag files in /tmp
   for batinterface in ${batinterfaces}; do
-    echo $(date)>/tmp/linkcheck.batinterface.${batinterface}.up
+    echo $(date)>/tmp/linkcheck.batinterface${ifnameseparator}${batinterface}${ifnameseparator}up
    done
   # get all previously seen interfaces by flag files
-  for batupfiles in "/tmp/linkcheck.batinterface.*.up"; do
+  for batupfiles in "/tmp/linkcheck.batinterface${ifnameseparator}*${ifnameseparator}up"; do
     :
    done
   # check if all prviously seen are in current list
   for batups in ${batupfiles}; do
-    batifupf=$(echo ${batups}|cut -d. -f3)
+    batifupf=$(echo ${batups}|cut -d${ifnameseparator} -f2)
     if [[ "$batinterfaces" =~ "${batifupf}" ]]; then
       wert='2'
      else
@@ -159,7 +163,6 @@ if [ "$gluontarget" != "mediatek" ]; then
 
 ## 4) check for disappearing bridge interfaces
 #
-  ifnameseparator='+'
 # get current bridges
   bridgeslist=$(brctl show |cut -f1|sort -u|sed '/^\s*$/d'|grep -v "bridge name")
   # create flag files in /tmp
@@ -167,7 +170,7 @@ if [ "$gluontarget" != "mediatek" ]; then
     echo $(date)>/tmp/linkcheck.bridge${ifnameseparator}${bridgename}${ifnameseparator}up
     interfaces=$(brctl show ${bridgename}|sed -e 's/\t/                     /g'|cut -c 100-|sed -e 's/ //g'|tail -n +2)
     for interface in ${interfaces}; do
-      echo $(date)>/tmp/linkcheck.bridgeif${ifnameseparator}${bridgename}${ifnameseparator}if${ifnameseparator}${interface}${ifnameseparator}up
+      echo $(date)>/tmp/linkcheck.bridgeif${ifnameseparator}${bridgename}${ifnameseparator}port${ifnameseparator}${interface}${ifnameseparator}up
      done
    done
 
@@ -191,7 +194,7 @@ if [ "$gluontarget" != "mediatek" ]; then
      linkname=bridgeinterfaces
      check=${upbridge}
      valuecheck ${check}
-     for interfacesf in "/tmp/linkcheck.bridgeif${ifnameseparator}${upbridge}${ifnameseparator}if${ifnameseparator}*${ifnameseparator}up"; do
+     for interfacesf in "/tmp/linkcheck.bridgeif${ifnameseparator}${upbridge}${ifnameseparator}port${ifnameseparator}*${ifnameseparator}up"; do
        :
       done
 #     echo file  ${interfacesf}
