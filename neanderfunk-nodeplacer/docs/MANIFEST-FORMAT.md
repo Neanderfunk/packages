@@ -189,11 +189,14 @@ dieselbe Datei. 404 heisst "nichts zu tun" und ist der Normalfall.
 1. Datei editieren: Kopfzeilen anpassen (`DATE` auf jetzt, `EXPIRES` auf
    z. B. vier Wochen spaeter), Knotenzeilen ergaenzen oder entfernen, alte
    Signaturen unter `---` loeschen.
-2. Signieren, so oft wie noetig, mit dem Firmware-Werkzeug:
+2. Pruefen, **bevor** signiert wird:
+   `scripts/lint-nodeplacer-manifest.py nodeplacer.manifest`
+   (D-036; Exit-Code 0 = in Ordnung, 1 = Fehler gefunden, nicht signieren).
+3. Signieren, so oft wie noetig, mit dem Firmware-Werkzeug:
    `gluon/contrib/sign.sh <secret> nodeplacer.manifest`
    (jeder Maintainer einmal; haengt je eine Signaturzeile an).
-3. Auf alle Mirrors legen.
-4. Eintraege entfernen, sobald der Knoten in der Zieldomain angekommen ist;
+4. Auf alle Mirrors legen.
+5. Eintraege entfernen, sobald der Knoten in der Zieldomain angekommen ist;
    spaetestens `EXPIRES` raeumt auf.
 
 Jede Aenderung am Teil vor `---` macht alle bestehenden Signaturen

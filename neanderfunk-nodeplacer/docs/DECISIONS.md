@@ -586,3 +586,36 @@ Status: **offen** / **entschieden** / **verworfen**.
   Site-Code (Single-Domain, rein zur Selbstpruefung). Kollision in der
   Parser-Implementierung ausgeschlossen, da beide Methoden getrennte
   Schluessel-Tabellen haben.
+
+## D-036 Manifest-Linter als eigenstaendiges Python-3-Skript
+
+* Status: **entschieden** (adorfer, 2026-09-04: "praktisch waere ein
+  linter (als bash-script? oder python mit moeglichst wenig includes),
+  der die Gueltigkeit des nodeplacer.manifest files lokal auf dem
+  Firmwareserver verifizieren kann, mit errorlevel, vor dem signen")
+* `scripts/lint-nodeplacer-manifest.py`, reine Python-3-Standardbibliothek
+  (`re`, `sys`, `datetime`, `argparse`), keine Abhaengigkeiten, laeuft auf
+  jedem halbwegs aktuellen Firmwareserver ohne Installation.
+* Bildet die Regeln von `nodeplacer-fetch` (C: FORMAT/DATE/EXPIRES,
+  Zeilen-/Body-Groessenlimits) und `nodeplacer.manifest` (Lua:
+  Eintragssyntax, `only_keys`, Pflichtfelder) von Hand nach - es gibt
+  keine gemeinsame Quelle zwischen Lua und Python, die Regeln muessen bei
+  Aenderungen an beiden Stellen gepflegt werden.
+* Eine bewusste Abweichung: der Linter prueft zusaetzlich die
+  Pubkey-Laenge (64 Hexzeichen = 32 Byte), was `manifest.lua` selbst nicht
+  tut. Ein zu kurzer Schluessel wird dort nicht abgelehnt, sondern erst
+  viel spaeter beim Laden in eine 32-Byte-UCI-Struktur beim Autoupdater
+  stillschweigend verworfen - genau die Art Fehler, die ein Linter vor
+  dem Signieren abfangen soll.
+* Abgleich gegen den echten Lua-Parser (`tests/test_manifest.lua`s
+  eigene Testdatei durch beide Parser gejagt, `tests/test_lint_manifest.py`):
+  jede von `manifest.lua` akzeptierte Zeile bleibt fehlerfrei, jede
+  abgelehnte erzeugt einen Fehler - bis auf die dokumentierte
+  Pubkey-Laengen-Abweichung.
+* Exit-Codes ("errorlevel"): 0 kein Fehler (Warnungen moeglich), 1
+  mindestens ein Fehler (nicht signieren), 2 Aufruffehler (Datei nicht
+  lesbar o. Ae.) - matcht die uebliche Linter-Konvention (shellcheck,
+  yamllint).
+* Bleibt reines Entwicklungs-/Serverwerkzeug wie die anderen
+  `scripts/*.sh`, wird **nicht** in den Feed synchronisiert
+  (`scripts/sync-to-feed.sh` fasst nur die beiden Paketverzeichnisse an).

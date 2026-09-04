@@ -349,3 +349,18 @@ regulaeren Build-Prozess.
   Knoten ohne offene UCI-Aenderungen (aktueller Site-Code: `nef-02_met`,
   Ergebnis des in der Zwischenzeit real erfolgten Domainwechsels ueber
   den Produktionsbuild, nicht durch diesen Test veraendert).
+
+### Bestaetigung 2026-09-04: D-035 auf dem Produktionsbuild
+
+Nach Pin-Bump auf den D-035-Commit, echter Lauf auf dem Testknoten (bereits
+in `nef-02_met`, Manifest weiterhin mit einer Zeile fuer diesen Knoten,
+jetzt mit `target=nef-02_met`):
+
+```
+nodeplacer: already at the target site (nef-02_met), nothing to do
+```
+
+Kein Flash, keine UCI-Aenderung. Der zuvor beobachtete Reflash-Loop
+(vgl. Screenshot vom selben Tag, altes Szenario ohne `target=`) tritt mit
+dem Fix nicht mehr auf. Bestaetigt von adorfer auf dem echten
+Produktionsbuild, nicht nur im Container-Test.

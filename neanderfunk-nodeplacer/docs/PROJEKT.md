@@ -44,6 +44,20 @@ zurueckgestellt (D-026).
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Laufendes Entscheidungs-Log (wird fortgeschrieben) |
 | `sketches/`, `scripts/`, `tests/` | Skizzen, Hilfsskripte, Host-Tests (nur im Entwicklungs-Repo) |
 
+## Werkzeug: Manifest-Linter
+
+`scripts/lint-nodeplacer-manifest.py` prueft eine `nodeplacer.manifest`
+**vor** dem Signieren gegen dieselben Regeln, die `nodeplacer-fetch` und
+`nodeplacer.manifest` (Lua) auf dem Knoten anwenden, plus ein paar
+zusaetzliche Warnungen fuer haeufige Tippfehler (D-036). Reiner
+Python-3-Standardbibliothek-Code, keine Abhaengigkeiten, laeuft auf dem
+Firmwareserver:
+
+```bash
+scripts/lint-nodeplacer-manifest.py nodeplacer.manifest
+echo $?   # 0 = in Ordnung, 1 = Fehler gefunden (nicht signieren), 2 = Aufruffehler
+```
+
 ## Ziel
 
 * Package (Community-Erweiterung) fuer Freifunk-Gluon.
