@@ -1,7 +1,6 @@
 #!/bin/sh
 
 UPDATE_BRANCH=$(uci get autoupdater.settings.branch)
-GLUON_SITECODE=$(lua /lib/gluon/eulenfunk-migrate-updatebranch/sitecode.lua)
 
 # shifting from beta/experimental/broken back to stable systematically
 
