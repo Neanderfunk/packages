@@ -1,0 +1,256 @@
+#!/usr/bin/lua
+-- SPDX-License-Identifier: BSD-2-Clause
+--
+-- nodeplacer: policy side. nodeplacer-fetch (C) downloads the manifest,
+-- verifies the signatures and the header and prints the verified body.
+-- This program decides whether and how this node has to move.
+--
+-- Nothing here is written to flash (see docs/DECISIONS.md D-012); the only
+-- exception is gluon-switch-domain, which commits by itself.
+
+local bit = require 'bit32'
+local fcntl = require 'posix.fcntl'
+local unistd = require 'posix.unistd'
+local uci = require('simple-uci').cursor()
+local util = require 'gluon.util'
+local manifest = require 'nodeplacer.manifest'
+local state = require 'nodeplacer.state'
+
+local FETCH = '/usr/sbin/nodeplacer-fetch'
+local BODY_FILE = '/tmp/nodeplacer.body'
+local LOCKFILE = '/var/lock/nodeplacer.lock'
+
+local MAX_ATTEMPTS = 3
+local ATTEMPT_WINDOW = 7 * 86400 -- seconds, rolling (D-012)
+
+-- -n / --no-action: go through everything, but only report what would be
+-- done; the autoupdater is called with -n (download, verify, no flash).
+local no_action = false
+for _, a in ipairs(arg) do
+	if a == '-n' or a == '--no-action' then
+		no_action = true
+	elseif a == '-h' or a == '--help' then
+		io.stderr:write('Usage: nodeplacer [-n|--no-action]\n')
+		os.exit(0)
+	else
+		io.stderr:write('nodeplacer: unknown option ' .. a .. '\n')
+		os.exit(1)
+	end
+end
+
+local function log(msg)
+	util.log('nodeplacer: ' .. msg, true)
+end
+
+-- os.execute() returns the raw wait status on Lua 5.1 (exit code << 8)
+local function exit_status(v)
+	if type(v) ~= 'number' then
+		return 255
+	end
+	if v >= 256 then
+		return math.floor(v / 256)
+	end
+	return v
+end
+
+local function get_uptime()
+	return util.get_uptime() or 0
+end
+
+-- Lock ---------------------------------------------------------------------
+
+local lockfd = fcntl.open(LOCKFILE, bit.bor(fcntl.O_WRONLY, fcntl.O_CREAT), 384) -- 0600
+if not lockfd then
+	log('unable to open lock file')
+	os.exit(1)
+end
+if not fcntl.fcntl(lockfd, fcntl.F_SETLK, {
+	l_start = 0, l_len = 0, l_type = fcntl.F_WRLCK, l_whence = unistd.SEEK_SET,
+}) then
+	log('another instance is running')
+	os.exit(1)
+end
+
+-- Preconditions -------------------------------------------------------------
+
+if uci:get_bool('nodeplacer', 'settings', 'disable') then
+	os.exit(0)
+end
+
+if unistd.access('/var/gluon/setup-mode') == 0 then
+	os.exit(0)
+end
+
+if not uci:get('nodeplacer', 'settings', 'mirror') then
+	log('no mirrors configured')
+	os.exit(1)
+end
+
+-- Never interfere with a running update. The autoupdater keeps its flock
+-- across the exec of sysupgrade, but luaposix cannot test flock(2) locks,
+-- so look for the processes themselves.
+local function process_running(names)
+	for _, path in ipairs(util.glob('/proc/[0-9]*/comm')) do
+		local f = io.open(path, 'r')
+		if f then
+			local comm = f:read('*line')
+			f:close()
+			if comm and names[comm] then
+				return comm
+			end
+		end
+	end
+	return nil
+end
+
+local busy = process_running({ autoupdater = true, sysupgrade = true })
+if busy then
+	log(busy .. ' is running, not touching anything')
+	os.exit(0)
+end
+
+-- Fetch ----------------------------------------------------------------------
+
+os.remove(BODY_FILE)
+local rc = exit_status(os.execute(string.format('%s > %s', FETCH, BODY_FILE)))
+if rc == 2 then
+	-- no manifest on any mirror: the normal, quiet case
+	os.remove(BODY_FILE)
+	os.exit(0)
+elseif rc ~= 0 then
+	-- 3: manifest found but rejected (signatures, header, expired)
+	-- 1: configuration error; anything else: unexpected
+	log('manifest not accepted (nodeplacer-fetch exit ' .. rc .. ')')
+	os.remove(BODY_FILE)
+	os.exit(1)
+end
+
+local body = util.readfile(BODY_FILE)
+os.remove(BODY_FILE)
+if not body then
+	log('no manifest body received')
+	os.exit(1)
+end
+
+-- Parse ----------------------------------------------------------------------
+
+local m = manifest.parse(body)
+for _, bad in ipairs(m.errors) do
+	log('ignoring invalid line: ' .. bad)
+end
+
+local node_id = util.node_id()
+local entry = m.entries[node_id]
+if not entry then
+	-- not addressed: quiet
+	os.exit(0)
+end
+
+local date = manifest.parse_date(m.header.DATE or '')
+if not date then
+	log('manifest has no usable DATE')
+	os.exit(1)
+end
+
+-- State ----------------------------------------------------------------------
+
+local st = state.load()
+local uptime = get_uptime()
+
+if not state.newer_or_equal(st, date) then
+	log('manifest older than the one already applied, ignoring')
+	os.exit(0)
+end
+
+local key = manifest.target_key(entry)
+if state.attempts_in_window(st, key, uptime, ATTEMPT_WINDOW) >= MAX_ATTEMPTS then
+	log(string.format('%d attempts for %s within the last %d days, waiting',
+		MAX_ATTEMPTS, key, ATTEMPT_WINDOW / 86400))
+	os.exit(0)
+end
+
+-- Action ---------------------------------------------------------------------
+
+local has_domains = unistd.access('/lib/gluon/domains/') == 0
+
+if entry.method == 'domain' then
+	if not has_domains then
+		log('firmware has no domains, cannot switch to ' .. entry.target)
+		os.exit(1)
+	end
+	if unistd.access('/lib/gluon/domains/' .. entry.target .. '.json') ~= 0 then
+		log('unknown domain ' .. entry.target)
+		os.exit(1)
+	end
+	if uci:get('gluon', 'core', 'domain') == entry.target then
+		-- already there; the manifest line is stale
+		os.exit(0)
+	end
+
+	if no_action then
+		log('would switch to domain ' .. entry.target .. ' (no-action)')
+		os.exit(0)
+	end
+
+	state.record_attempt(st, key, date, uptime)
+	state.save(st)
+	log('switching to domain ' .. entry.target)
+	unistd.execp('gluon-switch-domain', {[0] = 'gluon-switch-domain', entry.target})
+	log('failed to execute gluon-switch-domain')
+	os.exit(1)
+
+elseif entry.method == 'firmware' then
+	local branch = entry.branch or uci:get('autoupdater', 'settings', 'branch')
+	if not branch then
+		log('no autoupdater branch known')
+		os.exit(1)
+	end
+
+	if not uci:get('autoupdater', branch) then
+		if not entry.pubkeys then
+			log('branch ' .. branch .. ' not configured locally and no pubkeys given')
+			os.exit(1)
+		end
+		-- RAM only: the section lives in the UCI delta (/tmp/.uci) for this
+		-- single autoupdater run and is gone after the reboot (D-012)
+		uci:section('autoupdater', 'branch', branch, {
+			name = branch,
+			mirror = entry.mirrors,
+			pubkey = entry.pubkeys,
+			good_signatures = uci:get('nodeplacer', 'settings', 'good_signatures'),
+		})
+		uci:save('autoupdater')
+	end
+
+	if not no_action then
+		state.record_attempt(st, key, date, uptime)
+		state.save(st)
+	end
+	log(string.format('installing firmware from %s (branch %s)%s', entry.mirrors[1], branch,
+		no_action and ' (no-action: download only)' or ''))
+
+	-- -f: ignore 'enabled' and the update probability
+	-- --force-version: the target usually has the same version number
+	-- mirrors on the command line replace the configured ones, in order
+	local argv = {[0] = 'autoupdater', '-f', '--force-version', '-b', branch}
+	for _, mirror in ipairs(entry.mirrors) do
+		table.insert(argv, mirror)
+	end
+
+	if no_action then
+		-- autoupdater -n leaves the verified image in /tmp; run it as a
+		-- child so we can clean up afterwards and report its status
+		local cmd = "autoupdater -n -f --force-version -b '" .. branch .. "'"
+		for _, mirror in ipairs(entry.mirrors) do
+			cmd = cmd .. " '" .. mirror:gsub("'", '') .. "'"
+		end
+		local au_rc = exit_status(os.execute(cmd))
+		os.remove('/tmp/firmware.bin')
+		log('no-action run finished, autoupdater exit ' .. au_rc)
+		os.exit(au_rc)
+	end
+
+	unistd.execp('autoupdater', argv)
+	log('failed to execute autoupdater')
+	os.exit(1)
+end
