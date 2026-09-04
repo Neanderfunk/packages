@@ -194,7 +194,7 @@ FORMAT=1
 DATE=2026-09-04 12:00:00+02:00
 EXPIRES=2026-10-04 12:00:00+02:00
 80afcacfc55c domain target=ffnef21dias
-80afcacfc55d firmware branch=stable mirror=http://firmware.ffnef.de/firmware/stable/10_wlf/sysupgrade mirror=http://[fd66:666e:6566:640a::733]/firmware/stable/10_wlf/sysupgrade
+80afcacfc55d firmware branch=stable mirror=http://firmware.ffnef.de/firmware/stable/10_wlf/sysupgrade mirror=http://[fd66:666e:6566:640a::733]/firmware/stable/10_wlf/sysupgrade target=nef-10_wlf
 ---
 <signatur>
 <signatur>

@@ -13,8 +13,8 @@ DATE=2026-09-04 12:00:00+02:00
 EXPIRES=2026-10-04 12:00:00+02:00
 COMMENT=Umzug Wuelfrath-Nord nach Diaspora, Ticket 123
 80afcacfc55c domain target=ffnef21dias
-80afcacfc55d firmware branch=stable mirror=http://firmware.ffnef.de/firmware/stable/21_dias/sysupgrade mirror=http://[fd66:666e:6566:6415::733]/firmware/stable/21_dias/sysupgrade
-80afcacfc55e firmware mirror=http://firmware.ffnef.de/firmware/stable/21_dias/sysupgrade
+80afcacfc55d firmware branch=stable mirror=http://firmware.ffnef.de/firmware/stable/21_dias/sysupgrade mirror=http://[fd66:666e:6566:6415::733]/firmware/stable/21_dias/sysupgrade target=nef-21_dias
+80afcacfc55e firmware mirror=http://firmware.ffnef.de/firmware/stable/21_dias/sysupgrade target=nef-21_dias
 ---
 2f0c...signatur1...
 9a44...signatur2...
@@ -98,6 +98,11 @@ eigenen Schluesseln freigibt, waehrend der Knoten selbst drei fordert:
 ```
 bc241158f1c6 firmware mirror=http://fw.example.org/stable/sysupgrade good_signatures=2 pubkey=<hex1> pubkey=<hex2> pubkey=<hex3>
 ```
+
+`target=` fehlt hier bewusst: bei einer fremden Community ist der genaue
+`site_code` der Zieldomain oft nicht bekannt (D-020, D-035). Ist er
+bekannt, gehoert er auch hierher, aus demselben Grund wie im
+Normalfall unten.
 
 Was der Knoten damit macht:
 

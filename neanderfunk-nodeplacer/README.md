@@ -59,7 +59,7 @@ DATE=2026-09-04 12:00:00+02:00
 EXPIRES=2026-10-02 12:00:00+02:00
 # comments are allowed and signed
 80afcacfc55c domain target=ffnef21dias
-80afcacfc55d firmware branch=stable mirror=http://firmware.example.org/firmware/stable/21_dias/sysupgrade mirror=http://[2001:db8::1]/firmware/stable/21_dias/sysupgrade
+80afcacfc55d firmware branch=stable mirror=http://firmware.example.org/firmware/stable/21_dias/sysupgrade mirror=http://[2001:db8::1]/firmware/stable/21_dias/sysupgrade target=nef-21_dias
 80afcacfc55e firmware mirror=http://fw.other-community.example/stable/sysupgrade good_signatures=2 pubkey=<hex> pubkey=<hex> pubkey=<hex>
 ---
 <signature>
