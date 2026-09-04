@@ -206,21 +206,61 @@ elseif entry.method == 'firmware' then
 		os.exit(1)
 	end
 
-	if not uci:get('autoupdater', branch) then
-		if not entry.pubkeys then
-			log('branch ' .. branch .. ' not configured locally and no pubkeys given')
-			os.exit(1)
+	-- Keys and threshold of the target domain. Both are independent of each
+	-- other and of the branch name: the target may keep the branch but be
+	-- signed by other keys, or use the same keys with a different threshold.
+	-- Whatever the manifest does not mention keeps this node's own value.
+	local have_branch = uci:get('autoupdater', branch) ~= nil
+
+	if not have_branch and not entry.pubkeys then
+		log('branch ' .. branch .. ' not configured locally and no pubkeys given')
+		os.exit(1)
+	end
+
+	-- work out what the autoupdater would run with, and refuse before
+	-- touching anything: a half-applied override would also break the
+	-- node's regular autoupdater until the next reboot
+	local keys = entry.pubkeys or uci:get_list('autoupdater', branch, 'pubkey') or {}
+	local threshold = entry.good_signatures
+	if not threshold then
+		if have_branch then
+			threshold = tonumber(uci:get('autoupdater', branch, 'good_signatures'))
+		else
+			-- no local value to keep: demand all supplied keys
+			threshold = #keys
 		end
-		-- RAM only: the section lives in the UCI delta (/tmp/.uci) for this
-		-- single autoupdater run and is gone after the reboot (D-012)
+	end
+
+	if not threshold or threshold < 1 or threshold > #keys then
+		log(string.format('branch %s would run with %d pubkeys and a threshold of %s, refusing',
+			branch, #keys, tostring(threshold)))
+		os.exit(1)
+	end
+
+	-- Anything written here goes to the UCI delta only (/tmp/.uci); it
+	-- applies to this single autoupdater run and is gone after the reboot
+	-- (D-012).
+	if not have_branch then
 		uci:section('autoupdater', 'branch', branch, {
 			name = branch,
 			mirror = entry.mirrors,
-			pubkey = entry.pubkeys,
-			good_signatures = uci:get('nodeplacer', 'settings', 'good_signatures'),
+			pubkey = keys,
+			good_signatures = threshold,
 		})
 		uci:save('autoupdater')
+	elseif entry.pubkeys or entry.good_signatures then
+		if entry.pubkeys then
+			uci:set('autoupdater', branch, 'pubkey', entry.pubkeys)
+		end
+		if entry.good_signatures then
+			uci:set('autoupdater', branch, 'good_signatures', entry.good_signatures)
+		end
+		uci:save('autoupdater')
 	end
+
+	log(string.format('branch %s: %d pubkeys, %d signatures required%s',
+		branch, #keys, threshold,
+		(entry.pubkeys or entry.good_signatures) and ' (from manifest)' or ''))
 
 	if not no_action then
 		state.record_attempt(st, key, date, uptime)

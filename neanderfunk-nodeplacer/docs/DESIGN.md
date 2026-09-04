@@ -75,13 +75,30 @@ Autoupdate-Server der Zieldomain liegt.
 5. Nach dem Boot schreibt die neue Firmware ihre eigenen Mirrors und
    Pubkeys aus ihrer site.conf nach UCI. `settings.branch` bleibt erhalten.
 
+Abweichungen der Zieldomain (D-030): Branchname, Signaturschluessel und
+Mindestzahl Signaturen sind drei unabhaengige Eigenschaften. Das Manifest
+gibt nur an, was abweicht:
+
+| Zieldomain weicht ab in | Key im Manifest | Wirkung |
+|---|---|---|
+| nichts | keiner | Branch, Schluessel und Schwelle des Knotens gelten |
+| Branchname | `branch=` | anderer Sektionsname, Dateiname und `BRANCH=`-Wert |
+| Schluesseln | `pubkey=` | ueberschreibt `pubkey` der Branch-Section im Delta |
+| Schwelle | `good_signatures=` | ueberschreibt `good_signatures` im Delta |
+
+Alles davon landet **nur im UCI-Delta** (`uci set` ohne `commit`, also
+`/tmp/.uci`). libuci wendet das Delta beim Laden an, der Autoupdater sieht
+die Werte, nach dem Reboot sind sie weg. Das gilt jetzt auch, wenn die
+Branch-Section lokal bereits existiert; frueher wurden mitgelieferte
+Schluessel dann stillschweigend ignoriert.
+
 Sonderfaelle:
 
-* Branch existiert lokal nicht: Manifest kann Pubkeys mitliefern; dann wird
-  vor dem Aufruf eine Branch-Section **nur im UCI-Delta** (`uci set` ohne
-  `commit`) angelegt. libuci wendet das Delta beim Laden an, der Autoupdater
-  sieht die Section also. Nach Reboot ist sie weg. Das ist der Weg aus dem
-  Sketch; er ist nur fuer diesen Sonderfall noetig.
+* Branch existiert lokal nicht: `pubkey=` ist Pflicht, sonst Abbruch. Fehlt
+  `good_signatures=`, muessen alle uebergebenen Schluessel unterschrieben
+  haben.
+* Schwelle groesser als die Zahl der wirksamen Schluessel: Abbruch mit
+  Logmeldung, bevor der Autoupdater startet.
 * Wechsel auf eine Firmware mit anderem Major-Compat (sehr alte Knoten):
   `sysupgrade --test` scheitert, der Autoupdater bricht ab. Solche Knoten
   brauchen einen Zwischenschritt (erst Update in der alten Domain).
@@ -191,9 +208,13 @@ Lua bekommt nur Manifeste, die formal gueltig und nicht abgelaufen sind.
 * Rueckweg: Methode `firmware` kann nur auf Images zeigen, die vom
   Autoupdater mit den lokalen Pubkeys akzeptiert werden. Das Manifest
   allein kann keine fremde Firmware einschleusen.
-* Pubkeys im Manifest (Sonderfall 3.2) sind der einzige Punkt, an dem das
-  Manifest Vertrauen ausweitet. Deshalb nur im RAM und nur fuer diesen
-  einen Autoupdater-Lauf.
+* Schluessel und Schwelle im Manifest (3.2) sind der Punkt, an dem das
+  Manifest Vertrauen ausweitet. Wer es unterschreiben kann, kann einen
+  Knoten auf nahezu beliebige Firmware zeigen lassen. Damit ist die
+  Signatur unter `nodeplacer.manifest` der einzige Vertrauensanker dieses
+  Eingriffs (D-030). Begrenzt wird der Schaden nur dadurch, dass die Werte
+  im RAM stehen und fuer genau einen Autoupdater-Lauf gelten, und dadurch,
+  wie hoch `nodeplacer.good_signatures` in der Firmware steht.
 * `disable`-Schalter fuer den Besitzer (UCI, optional spaeter Config-Mode).
   Der Knoten liegt in der Verantwortung seines Besitzers; die Community
   darf ihn verschieben, aber der Besitzer soll es unterbinden koennen.

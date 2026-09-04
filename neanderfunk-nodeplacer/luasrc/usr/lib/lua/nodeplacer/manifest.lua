@@ -17,7 +17,7 @@ M.FORMAT = '1'
 -- allowed keys per method; 1 = exactly once, true = repeatable
 local KEYS = {
 	domain = { target = 1 },
-	firmware = { mirror = true, branch = 1, pubkey = true },
+	firmware = { mirror = true, branch = 1, pubkey = true, good_signatures = 1 },
 }
 
 local function only_keys(kv, allowed)
@@ -82,11 +82,29 @@ local function parse_entry(tokens)
 			end
 		end
 	end
+
+	-- signature threshold for the target firmware; a foreign community may
+	-- require a different number than this node's own firmware does
+	local good_signatures
+	if kv.good_signatures then
+		if not kv.good_signatures[1]:match('^%d+$') then
+			return nil
+		end
+		good_signatures = tonumber(kv.good_signatures[1])
+		if good_signatures < 1 then
+			return nil
+		end
+		if kv.pubkey and good_signatures > #kv.pubkey then
+			return nil
+		end
+	end
+
 	return node_id:lower(), {
 		method = 'firmware',
 		mirrors = kv.mirror,
 		branch = kv.branch and kv.branch[1] or nil,
 		pubkeys = kv.pubkey,
+		good_signatures = good_signatures,
 	}
 end
 
@@ -95,14 +113,14 @@ function M.parse(text)
 	local header, entries, errors = {}, {}, {}
 
 	for line in text:gmatch('[^\n]+') do
-		if line:match('^#') or line:match('^%s*$') then
-			-- comment or blank
-		elseif line:match('^[A-Z_]+=') then
+		-- comment and blank lines are skipped; they are hashed and signed
+		-- like everything else, they just carry no instruction
+		if line:match('^[A-Z_]+=') then
 			local k, v = line:match('^([A-Z_]+)=(.*)$')
 			if header[k] == nil then
 				header[k] = v
 			end
-		else
+		elseif not (line:match('^#') or line:match('^%s*$')) then
 			local tokens = {}
 			for t in line:gmatch('%S+') do
 				tokens[#tokens + 1] = t

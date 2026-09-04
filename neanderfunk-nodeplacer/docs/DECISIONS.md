@@ -396,3 +396,32 @@ Status: **offen** / **entschieden** / **verworfen**.
   `PKG_NAME` benennt; das Feld in nodeinfo bleibt
   `software.nodeplacer`. Dasselbe Muster benutzen andere
   Community-Pakete (z. B. `ffac-ssid-changer` mit kurzen Laufzeitpfaden).
+
+## D-030 Zielschluessel und Zielschwelle im Manifest, Vertrauensanker
+
+* Status: **entschieden** (adorfer, 2026-09-04)
+* Drei Eigenschaften der Zieldomain sind **unabhaengig** voneinander und
+  werden im Manifest einzeln angegeben, wenn sie abweichen:
+  Branchname (`branch=`), Signaturschluessel (`pubkey=`) und Mindestzahl
+  gueltiger Signaturen (`good_signatures=`). Default ist jeweils der Wert
+  des Knotens; innerhalb der eigenen Community steht deshalb nur `mirror=`
+  in der Zeile.
+* Anlass: eine fremde Community kann ihre Firmware mit anderen Schluesseln
+  und einer anderen Schwelle freigeben. Neanderfunk verlangt drei
+  Signaturen, andere verlangen zwei; mit der lokalen Schwelle wuerde das
+  fremde `stable.manifest` grundlos abgelehnt.
+* Behobener Fehler: bisher wurden mitgelieferte Schluessel nur benutzt,
+  wenn die Branch-Section lokal fehlte. Bei gleichem Branchnamen, dem
+  Normalfall, wurden sie stillschweigend ignoriert.
+* Alles bleibt RAM-only (D-012): `uci set` ohne `commit`, Wirkung fuer
+  genau einen Autoupdater-Lauf, nach dem Reboot weg.
+* Schutz vor Unsinn: Schwelle muss eine positive Zahl sein und darf die
+  Zahl der wirksamen Schluessel nicht ueberschreiten. Fehlt die Schwelle
+  bei einer neu angelegten Branch-Section, gilt die Zahl der uebergebenen
+  Schluessel.
+* **Vertrauensanker:** Bei diesem Eingriff sind es zu 100 Prozent die
+  Signaturen unter `nodeplacer.manifest` (adorfer), weil damit fast
+  beliebige Dinge gemacht werden koennen. Die eingebackenen
+  Firmware-Schluessel wirken hier nicht mehr als zweiter Anker. Wer
+  `nodeplacer.good_signatures` in der site.conf setzt, bestimmt damit das
+  gesamte Sicherheitsniveau des Verfahrens.

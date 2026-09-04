@@ -16,7 +16,15 @@ A node that finds its own node id in the verified body switches:
   support is deferred until after the first release; only `firmware` is
   used in practice for now.
 * `firmware`: installs the target domain's image via the regular autoupdater
-  (`autoupdater -f --force-version -b <branch> <mirror...>`).
+  (`autoupdater -f --force-version -b <branch> <mirror...>`). Branch name,
+  signing keys (`pubkey=`) and signature threshold (`good_signatures=`) of
+  the target domain are independent of each other; each one that is left
+  out keeps this node's own value. Overrides live in the UCI delta and are
+  gone after the reboot.
+
+Whoever can sign the manifest can point a node at almost any firmware, so
+the signature under `nodeplacer.manifest` is the only trust anchor of this
+mechanism.
 
 Nothing is written to flash for an attempt; state lives in `/tmp`. Attempts
 are limited to 3 per 7 days per target (rolling window).
@@ -46,6 +54,7 @@ EXPIRES=2026-10-02 12:00:00+02:00
 # comments are allowed and signed
 80afcacfc55c domain target=ffnef21dias
 80afcacfc55d firmware branch=stable mirror=http://firmware.example.org/firmware/stable/21_dias/sysupgrade mirror=http://[2001:db8::1]/firmware/stable/21_dias/sysupgrade
+80afcacfc55e firmware mirror=http://fw.other-community.example/stable/sysupgrade good_signatures=2 pubkey=<hex> pubkey=<hex> pubkey=<hex>
 ---
 <signature>
 <signature>

@@ -230,3 +230,33 @@ Betriebshinweise vom Knoten: busybox dort kennt weder `setsid` noch
 lassen, genuegt `(nodeplacer > /tmp/np-run.log 2>&1 &)`. Der Reboot nach
 dem Flash dauert rund zehn Sekunden (adorfer), die VM ist also sehr schnell
 wieder da.
+
+### Protokoll 2026-09-04: Zielschluessel und Zielschwelle (D-030)
+
+Auf dem Testknoten in `nef-21_dias` (lokal: Branch `stable`, fuenf
+Community-Schluessel, Schwelle 3), alle Laeufe mit `-n`, also ohne Flash.
+Manifest lokal per uhttpd, mit den drei Testschluesseln signiert.
+
+| Fall | Manifest-Eintrag | Ergebnis |
+|---|---|---|
+| T1 | nur `mirror=` | kein Delta, 5 Schluessel / 3 Signaturen, Autoupdater prueft und laedt das echte 21_dias-Image |
+| T2 | `good_signatures=2` | Delta nur `good_signatures='2'`, Schluessel bleiben lokal, Lauf erfolgreich |
+| T3 | `good_signatures=99` | Abbruch vor dem Autoupdater, **kein Delta** |
+| T4 | ein fremder `pubkey=` | Abbruch (1 Schluessel, Schwelle 3), **kein Delta** |
+| T5 | drei Testschluessel, `good_signatures=3` | Delta ersetzt die Schluesselliste, Autoupdater lehnt das echte Manifest mit "0 valid signatures, 3 are required" ab |
+| T6 | drei Testschluessel, `good_signatures=1` | Delta setzt Schluessel und Schwelle, Autoupdater lehnt ab ("0 valid signatures, 1 are required") |
+
+T5 und T6 sind der eigentliche Nachweis: der Autoupdater prueft mit den
+Schluesseln aus dem Manifest, nicht mehr mit denen des Knotens. Frueher
+wurden mitgelieferte Schluessel bei bekanntem Branch ignoriert, das echte
+Manifest waere durchgegangen.
+
+`/etc/config/autoupdater` blieb in allen Laeufen unveraendert (Schwelle
+dort weiterhin 3). Wichtig war die Reihenfolge im Code: erst pruefen, dann
+ins Delta schreiben. In einer Zwischenfassung wurde zuerst geschrieben,
+dadurch blieb nach T3 und T4 ein halb angewendetes Delta liegen, das bis
+zum naechsten Reboot auch den regulaeren Autoupdater des Knotens haette
+scheitern lassen.
+
+Nach dem Test: Paket deinstalliert, UCI zurueckgesetzt, Manifeste und
+Firmware-Datei entfernt, Knoten unveraendert in `nef-21_dias`.

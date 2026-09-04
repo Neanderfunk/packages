@@ -66,14 +66,54 @@ Nur bei Multidomain-Firmware ausfuehrbar.
 ### Methode `firmware`
 
 ```
-<node_id> firmware mirror=<url> [mirror=<url> ...] [branch=<name>] [pubkey=<hex> ...]
+<node_id> firmware mirror=<url> [mirror=<url> ...] [branch=<name>]
+                   [pubkey=<hex> ...] [good_signatures=<n>]
 ```
 
 | Key | Pflicht | Wiederholbar | Bedeutung |
 |---|---|---|---|
 | `mirror` | ja | ja | Autoupdater-Mirror der Zieldomain (Basis-URL, unter der `<branch>.manifest` und die Images liegen). Reihenfolge = Reihenfolge, in der der Autoupdater sie probiert (er mischt Kommandozeilen-Mirrors nicht). |
 | `branch` | nein | nein | Autoupdater-Branch auf dem Zielserver. Fehlt er, gilt der aktuelle `autoupdater.settings.branch` des Knotens. |
-| `pubkey` | nein | ja | Nur noetig, wenn `branch` lokal nicht konfiguriert ist. Wird nur im UCI-Delta fuer diesen einen Autoupdater-Lauf gesetzt. |
+| `pubkey` | nein | ja | Signaturschluessel, mit denen das Firmware-Manifest der Zieldomain geprueft wird. Fehlt der Key, gelten die Schluessel des Knotens. |
+| `good_signatures` | nein | nein | Wie viele gueltige Signaturen das Firmware-Manifest der Zieldomain tragen muss. Fehlt der Key, gilt der Wert des Knotens. |
+
+### Branch, Schluessel und Schwelle sind unabhaengig
+
+Die drei Angaben beschreiben drei Eigenschaften der Zieldomain, die
+einzeln gleich oder anders sein koennen. Der Normalfall innerhalb einer
+Community ist, dass alle drei gleich bleiben; dann steht nur `mirror` in
+der Zeile.
+
+| Zieldomain weicht ab in | noetiger Key |
+|---|---|
+| nichts (gleiche Community) | keiner, nur `mirror` |
+| Branchname | `branch=` |
+| Signaturschluesseln | `pubkey=` (so oft wie noetig) |
+| Mindestzahl Signaturen | `good_signatures=` |
+
+Beispiel fuer eine fremde Community, die ihre Firmware mit zwei von drei
+eigenen Schluesseln freigibt, waehrend der Knoten selbst drei fordert:
+
+```
+bc241158f1c6 firmware mirror=http://fw.example.org/stable/sysupgrade good_signatures=2 pubkey=<hex1> pubkey=<hex2> pubkey=<hex3>
+```
+
+Was der Knoten damit macht:
+
+* Er schreibt die Werte **nur ins UCI-Delta** (`/tmp/.uci`) der
+  Autoupdater-Branch-Section, ruft den Autoupdater auf und vergisst alles
+  beim Reboot. Die Konfiguration im Flash bleibt unangetastet.
+* Angegeben wird nur, was abweicht. Was fehlt, bleibt auf dem Wert des
+  Knotens; das gilt auch, wenn der Branch lokal schon existiert.
+* Existiert der Branch lokal nicht, sind `pubkey`-Angaben Pflicht. Fehlt
+  dann `good_signatures`, gilt die strengste Auslegung: alle uebergebenen
+  Schluessel muessen unterschrieben haben.
+* Eine Schwelle groesser als die Zahl der wirksamen Schluessel ist ein
+  Fehler. Die Zeile wird verworfen, sonst bricht der Lauf ab.
+
+**Vertrauensanker:** Wer Schluessel und Schwelle setzen darf, kann einen
+Knoten auf nahezu beliebige Firmware zeigen lassen. Der einzige Anker ist
+damit die Signatur unter `nodeplacer.manifest` selbst (D-030).
 
 ### Warum `key=wert` statt Positionsfeldern oder Kommalisten (D-018)
 
