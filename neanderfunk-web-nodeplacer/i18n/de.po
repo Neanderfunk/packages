@@ -1,0 +1,20 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"PO-Revision-Date: 2026-09-04 00:00+0200\n"
+"Last-Translator: Neanderfunk <technik@neanderfunk.de>\n"
+"Language-Team: German\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Nodeplacer"
+msgstr "Nodeplacer"
+
+msgid "Enabled"
+msgstr "Aktiviert"
+
+msgid "Nodeplacer can move this node to another domain of the community when a signed instruction for it is published. You can forbid that here."
+msgstr "Nodeplacer kann diesen Knoten in eine andere Domain der Community verschieben, wenn eine signierte Anweisung dafür veröffentlicht wird. Das kannst du hier unterbinden."

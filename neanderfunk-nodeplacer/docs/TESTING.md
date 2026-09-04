@@ -317,3 +317,35 @@ gewechselt (Bestaetigung adorfer). Das ist der erste Nachweis ausserhalb meiner
 eigenen Container-Testbuilds und Testknoten: das ganze Zusammenspiel aus
 Site-Templates, Feed-Pin, gebautem Image und `nodeplacer` funktioniert im
 regulaeren Build-Prozess.
+
+### Protokoll 2026-09-04: neanderfunk-web-nodeplacer (Config-Mode-Tab)
+
+* Build im Container: beide Pakete (`neanderfunk-nodeplacer`,
+  `neanderfunk-web-nodeplacer`) kompilieren, inkl. i18n (`en`, `de` als
+  `.lmo`). `build-x86-container.sh package` musste dafuer angepasst
+  werden: `{clean,compile}`-Klammer-Erweiterung funktioniert nicht unter
+  dash/busybox ash (`/bin/sh` im Container), beide Ziele jetzt einzeln
+  ausgeschrieben.
+* Host-Test `tests/test_web_nodeplacer.lua` (Form/Section/Flag/uci-Stub):
+  Default invertiert korrekt (`disable` unset/`0` -> Checkbox an,
+  `disable=1` -> Checkbox aus), Schreiben in beide Richtungen korrekt,
+  `Form:write()` committet `nodeplacer`. luacheck: 0 Warnungen in allen
+  9 Dateien (inkl. neuer `config-mode*`- und `controller`-Globals in
+  `.luacheckrc`).
+* `opkg install` beider ipks auf dem Testknoten: alle Dateien des
+  Web-Pakets am richtigen Platz (`config-mode/controller`,
+  `config-mode/model`, `web/i18n/*.de.lmo`), `loadfile()` auf dem
+  Ziel-Lua-Interpreter (derselbe, der es im Betrieb ausfuehrt) parst das
+  Modell fehlerfrei. Das Kernpaket meldete den bereits dokumentierten,
+  harmlosen Postinst-Fehler (aktuelle site.json des Knotens hat gerade
+  keinen `nodeplacer`-Block, weil der Knoten inzwischen selbststaendig
+  nach `02_met` verschoben wurde) - Dateien werden trotzdem installiert.
+* **Nicht getestet:** das tatsaechliche Rendern/Absenden des Formulars.
+  Config-Mode laeuft in einem eigenen Boot-Modus mit eigenem uhttpd, nur
+  erreichbar nach explizitem (Re-)Start in diesen Modus - das haette einen
+  zusaetzlichen Reboot des Testknotens verlangt und wurde nicht ungefragt
+  gemacht (D-034).
+* Danach beide Pakete deinstalliert, Whiteouts und Testdateien entfernt,
+  Knoten ohne offene UCI-Aenderungen (aktueller Site-Code: `nef-02_met`,
+  Ergebnis des in der Zwischenzeit real erfolgten Domainwechsels ueber
+  den Produktionsbuild, nicht durch diesen Test veraendert).

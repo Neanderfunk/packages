@@ -518,3 +518,40 @@ Status: **offen** / **entschieden** / **verworfen**.
   (unerreichbarer Zielmirror) stand `autoupdater.stable.good_signatures`
   wieder auf dem Flash-Wert, `uci changes autoupdater` zeigte keine
   `stable.*`-Eintraege mehr.
+
+## D-034 Config-Mode-Web-UI als eigenes, optionales Paket
+
+* Status: **entschieden** (adorfer, 2026-09-04: "Kannst Du fuer den
+  Configmode ein luci-modul dazufuegen ... damit im Web-UI des
+  Configmodes das disable gesetzt werden kann")
+* Neues Paket `neanderfunk-web-nodeplacer`, analog zu
+  `ff-ap-timer`/`ff-web-ap-timer`: der Kern (`neanderfunk-nodeplacer`)
+  bleibt ohne `gluon-web-admin`-Abhaengigkeit installierbar, das Web-Modul
+  ist optional und haengt zusaetzlich von `+gluon-web-admin
+  +neanderfunk-nodeplacer` ab.
+* Platzierung (adorfer: "Keine Ahnung, mach wie es einfacher ist"): ein
+  eigener Tab "Nodeplacer" auf der bestehenden "Advanced settings"-Seite
+  (`admin`-Menu von `gluon-web-admin`), Gewicht 85, direkt nach
+  "Automatic updates" (80). Kein neues Untermenue, keine Aenderung an
+  einem fremden Paket noetig - jedes Feature dort registriert nur seinen
+  eigenen `entry({"admin", "<name>"}, ...)`.
+* UI zeigt eine positive Checkbox "Enabled" (nicht "Disable"), invertiert
+  beim Schreiben auf `nodeplacer.settings.disable` - konsistent mit jedem
+  anderen Tab auf dieser Seite (`gluon-web-autoupdater` macht es fuer
+  `enabled` identisch, nur ohne Inversion noetig, weil deren UCI-Key
+  schon positiv heisst).
+* Vorbild fuer die Form/Section/Flag-API: `gluon-web-autoupdater`s Modell
+  (Apache-2.0), strukturell nachgebaut, kein Text uebernommen.
+* **Nicht getestet:** die eigentliche Rendering-/Interaktions-Pipeline.
+  Gluons Config-Mode laeuft in einem eigenen Boot-Modus mit eigenem
+  uhttpd (`/lib/gluon/setup-mode/rc.d/S50uhttpd`), der nur erreichbar
+  ist, wenn der Knoten explizit in diesen Modus (neu-)startet
+  (Taster/`gluon-enter-setup-mode`). Das haette einen zusaetzlichen,
+  eigenstaendigen Reboot des Testknotens in einen Sondermodus verlangt -
+  ungefragt nicht gemacht. Stattdessen: Host-Test mit einem
+  Form/Section/Flag/uci-Stub (`tests/test_web_nodeplacer.lua`) fuer die
+  Default-/Schreiblogik, echter `opkg install` auf dem Testknoten fuer
+  Dateiablage und Abhaengigkeitsaufloesung, `loadfile()` auf dem
+  Ziel-Lua-Interpreter fuer die Syntax, luacheck fehlerfrei.
+* `scripts/sync-to-feed.sh` synct jetzt beide Paketverzeichnisse
+  (`neanderfunk-nodeplacer`, `neanderfunk-web-nodeplacer`).

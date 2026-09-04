@@ -37,6 +37,7 @@ zurueckgestellt (D-026).
 
 | Dokument | Inhalt |
 |---|---|
+| [neanderfunk-web-nodeplacer/](neanderfunk-web-nodeplacer/) | optionales Config-Mode-Modul, Tab "Nodeplacer" unter "Advanced settings" mit dem disable-Schalter |
 | [docs/DESIGN.md](docs/DESIGN.md) | Ziel, Mechanismus, Betriebsmodi, Sicherheits- und Robustheitsueberlegungen, offene Fragen |
 | [docs/MANIFEST-FORMAT.md](docs/MANIFEST-FORMAT.md) | Entwurf des Steuerdatei-Formats |
 | [docs/RESEARCH.md](docs/RESEARCH.md) | Was Gluon 2023.2.x bereits mitbringt, mit Fundstellen im Quellcode |
