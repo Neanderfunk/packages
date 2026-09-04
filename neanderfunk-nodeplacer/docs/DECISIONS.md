@@ -447,6 +447,17 @@ Status: **offen** / **entschieden** / **verworfen**.
 * Fail closed: fehlt der aktive Branch in der Autoupdater-Konfiguration
   und steht auch nichts in site.conf, bricht `nodeplacer-fetch` mit
   Konfigurationsfehler ab, statt eine Schwelle zu raten.
+* Klarstellung (adorfer, 2026-09-04): das `branch=` in einer
+  Firmware-Zeile der Steuerdatei hat **keinen** Einfluss auf diese
+  Schwelle. `nodeplacer-fetch` verifiziert die Steuerdatei komplett,
+  bevor er auch nur eine Zeile daraus parst; er kennt zu diesem Zeitpunkt
+  keine Eintraege, nur den Kopf. Massgeblich ist ausschliesslich der
+  Branch, auf dem der Knoten laut Flash gerade laeuft
+  (`autoupdater.settings.branch`). `branch=` im Eintrag sagt dem
+  spaeter aufgerufenen Autoupdater nur, unter welchem Namen er die
+  Firmware am **neuen** Mirror sucht (`<mirror>/<branch>.manifest`);
+  das ist ein voellig getrennter Vorgang mit eigener Signaturpruefung
+  durch den Autoupdater selbst (siehe Abschnitt 3.2 in DESIGN.md).
 * Geprueft und bestaetigt (adorfer): im Auftrag stand als Beispiel, ein
   Knoten im `broken`-Branch solle "dann 3" verlangen; das war ein
   Tippfehler. Es gilt der Wert des **aktiven** Branches, im Beispiel also
