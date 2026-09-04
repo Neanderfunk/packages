@@ -555,3 +555,34 @@ Status: **offen** / **entschieden** / **verworfen**.
   Ziel-Lua-Interpreter fuer die Syntax, luacheck fehlerfrei.
 * `scripts/sync-to-feed.sh` synct jetzt beide Paketverzeichnisse
   (`neanderfunk-nodeplacer`, `neanderfunk-web-nodeplacer`).
+
+## D-035 Optionales target=<site_code> als "schon da"-Kurzschluss
+
+* Status: **entschieden** (adorfer, 2026-09-04: "mach den fix, dass das
+  Target mit angegeben werden muss. Wenn es nicht gesetzt ist, dann halt
+  die Gefahr einer Dauerschleife, muss aber moeglich sein ... target-domain
+  ist optional aber sehr stark empfohlen zur Verhinderung von Loops")
+* Anlass: die Methode `domain` hat einen Kurzschluss ("Zieldomain =
+  aktuelle Domain -> nichts tun"), die Methode `firmware` hatte keinen.
+  Da `--force-version` den Versionsvergleich bewusst uebergeht (Zielfirmware
+  traegt nach einem Umzug meist dieselbe Releasenummer), kann der Knoten
+  ohne weitere Angabe "muss noch wechseln" nicht von "hat schon
+  gewechselt, die Zeile ist nur noch nicht entfernt" unterscheiden.
+* Neuer, optionaler Schluessel `target=<site_code>` im Firmware-Eintrag.
+  Vor jeder Aktion (vor dem UCI-Delta, vor dem Aufruf des Autoupdaters)
+  vergleicht `nodeplacer` ihn gegen `gluon.site.site_code()` des Knotens;
+  bei Uebereinstimmung endet der Lauf sofort (mit Logzeile), sonst geht es
+  normal weiter.
+* Nicht Pflicht: bei einem Umzug in eine fremde Community (D-020) ist der
+  exakte `site_code` der Zieldomain nicht immer bekannt oder es gibt keinen
+  in diesem Sinne. Ohne `target` bleibt der bestehende Versuchszaehler
+  (D-012: 3 Versuche in 7 Tagen, rollend) die einzige Bremse gegen
+  wiederholtes, unnoetiges Flashen - kein unendlicher Loop, aber auch kein
+  sauberes "nichts zu tun".
+* `target` fuer `firmware` und `target` fuer `domain` heissen bewusst
+  gleich (beide meinen "wo soll der Knoten danach stehen"), sind aber
+  unterschiedliche Wertebereiche: bei `domain` ein Domain-Code (Multidomain,
+  operativ genutzt fuer `gluon-switch-domain`), bei `firmware` ein
+  Site-Code (Single-Domain, rein zur Selbstpruefung). Kollision in der
+  Parser-Implementierung ausgeschlossen, da beide Methoden getrennte
+  Schluessel-Tabellen haben.

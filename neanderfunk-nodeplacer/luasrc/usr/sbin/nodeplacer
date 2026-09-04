@@ -13,6 +13,7 @@ local fcntl = require 'posix.fcntl'
 local unistd = require 'posix.unistd'
 local uci = require('simple-uci').cursor()
 local util = require 'gluon.util'
+local site = require 'gluon.site'
 local manifest = require 'nodeplacer.manifest'
 local state = require 'nodeplacer.state'
 
@@ -200,6 +201,14 @@ if entry.method == 'domain' then
 	os.exit(1)
 
 elseif entry.method == 'firmware' then
+	-- D-035: without a target site_code we cannot tell "still needs to
+	-- move" from "already moved, the line just wasn't removed yet" - with
+	-- one, this is the exact same short-circuit the 'domain' method has.
+	if entry.target and site.site_code() == entry.target then
+		log('already at the target site (' .. entry.target .. '), nothing to do')
+		os.exit(0)
+	end
+
 	local branch = entry.branch or uci:get('autoupdater', 'settings', 'branch')
 	if not branch then
 		log('no autoupdater branch known')

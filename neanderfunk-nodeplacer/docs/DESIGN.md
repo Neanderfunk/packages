@@ -55,6 +55,17 @@ lehnt eine unpassende Anweisung mit Logmeldung ab.
 Ziel ist eine andere Firmware derselben Community, deren Image auf dem
 Autoupdate-Server der Zieldomain liegt.
 
+**"Schon da"-Kurzschluss (D-035):** optionales `target=<site_code>` im
+Eintrag. Stimmt es mit `gluon.site.site_code()` des Knotens ueberein,
+endet der Lauf sofort, still bis auf eine Logzeile - noch vor dem
+UCI-Delta und dem Aufruf des Autoupdaters. Ohne `target` kann der Knoten
+"muss noch wechseln" nicht von "hat schon gewechselt" unterscheiden, weil
+`--force-version` (Punkt 3 unten) den Versionsvergleich bewusst umgeht;
+der Versuchszaehler (D-012) begrenzt dann die Wiederholungen, ersetzt aber
+kein sauberes "nichts zu tun". `target` ist deshalb dringend empfohlen,
+bleibt aber optional fuer Umzuege in eine fremde Community, deren
+site_code nicht bekannt ist (D-020).
+
 1. Mirrors der Zieldomain kommen aus dem Manifest.
 2. Branch: aus dem Manifest, sonst der aktuelle `autoupdater.settings.branch`.
 3. Aufruf des regulaeren Autoupdaters mit Kommandozeilen-Overrides, ohne

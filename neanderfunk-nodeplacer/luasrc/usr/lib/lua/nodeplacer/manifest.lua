@@ -17,7 +17,7 @@ M.FORMAT = '1'
 -- allowed keys per method; 1 = exactly once, true = repeatable
 local KEYS = {
 	domain = { target = 1 },
-	firmware = { mirror = true, branch = 1, pubkey = true, good_signatures = 1 },
+	firmware = { mirror = true, branch = 1, pubkey = true, good_signatures = 1, target = 1 },
 }
 
 local function only_keys(kv, allowed)
@@ -105,6 +105,13 @@ local function parse_entry(tokens)
 		branch = kv.branch and kv.branch[1] or nil,
 		pubkeys = kv.pubkey,
 		good_signatures = good_signatures,
+		-- optional, but strongly recommended (D-035): the site_code this
+		-- node is expected to end up with. Without it, nodeplacer cannot
+		-- tell "still needs to move" from "already moved, manifest entry
+		-- just wasn't removed yet" and will keep trying (bounded by the
+		-- attempt limiter, D-012). Left out on purpose when the exact
+		-- site_code of a foreign community's target domain isn't known.
+		target = kv.target and kv.target[1] or nil,
 	}
 end
 

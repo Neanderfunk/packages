@@ -67,7 +67,7 @@ Nur bei Multidomain-Firmware ausfuehrbar.
 
 ```
 <node_id> firmware mirror=<url> [mirror=<url> ...] [branch=<name>]
-                   [pubkey=<hex> ...] [good_signatures=<n>]
+                   [pubkey=<hex> ...] [good_signatures=<n>] [target=<site_code>]
 ```
 
 | Key | Pflicht | Wiederholbar | Bedeutung |
@@ -76,6 +76,7 @@ Nur bei Multidomain-Firmware ausfuehrbar.
 | `branch` | nein | nein | Autoupdater-Branch auf dem Zielserver. Fehlt er, gilt der aktuelle `autoupdater.settings.branch` des Knotens. |
 | `pubkey` | nein | ja | Signaturschluessel, mit denen das Firmware-Manifest der Zieldomain geprueft wird. Fehlt der Key, gelten die Schluessel des Knotens. |
 | `good_signatures` | nein | nein | Wie viele gueltige Signaturen das Firmware-Manifest der Zieldomain tragen muss. Fehlt der Key, gilt das eigene aktuelle Vertrauensniveau des Knotens (D-032) - derselbe Wert, mit dem `nodeplacer.manifest` selbst schon geprueft wurde -, **nicht** ein zufaellig lokal unter dem Zielbranch-Namen konfigurierter Wert. |
+| `target` | **nein, aber dringend empfohlen** | nein | Der `site_code`, den der Knoten nach dem Umzug tragen sollte (z. B. `nef-02_met`). Ist er angegeben, prueft der Knoten ihn **vor** jeder Aktion gegen seinen eigenen aktuellen `site_code`; stimmen sie ueberein, ist nichts zu tun - derselbe Kurzschluss wie bei der Methode `domain` (siehe D-035). |
 
 ### Branch, Schluessel und Schwelle sind unabhaengig
 
@@ -114,6 +115,23 @@ Was der Knoten damit macht:
 **Vertrauensanker:** Wer Schluessel und Schwelle setzen darf, kann einen
 Knoten auf nahezu beliebige Firmware zeigen lassen. Der einzige Anker ist
 damit die Signatur unter `nodeplacer.manifest` selbst (D-030).
+
+### Warum `target` bei `firmware` dringend empfohlen ist (D-035)
+
+`--force-version` (siehe DESIGN.md 3.2) uebergeht den Versionsvergleich
+absichtlich, weil Ziel- und Ausgangsfirmware bei einem Umzug meist die
+gleiche Releasenummer tragen. Dadurch kann der Knoten allein aus Branch
+und Mirror-URL **nicht** unterscheiden, ob er noch wechseln muss oder den
+Wechsel schon vollzogen hat und die Zeile in der Steuerdatei nur noch nicht
+entfernt wurde. Ohne `target` wiederholt er den Vorgang deshalb, begrenzt
+nur durch den Versuchszaehler (D-012, drei Versuche pro sieben Tage,
+rollend) - kein unendlicher Loop, aber auch kein sauberes "nichts zu tun".
+
+`target` macht dieses "schon da" explizit und beendet den Lauf, bevor
+irgendetwas an UCI oder dem Autoupdater angefasst wird. Es bleibt
+**optional**, weil bei einem Umzug in eine fremde Community (D-020) der
+genaue `site_code` der Zieldomain nicht immer bekannt ist; in dem Fall
+greift weiterhin nur der Versuchszaehler als Bremse.
 
 ### Warum `key=wert` statt Positionsfeldern oder Kommalisten (D-018)
 
