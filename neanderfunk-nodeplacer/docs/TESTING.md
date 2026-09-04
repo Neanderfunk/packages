@@ -215,3 +215,18 @@ Paketname mit Community-Praefix (D-029). Geprueft nach der Umbenennung:
   `PKG_NAME` benennt. Inhalt und Feldname (`nodeinfo.software.nodeplacer`)
   bleiben gleich; respondd laedt alle Module des Verzeichnisses.
   Danach wieder deinstalliert, der Knoten ist unveraendert.
+
+### Rueckweg 2026-09-04: 10_wlf zurueck nach 21_dias mit dem umbenannten Paket
+
+Gleicher Ablauf wie der Hinweg, diesmal mit
+`neanderfunk-nodeplacer_0.1-1_x86_64.ipk` und einem Manifest, das auf die
+21_dias-Mirrors zeigt. Ergebnis: Site-Code wieder `nef-21_dias`, Hostname
+und SSH-Schluessel erhalten, Autoupdater-Mirrors wieder die von 21_dias,
+Gateway der Domain 21 im Mesh, keine UCI-Reste, kein Zustand in `/tmp`.
+Der Knoten laesst sich also in beide Richtungen verschieben.
+
+Betriebshinweise vom Knoten: busybox dort kennt weder `setsid` noch
+`nohup`; um `nodeplacer` ueber das Ende der SSH-Sitzung hinaus laufen zu
+lassen, genuegt `(nodeplacer > /tmp/np-run.log 2>&1 &)`. Der Reboot nach
+dem Flash dauert rund zehn Sekunden (adorfer), die VM ist also sehr schnell
+wieder da.
