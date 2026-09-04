@@ -308,3 +308,12 @@ Whiteouts (D-Fund vom selben Tag, andere Ursache: hier bewusst zum
 Deinstallieren am Testende, nicht durch ein Buildscript). Manuell entfernt,
 Knoten am Ende wieder ohne jede nodeplacer-Spur, `nef-21_dias`, 0 offene
 UCI-Aenderungen.
+
+### Meilenstein 2026-09-04: erster Domainwechsel ueber den echten Produktions-Build
+
+Nach dem Pin-Bump auf der separaten Build-VM (Feed-Commit `104991a`, D-032/D-033
+enthalten) hat ein Knoten ueber diesen Produktionsbuild erfolgreich die Domain
+gewechselt (Bestaetigung adorfer). Das ist der erste Nachweis ausserhalb meiner
+eigenen Container-Testbuilds und Testknoten: das ganze Zusammenspiel aus
+Site-Templates, Feed-Pin, gebautem Image und `nodeplacer` funktioniert im
+regulaeren Build-Prozess.
