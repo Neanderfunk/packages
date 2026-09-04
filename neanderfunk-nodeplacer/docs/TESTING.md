@@ -198,3 +198,20 @@ Vorhanden in v2021.1.2: `gluon.util` `glob`, `get_uptime`, `node_id`,
 Zu pruefen beim Backport: `alternatives()` in check_site (in 2021.1 evtl.
 nicht vorhanden, dann `disable` nur als Zahl pruefen), OpenWrt 19.07
 libuclient/CMake-Version fuer den C-Helfer.
+
+### Nachtrag 2026-09-04: Umbenennung auf neanderfunk-nodeplacer
+
+Paketname mit Community-Praefix (D-029). Geprueft nach der Umbenennung:
+
+* `make update` und Paketbau im Container erfolgreich,
+  `neanderfunk-nodeplacer_0.1-1_x86_64.ipk`. Wichtig: der Paket-Modus
+  braucht vorher Gluons `config`-Target, sonst wird zwar kompiliert und
+  nach staging installiert, aber kein ipk erzeugt (die alte
+  `openwrt/.config` kannte den neuen Paketnamen noch nicht).
+* Installation des umbenannten ipk auf dem Testknoten: alle Dateien am
+  richtigen Platz. Einzige Aenderung an den Laufzeitpfaden: der
+  respondd-Provider heisst jetzt
+  `/usr/lib/respondd/neanderfunk-nodeplacer.so`, weil `gluon.mk` ihn nach
+  `PKG_NAME` benennt. Inhalt und Feldname (`nodeinfo.software.nodeplacer`)
+  bleiben gleich; respondd laedt alle Module des Verzeichnisses.
+  Danach wieder deinstalliert, der Knoten ist unveraendert.

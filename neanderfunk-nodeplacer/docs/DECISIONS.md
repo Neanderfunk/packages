@@ -390,6 +390,9 @@ Status: **offen** / **entschieden** / **verworfen**.
   getestet sind: `/usr/sbin/nodeplacer`, `/usr/sbin/nodeplacer-fetch`,
   `/etc/config/nodeplacer`, der site.conf-Block `nodeplacer`,
   `/usr/lib/lua/nodeplacer/`, `/usr/lib/micron.d/nodeplacer`,
-  `/usr/lib/respondd/nodeplacer.so`, `/tmp/nodeplacer.state` und der
-  Dateiname `nodeplacer.manifest`. Dasselbe Muster benutzen andere
+  `/tmp/nodeplacer.state` und der Dateiname `nodeplacer.manifest`.
+  Einzige Ausnahme: der respondd-Provider heisst
+  `/usr/lib/respondd/neanderfunk-nodeplacer.so`, weil `gluon.mk` ihn nach
+  `PKG_NAME` benennt; das Feld in nodeinfo bleibt
+  `software.nodeplacer`. Dasselbe Muster benutzen andere
   Community-Pakete (z. B. `ffac-ssid-changer` mit kurzen Laufzeitpfaden).
