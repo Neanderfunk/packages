@@ -1,4 +1,4 @@
-eulenfunk--mt7915-backlog
+neanderfunk-mt7915-backlog
 =============  
 ported from ffac-mt7915-backlog
 
@@ -18,7 +18,7 @@ PACKAGES_COMMUNITY_COMMIT=*/missing/*
 PACKAGES_COMMUNITY_BRANCH=v2023.2.x
 ```
 
-Now you can add the package `eulenfunk-mt7915-backlog` to your site.mk
+Now you can add the package `neanderfunk-mt7915-backlog` to your site.mk
 (`*/missing/*` has to be replaced by the github-commit-ID of the version you
 want to use, you have to pick it manually.)
 
