@@ -368,7 +368,8 @@ Status: **offen** / **entschieden** / **verworfen**.
   nicht umgeschrieben. Kein Force-Push, kein `filter-branch` auf dem Feed.
 * Verworfen: ein eigenes abgeleitetes GitHub-Repo
   (`Adorfer/neanderfunk-nodeplacer`) mit gefilterter Historie. Es war ein
-  Zwischenschritt und wird nicht weiter gepflegt.
+  Zwischenschritt vor dieser Entscheidung und wurde von adorfer wieder
+  geloescht.
 * Wichtig: Dateien im Feed zu haben ist noch **kein** Release. Solange
   keine Site ihren `modules`-Commit hochzieht und `nodeplacer` in
   `image-customization.lua` listet, aendert sich an keinem Build etwas

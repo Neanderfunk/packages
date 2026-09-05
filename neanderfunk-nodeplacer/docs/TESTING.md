@@ -10,8 +10,7 @@ Versuchsfenster, Replay-Schutz, Datei-Roundtrip).
 
 x86-64-VM (qemu), Gluon v2023.2.5+, Site `nef-21_dias`, Single-Domain,
 Node-ID `aa76ee420370`, 235 MB RAM. Zugriff ueber `scripts/node-ssh.sh`
-(Schluessel `keys/`, gitignored; aus WSL2 ohne IPv6 ueber den
-Windows-OpenSSH-Client).
+(Schluessel `keys/`, gitignored).
 
 Vorhanden auf dem Knoten: libecdsautil, libuclient, libuci, libubox, lua
 5.1, luaposix, simple-uci, gluon-switch-domain, uclient-fetch. Nicht
@@ -83,8 +82,7 @@ kopieren und damit schlafen.
   Ausserdem fehlen libncurses-dev, zlib1g-dev, libssl-dev, libelf-dev,
   gettext, qemu-utils, ecdsautils (sudo).
 * Docker-Gruppe wurde nachtraeglich gesetzt; bestehende Shells sehen sie
-  nicht (`sg`/`newgrp` gibt es auf 26.04 nicht). Eine frische Sitzung ueber
-  `wsl.exe -u adorfer -- bash -lc '...'` hat die Gruppe.
+  nicht, eine neue Login-Sitzung schon.
 * Der Container-Build braucht `--build-arg TARGETOS=linux --build-arg
   TARGETARCH=amd64`, sonst 404 beim editorconfig-checker-Download.
 
