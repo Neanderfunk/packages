@@ -14,6 +14,14 @@ define Package/$(PKG_NAME)
   DEPENDS:=+gluon-core +micrond
 endef
 
+define Package/$(PKG_NAME)/description
+	Watches wifi/lan mesh links and batman/bridge interfaces for neighbours
+	going missing after having been seen before. A link that stays an
+	"island" for three checks in a row (5 minutes apart) triggers a reboot,
+	which recovers crashed or wedged drivers that a plain wifi restart
+	wouldn't fix. See README.md for the exact trigger logic and a sample log.
+endef
+
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
 endef
