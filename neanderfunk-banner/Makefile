@@ -1,6 +1,6 @@
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=gluon-banner
+PKG_NAME:=neanderfunk-banner
 PKG_VERSION:=2
 PKG_RELEASE:=$(GLUON_VERSION).$(GLUON_SITE_CODE)-$(GLUON_RELEASE).$(GLUON_CONFIG_VERSION)
 
@@ -9,13 +9,13 @@ PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
 include $(TOPDIR)/../package/gluon.mk
 
 define Package/$(PKG_NAME)
-  SECTION:=eulenfunk
+  SECTION:=neanderfunk
   CATEGORY:=Customization
   TITLE:=Banner file replacement
   DEPENDS:=+gluon-core +busybox
   MAINTAINER:=Eulenfunk www.eulenfunk.de Andreas Dorfer
-  URL:=https://github.com/eulenfunk/packages
-  SOURCE:=https://github.com/eulenfunk/packages.git
+  URL:=https://github.com/Neanderfunk/packages
+  SOURCE:=https://github.com/Neanderfunk/packages.git
 endef
 
 define Package/$(PKG_NAME)/description
