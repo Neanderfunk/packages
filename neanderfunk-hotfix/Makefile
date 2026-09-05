@@ -10,8 +10,17 @@ include $(TOPDIR)/../package/gluon.mk
 define Package/$(PKG_NAME)
   SECTION:=gluon
   CATEGORY:=Workaround
-  TITLE:=Gluon Hotfix  Collection (Ruben Kelevra & Eulenfunk) (reinit Wifi or even reboot unter certain conditions)
+  TITLE:=Hotfix collection: reinit wifi or reboot on various failure conditions (Ruben Kelevra & Eulenfunk)
   DEPENDS:=+gluon-core +micrond
+endef
+
+define Package/$(PKG_NAME)/description
+	Four independent micrond jobs that detect and work around conditions a node
+	otherwise wouldn't recover from on its own: no gateway/no wifi clients for
+	a while (reboot), batman-adv/atheros driver "deadly wounded" states, too
+	many stray tunneldigger instances, a hung `iw` call, or hostapd processes
+	with stale pid files (restart wifi/hostapd). See README.md for details on
+	each check.
 endef
 
 define Build/Prepare
