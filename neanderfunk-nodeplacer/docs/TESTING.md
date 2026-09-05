@@ -68,7 +68,7 @@ kopieren und damit schlafen.
 * Gluon v2023.2.6 unter `~/build/nodeplacer-gluon`, `make update` gelaufen.
 * `site/` = `https://firmware.ffnef.de/stable/21_dias.key/site` (site.conf,
   site.mk, modules, i18n, image-customization.lua) plus:
-  * `modules`: Feed `nodeplacer` = `file:///home/adorfer/projekte/freifunk/packages/neanderfunk-nodeplacer`
+  * `modules`: Feed `nodeplacer` = `file:///home/adorfer/projekte/freifunk/packages/neanderfunk-nodeplacer-dev`
     (Commit in `PACKAGES_NODEPLACER_COMMIT`, nach Aenderungen am Paket
     nachziehen und `make update` bzw. `git -C packages/nodeplacer pull`;
     der Feed-Alias heisst `nodeplacer`, das Paket darin
