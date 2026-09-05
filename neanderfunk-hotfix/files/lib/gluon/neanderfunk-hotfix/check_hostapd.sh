@@ -1,7 +1,7 @@
 #!/bin/sh
 # check_hostapd for matching pids
 restart_wifi() {
-  logger -s -t "eulenfunk-checkhostapd" "wifi hard restart"
+  logger -s -t "neanderfunk-checkhostapd" "wifi hard restart"
   wifi down
   killall hostapd 2>/dev/null
   rm -f /tmp/hostapd.*.core 2>/dev/null
@@ -26,7 +26,7 @@ if [ ${phy:0:3} = "phy" ] ; then
     pspid=$(ps|grep hostapd|grep $phy)
     pid=$(cat $pidfile 2>/dev/null)
     if [ "$pid" = "${pspid%% *}" ] ; then
-      logger -s -t "eulenfunk-healthcheck" "hostapd restart due to nonmatchings pids on $phy"
+      logger -s -t "neanderfunk-healthcheck" "hostapd restart due to nonmatchings pids on $phy"
       restart_wifi
       rm -f $sema.fail.$phy 2>/dev/null
       sleep 10
@@ -38,7 +38,7 @@ if [ ${phy:0:3} = "phy" ] ; then
   if [ $(echo $wifistatus|grep -A 6 $radio|cut -d":" -f1-10|grep -c "up: false") -eq 1 ] ; then
     if [ $(echo $wifistatus|grep -A 6 $radio|cut -d":" -f1-10|grep -c "pending: true") -eq 1 ] ; then
       if [ -f $sema.fail.$radio.2 ] ; then
-        logger -s -t "eulenfunk-healthcheck" "hostapd down and pending on $radio"
+        logger -s -t "neanderfunk-healthcheck" "hostapd down and pending on $radio"
         restart_wifi
         rm -f $sema.fail.$radio.* 2>/dev/null
         rm -f $sema.ok.$radio.* 2>/dev/null
@@ -59,7 +59,7 @@ if [ ${phy:0:3} = "phy" ] ; then
   if [ $(echo $iwstat|grep -i "Mode: Master"|wc -l) -eq 1 ] ; then
     if [ $(echo $iwstat|grep -i "Channel: unknown"|wc -l) -eq 1 ] ; then
       if [ -f $sema.fail.$client.2 ] ; then
-        logger -s -t "eulenfunk-healthcheck" "channel $client unknown"
+        logger -s -t "neanderfunk-healthcheck" "channel $client unknown"
         restart_wifi
         rm -f $sema.fail.$client.* 2>/dev/null
         rm -f $sema.ok.$client.* 2>/dev/null

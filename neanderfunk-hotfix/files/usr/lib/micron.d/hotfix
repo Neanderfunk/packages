@@ -1,0 +1,4 @@
+*/8  * * * * /lib/gluon/neanderfunk-hotfix/rebootIfNoGw.sh
+*/7 * * * * /lib/gluon/neanderfunk-hotfix/healthcheck.sh
+*/15 * * * * /lib/gluon/neanderfunk-hotfix/IfNoWificlient.sh
+

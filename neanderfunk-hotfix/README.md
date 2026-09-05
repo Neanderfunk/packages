@@ -1,4 +1,4 @@
-# eulenfunk-quickfix
+# neanderfunk-hotfix
 
 This package will add a cronjob that fixes some problems that rarely occur, but are easy to work around. 
 
@@ -32,8 +32,8 @@ manually on a node:
 ```
 ROUTER_IP='your:node::ip6'
 LOGIN="root@[$ROUTER_IP]"
-git clone https://github.com/eulenfunk/packages/ -b v2018.1.x
-cd eulenfunk-hotfix/
+git clone https://github.com/Neanderfunk/packages/ -b v2023.2.x
+cd neanderfunk-hotfix/
 scp -r files/* $LOGIN:/
 ssh $ROUTER_IP "/etc/init.d/micrond reload;"
 ```

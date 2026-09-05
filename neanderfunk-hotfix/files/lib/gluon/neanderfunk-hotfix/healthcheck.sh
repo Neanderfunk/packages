@@ -5,16 +5,16 @@
 UPDATEWAIT='60'
 
 safety_exit() {
-  logger -s -t "eulenfunk-healthcheck" "safety checks failed $@, exiting with error code 2"
+  logger -s -t "neanderfunk-healthcheck" "safety checks failed $@, exiting with error code 2"
   exit 2
 }
 
 now_reboot() {
   # first parameter message
   # second optional -f to force reboot even if autoupdater is running
-  logger -s -t "eulenfunk-healthcheck" -p 5 "rebooting... reason: $1"
+  logger -s -t "neanderfunk-healthcheck" -p 5 "rebooting... reason: $1"
   if [ "$(sed 's/\..*//g' /proc/uptime)" -gt "3600" ] ; then
-    LOG=/lib/gluon/eulenfunk-hotfix
+    LOG=/lib/gluon/neanderfunk-hotfix
     [ ! -d $LOG ] && mkdir $LOG
     LOG="$LOG/reboot.log"
     # the first 5 times log the reason for a reboot in a file that is rebootsave
@@ -25,11 +25,11 @@ now_reboot() {
     sync
     /sbin/reboot -f
   fi
-  logger -s -t "eulenfunk-healthcheck" -p 5 "no reboot during first hour"
+  logger -s -t "neanderfunk-healthcheck" -p 5 "no reboot during first hour"
 }
 
 restart_wifi() { 
-  logger -s -t "eulenfunk-healthcheck" "wifi hard restart"
+  logger -s -t "neanderfunk-healthcheck" "wifi hard restart"
   wifi down
   killall hostapd 2>/dev/null
   rm -f /tmp/hostapd.*.core 2>/dev/null
@@ -58,11 +58,11 @@ dmesg | grep -q "Kernel bug" && now_reboot "gluon issue #680"
 dmesg | grep "ath" | grep "alloc of size" | grep -q "failed" && now_reboot "ath0 malloc fail"
 dmesg | grep "ksoftirqd" | grep -q "page allcocation failure" && now_reboot "kernel malloc fail"
 # interate over hostapd threads running 
-ps|grep hostapd|grep .pid|xargs -r -n 10 /lib/gluon/eulenfunk-hotfix/check_hostapd.sh
+ps|grep hostapd|grep .pid|xargs -r -n 10 /lib/gluon/neanderfunk-hotfix/check_hostapd.sh
 #check if hostapd-DFS scanning is broken according to sylogs
 if [ $(logread -l 5|grep -c  "daemon.warn hostapd: Failed to check if DFS is required") -gt 0 ] ; then
   if [ -f /tmp/dfscheckfail.2 ] ; then
-    logger -s t "eulenfunk-healthcheck" "hostapd DFS failcheck, restarting wifi"
+    logger -s t "neanderfunk-healthcheck" "hostapd DFS failcheck, restarting wifi"
     restart_wifi
     rm -f /tmp/dfscheckfail.* 2>/dev/null
     sleep 10
@@ -110,7 +110,7 @@ iw_dev_reboot_freeze() {
 
 scan() {
   # call iw $dev scan to repair defunc wifi
-  logger -s -t "eulenfunk-healthcheck" -p 5 "neighbour lost, running iw scan"
+  logger -s -t "neanderfunk-healthcheck" -p 5 "neighbour lost, running iw scan"
   iw_dev_reboot_freeze 30 $1 scan lowpri passive>/dev/null
 }
 

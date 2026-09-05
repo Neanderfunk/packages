@@ -1,4 +1,0 @@
-*/8  * * * * /lib/gluon/eulenfunk-hotfix/rebootIfNoGw.sh
-*/7 * * * * /lib/gluon/eulenfunk-hotfix/healthcheck.sh
-*/15 * * * * /lib/gluon/eulenfunk-hotfix/IfNoWificlient.sh
-
