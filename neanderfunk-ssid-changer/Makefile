@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=eulenfunk-ssid-changer
+PKG_NAME:=neanderfunk-ssid-changer
 PKG_VERSION:=5
 PKG_RELEASE:=1
 

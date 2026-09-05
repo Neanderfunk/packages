@@ -5,12 +5,12 @@ local uci = require('simple-uci').cursor()
 -- Safety check functions
 local function log_debug(...)
 	if uci:get('ssid-changer', 'settings', 'debug_log_enabled') == '1' then
-		os.execute('logger -t "eulenfunk-ssid-changer" -p debug "' .. table.concat({...}, ' ') .. '"')
+		os.execute('logger -t "neanderfunk-ssid-changer" -p debug "' .. table.concat({...}, ' ') .. '"')
 	end
 end
 
 local function log(...)
-	os.execute('logger -t "eulenfunk-ssid-changer" "' .. table.concat({...}, ' ') .. '"')
+	os.execute('logger -t "neanderfunk-ssid-changer" "' .. table.concat({...}, ' ') .. '"')
 end
 
 local function safety_exit(message)

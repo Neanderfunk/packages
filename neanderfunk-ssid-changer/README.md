@@ -1,4 +1,4 @@
-# eulenfunk-ssid-changer
+# neanderfunk-ssid-changer
 
 forked from  
 https://github.com/freifunk-gluon/community-packages/tree/v2023.2.x/ffac-ssid-changer
@@ -91,7 +91,7 @@ directory:
     PACKAGES_SSIDCHANGER_COMMIT=/FILL-IN/ # <-- set the newest commit ID here
     PACKAGES_SSIDCHANGER_BRANCH=v2023.2.x
 
-With this done you can add the package `eulenfunk-ssid-changer` to your
+With this done you can add the package `neanderfunk-ssid-changer` to your
 `site.mk`
 
 # History
