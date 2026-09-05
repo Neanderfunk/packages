@@ -1,4 +1,4 @@
-gluon txpowerfix
+neanderfunk-txpowerfix
 ================
 
 Up to OpenWRT BarrierBreaker, the wifi stack did take automatically the
@@ -32,4 +32,4 @@ PACKAGES_EULENFUNK_COMMIT=*/missing/*
 PACKAGES_EULENFUNK_BRANCH=v2018.1.x
 ```
 
-With this done you can add the package `gluon-txpowerfix` to your `site.mk`
+With this done you can add the package `neanderfunk-txpowerfix` to your `site.mk`

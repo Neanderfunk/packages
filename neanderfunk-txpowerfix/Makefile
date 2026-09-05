@@ -1,6 +1,6 @@
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=gluon-txpowerfix
+PKG_NAME:=neanderfunk-txpowerfix
 PKG_VERSION:=1
 
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
@@ -36,7 +36,7 @@ endef
 define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
 	./gluonShellDiet.sh $(1)/etc/init.d/txpowerfix
-	./gluonShellDiet.sh $(1)/lib/gluon/upgrade/215-gluon-txpower-fix
+	./gluonShellDiet.sh $(1)/lib/gluon/upgrade/215-neanderfunk-txpower-fix
 	./gluonShellDiet.sh $(1)/lib/gluon/txpowerfix/txpowerfix.lua
 endef
 
