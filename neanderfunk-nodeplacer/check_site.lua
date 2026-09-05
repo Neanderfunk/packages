@@ -5,6 +5,7 @@
 --   good_signatures = 2,          -- optional; default: threshold of the autoupdater branch
 --   pubkeys = { '<hex>', ... },   -- optional; default: pubkeys of the autoupdater branch
 --   disable = 0,                  -- optional; default 0
+--   config_mode = true,           -- optional; default true (D-039)
 -- }
 
 need_string_array_match(in_site({'nodeplacer', 'mirrors'}), '^http://')
@@ -26,3 +27,6 @@ alternatives(function()
 end, function()
 	need_boolean(in_site({'nodeplacer', 'disable'}), false)
 end)
+
+-- whether the config-mode tab (owner opt-out) is registered at all
+need_boolean(in_site({'nodeplacer', 'config_mode'}), false)

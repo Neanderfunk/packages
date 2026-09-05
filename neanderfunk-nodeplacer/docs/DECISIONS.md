@@ -520,9 +520,10 @@ Status: **offen** / **entschieden** / **verworfen**.
 
 ## D-034 Config-Mode-Web-UI als eigenes, optionales Paket
 
-* Status: **entschieden** (adorfer, 2026-09-04: "Kannst Du fuer den
-  Configmode ein luci-modul dazufuegen ... damit im Web-UI des
-  Configmodes das disable gesetzt werden kann")
+* Status: **entschieden, Paketaufteilung durch D-039 wieder aufgehoben**
+  (adorfer, 2026-09-04: "Kannst Du fuer den Configmode ein luci-modul
+  dazufuegen ... damit im Web-UI des Configmodes das disable gesetzt
+  werden kann")
 * Neues Paket `neanderfunk-web-nodeplacer`, analog zu
   `ff-ap-timer`/`ff-web-ap-timer`: der Kern (`neanderfunk-nodeplacer`)
   bleibt ohne `gluon-web-admin`-Abhaengigkeit installierbar, das Web-Modul
@@ -664,3 +665,38 @@ Status: **offen** / **entschieden** / **verworfen**.
   (gluon-switch-domain, Autoupdater-Optionen, check_site-API, respondd
   identisch bzw. kompatibel in v2021.1.2) ist weiterhin die Grundlage,
   wenn der Backport angegangen wird.
+
+## D-039 Config-Mode-Paket wieder in neanderfunk-nodeplacer zusammengelegt
+
+* Status: **entschieden** (adorfer, 2026-09-05: "Bitte fuehre die beiden
+  Pakete neanderfunk-nodeplacer und neanderfunk-nodeplacer-web zusammen
+  und mache lediglich in der site-conf konfigurierbar, ob es die Option
+  (Das Menue) im Setup-Mode geben soll")
+* Revidiert D-034s Paketaufteilung: `neanderfunk-web-nodeplacer` entfaellt
+  komplett, dessen Dateien (Controller, Modell, `i18n/de.po`) wandern
+  zurueck in `neanderfunk-nodeplacer/`.
+* Der Makefile-Dependency-Trick, mit dem D-034 den Kern von
+  `gluon-web-admin` freihalten wollte, ist damit aufgegeben:
+  `neanderfunk-nodeplacer` haengt jetzt unbedingt von `+gluon-web-admin`
+  ab. Trade-off bewusst zugunsten von "ein Paket, eine Sache zu pflegen"
+  entschieden.
+* Neu: `nodeplacer.config_mode` in site.conf, optional, Boolean, Default
+  `true`. Der Controller (`config-mode/controller/admin/nodeplacer.lua`)
+  liest ihn zur Laufzeit via `site.nodeplacer.config_mode(true)` und
+  registriert den Tab nur, wenn der Wert nicht `false` ist. Damit bleibt
+  fuer Communities, die den Tab nicht wollen, dieselbe Wahlfreiheit wie
+  vorher durch das separate Paket - nur als Konfigurationsschalter statt
+  als Installationsentscheidung.
+* `site.nodeplacer.config_mode(true)` ist sicher, auch wenn `nodeplacer`
+  in site.conf komplett fehlt: `gluon.site`s C-Modul propagiert eine
+  interne "none"-Markierung durch beliebig tiefe Verkettungen und liefert
+  bei einem abschliessenden Aufruf mit Argument dieses Argument als
+  Default zurueck (verifiziert im Quelltext von `gluon-core/src/site.c`,
+  `gluon_site_index`/`gluon_site_call`). Keine vorherige `site.nodeplacer()
+  ~= nil`-Pruefung noetig, obwohl `510-nodeplacer` aus historischen
+  Gruenden (dort: um im Negativfall zusaetzlich aufzuraeumen) eine hat.
+* `check_site.lua`: `nodeplacer.config_mode` optional, Boolean.
+* `scripts/sync-to-feed.sh` entfernt `neanderfunk-web-nodeplacer` beim
+  naechsten Lauf einmalig aus dem Feed (Liste `REMOVE`), synct danach nur
+  noch `neanderfunk-nodeplacer`. `scripts/build-x86-container.sh` baut
+  nur noch das eine Paket.

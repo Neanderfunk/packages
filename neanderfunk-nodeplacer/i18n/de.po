@@ -17,4 +17,4 @@ msgid "Enabled"
 msgstr "Aktiviert"
 
 msgid "Nodeplacer can move this node to another domain of the community when a signed instruction for it is published. You can forbid that here."
-msgstr "Nodeplacer kann diesen Knoten in eine andere Domain der Community verschieben, wenn eine signierte Anweisung dafür veröffentlicht wird. Das kannst du hier unterbinden."
+msgstr "Nodeplacer kann diesen Knoten in eine andere Domain der Community verschieben, wenn eine signierte Anweisung dafür veröffentlicht wird. Wenn du diese Funktion deaktivieren möchtest, entferne den Haken."

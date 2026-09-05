@@ -39,7 +39,7 @@ mit anderen Site-Konfigurationen und Communities fehlt noch (D-038).
 
 | Dokument | Inhalt |
 |---|---|
-| [neanderfunk-web-nodeplacer/](neanderfunk-web-nodeplacer/) | optionales Config-Mode-Modul, Tab "Nodeplacer" unter "Advanced settings" mit dem disable-Schalter |
+| [neanderfunk-nodeplacer/](neanderfunk-nodeplacer/) | das Paket selbst, inklusive Config-Mode-Tab "Nodeplacer" unter "Advanced settings" (per site.conf abschaltbar, D-039) |
 | [docs/DESIGN.md](docs/DESIGN.md) | Ziel, Mechanismus, Betriebsmodi, Sicherheits- und Robustheitsueberlegungen, offene Fragen |
 | [docs/MANIFEST-FORMAT.md](docs/MANIFEST-FORMAT.md) | Entwurf des Steuerdatei-Formats |
 | [docs/RESEARCH.md](docs/RESEARCH.md) | Was Gluon 2023.2.x bereits mitbringt, mit Fundstellen im Quellcode |

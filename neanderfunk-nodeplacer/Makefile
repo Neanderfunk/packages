@@ -14,7 +14,7 @@ include $(INCLUDE_DIR)/cmake.mk
 
 define Package/neanderfunk-nodeplacer
   TITLE:=Move individual nodes to another domain, controlled by a signed manifest
-  DEPENDS:=+gluon-core +autoupdater +micrond \
+  DEPENDS:=+gluon-core +autoupdater +micrond +gluon-web-admin \
 	+libgluonutil +libjson-c +libubox +libuclient +libuci +libecdsautil
   CONFLICTS:=+gluon-hoodselector
   MAINTAINER:=Neanderfunk <technik@neanderfunk.de>
@@ -25,7 +25,10 @@ define Package/neanderfunk-nodeplacer/description
 	as the autoupdater manifest) from the community's servers. A node that
 	finds its own node id listed switches to the requested domain: either
 	locally (multi-domain firmware, gluon-switch-domain) or by installing
-	the target domain's firmware via the regular autoupdater.
+	the target domain's firmware via the regular autoupdater. Adds a tab
+	to the config-mode "Advanced settings" page so node owners can opt out
+	(nodeplacer.settings.disable); set nodeplacer.config_mode = false in
+	site.conf to not register that tab at all.
 endef
 
 define Package/neanderfunk-nodeplacer/conffiles

@@ -9,7 +9,7 @@
 
 local uci = require('simple-uci').cursor()
 
-local pkg_i18n = i18n 'neanderfunk-web-nodeplacer'
+local pkg_i18n = i18n 'neanderfunk-nodeplacer'
 
 -- 510-nodeplacer always creates this section, but do not assume nodeplacer
 -- itself has already run (e.g. right after an opkg install).

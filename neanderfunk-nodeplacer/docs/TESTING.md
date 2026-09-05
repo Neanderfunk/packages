@@ -370,3 +370,16 @@ der "Erweiterte Einstellungen"-Seite, zwischen "Taster" (fremdes Paket) und
 ("Aktiviert") sind korrekt aus der `de.po` uebersetzt, Haekchen gesetzt
 entspricht `disable=0`. Formular mit "Zuruecksetzen"/"Speichern" wie die
 uebrigen Tabs auf der Seite. Damit ist D-034 vollstaendig verifiziert.
+
+### Nachtrag 2026-09-05: Pakete zusammengelegt (D-039)
+
+`neanderfunk-web-nodeplacer` entfaellt, seine Dateien liegen jetzt in
+`neanderfunk-nodeplacer/` (Config-Mode-Controller/Modell, `i18n/de.po`).
+Das Paket haengt jetzt unbedingt von `+gluon-web-admin` ab; ob der Tab im
+Setup-Mode erscheint, steuert `nodeplacer.config_mode` in site.conf
+(Default `true`). Alle Protokolleintraege oben, die noch von einem
+separaten Web-Paket sprechen, beschreiben den damaligen Stand korrekt -
+nur die Paketgrenze hat sich seither verschoben, die getesteten
+Verhaltensweisen (Rendering, Uebersetzung, Schreiblogik) sind unveraendert
+gueltig. Host-Tests (`tests/test_web_nodeplacer.lua`, jetzt gegen den
+neuen Pfad) und luacheck laufen gruen.

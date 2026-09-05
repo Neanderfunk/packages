@@ -346,13 +346,16 @@ Das Projekt-Repo ist zugleich ein OpenWrt/Gluon-Feed; das Paket liegt im
 Unterverzeichnis `neanderfunk-nodeplacer/` (D-022).
 
 ```
-neanderfunk-nodeplacer/            # Paket
+neanderfunk-nodeplacer/            # Paket, DEPENDS u. a. +gluon-web-admin (D-039)
   Makefile                         # BuildPackageGluon + cmake.mk, DEPENDS, CONFLICTS hoodselector
   README.md
   check_site.lua
   files/etc/config/nodeplacer      # leere settings-Section
+  i18n/de.po                       # Uebersetzung des Config-Mode-Tabs
   luasrc/
     lib/gluon/upgrade/510-nodeplacer      # UCI aus site.conf, Cron-Datei mit Zufallsminute
+    lib/gluon/config-mode/controller/admin/nodeplacer.lua  # Tab-Eintrag, site.conf-gesteuert (D-039)
+    lib/gluon/config-mode/model/admin/nodeplacer.lua       # das Formular (disable-Schalter)
     usr/sbin/nodeplacer                   # Hauptprogramm (Lua): Lock, Fetch, Parse, Zustand, Aktion
     usr/lib/lua/nodeplacer/manifest.lua   # Parser + Datum (rein, hosttestbar)
     usr/lib/lua/nodeplacer/state.lua      # Versuchszaehler in /tmp/nodeplacer.state
@@ -399,7 +402,8 @@ Wiederfinden in altem Text/Verlinkung):
    moeglich waere, mit Warnung im Log (D-037); der Betreiber weiss, was
    er tut. Ungetestet, solange Multidomain zurueckgestellt ist (D-026).
 4. Registrierung und Fremd-Community (D-019/D-020), siehe Abschnitt 15.
-5. Config-Mode-Schalter: `neanderfunk-web-nodeplacer` (D-034).
+5. Config-Mode-Schalter: Tab in `neanderfunk-nodeplacer` selbst, per
+   site.conf abschaltbar (D-034, zusammengelegt durch D-039).
 6. 3 Versuche in 7 Tagen, rollend, im RAM (D-012).
 7. Download uebernimmt der C-Helfer mit libuclient (D-015).
 8. C-Helfer gibt den ganzen Nutzdatenteil aus, Lua filtert; Datei hat nie
