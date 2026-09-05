@@ -1,6 +1,6 @@
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=eulenfunk-linkcheck
+PKG_NAME:=neanderfunk-linkcheck
 PKG_VERSION:=2
 
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
@@ -26,7 +26,7 @@ endef
 
 define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
-	./gluonShellDiet.sh $(1)/lib/gluon/eulenfunk-linkcheck/linkcheck.sh
+	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-linkcheck/linkcheck.sh
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))

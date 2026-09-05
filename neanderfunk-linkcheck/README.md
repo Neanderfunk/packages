@@ -1,4 +1,4 @@
-eulenfunk lan and wifi neighbour check
+neanderfunk-linkcheck
 ==================================
 
 this script looks for wifi and lan mesh neighbours. 
@@ -36,5 +36,5 @@ PACKAGES_EULENFUNK_REPO=https://github.com/eulenfunk/packages.git<br>
 PACKAGES_EULENFUNK_COMMIT=*/missing/*<br>
 PACKAGES_EULENFUNK_BRANCH=chaos-calmer<br>
 
-With this done you can add the package *eulenfunk-linkcheck* to your site.mk/image-customization.lua
+With this done you can add the package *neanderfunk-linkcheck* to your site.mk/image-customization.lua
 

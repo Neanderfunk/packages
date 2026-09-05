@@ -1,1 +1,0 @@
-*/5 * * * * /lib/gluon/eulenfunk-linkcheck/linkcheck.sh &> /dev/null

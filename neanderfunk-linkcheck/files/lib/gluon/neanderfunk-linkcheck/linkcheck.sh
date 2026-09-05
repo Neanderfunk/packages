@@ -12,14 +12,14 @@ valuecheck ()
       if [ -f /tmp/linkcheck.${linkname}.${check}.linkpb1 ] ; then
         if [ -f /tmp/linkcheck.${linkname}.${check}.linkpb2 ] ; then
           if [ -f /tmp/linkcheck.${linkname}.${check}.linkpb3 ] ; then
-            logger -s -t "eulenfunk-linkcheck" -p 5 "lost neighbors 4th: ${linkname}.${check}, rebooting!"
+            logger -s -t "neanderfunk-linkcheck" -p 5 "lost neighbors 4th: ${linkname}.${check}, rebooting!"
             sleep 10
             upgrade_started='/tmp/autoupdate.lock'
             [ -f ${upgrade_started} ] && exit
             reboot -f
            fi
           # 3nd time failure
-          logger -s -t "eulenfunk-linkcheck" -p 5 "lost neighbors 3rd: ${linkname}.${check}, wifi restart"
+          logger -s -t "neanderfunk-linkcheck" -p 5 "lost neighbors 3rd: ${linkname}.${check}, wifi restart"
           echo $(date)>/tmp/linkcheck.${linkname}.${check}.linkpb3
           wifi down
           killall hostapd >/dev/null 2>&1
@@ -28,10 +28,10 @@ valuecheck ()
           wifi up
           sleep 15
          fi
-        logger -s -t "eulenfunk-linkcheck" -p 5 "lost neighbours 2nd:${linkname}.${check}"
+        logger -s -t "neanderfunk-linkcheck" -p 5 "lost neighbours 2nd:${linkname}.${check}"
         echo $(date)>/tmp/linkcheck.${linkname}.${check}.linkpb2
        else #linkpb1 existiert noch nicht, anlegen!
-        logger -s -t "eulenfunk-linkcheck" -p 5 "lost neighbours 1st:${linkname}.${check}"
+        logger -s -t "neanderfunk-linkcheck" -p 5 "lost neighbours 1st:${linkname}.${check}"
         echo $(date)>/tmp/linkcheck.${linkname}.${check}.linkpb1
       fi
     else #links reappeard, cleaning all pb-files
@@ -138,7 +138,7 @@ if [ "$gluontarget" != "mediatek" ]; then
       wert='2'
      else
       wert='0'
-      logger -s -t "eulenfunk-linkcheck" -p 5 batman interface ${batifupf} gone missing
+      logger -s -t "neanderfunk-linkcheck" -p 5 batman interface ${batifupf} gone missing
      fi
     linkname='batinterfaces'
     check=${batifupf}
@@ -153,7 +153,7 @@ if [ "$gluontarget" != "mediatek" ]; then
     if [[ ! "$wifibatlinks" =~ "${batifupf}" ]]; then    # do not check for wifimesh links as check/reboot condition!
       echo check if by file: ${batifupf} # individually previsously seen file
       bators=$(cat ${batmanoriginatorsfile}|grep ${batifupf}|wc -l)
-      logger -s -t "eulenfunk-linkcheck" -p 5 on bat if ${batifupf} : ${bators} originators
+      logger -s -t "neanderfunk-linkcheck" -p 5 on bat if ${batifupf} : ${bators} originators
       wert=${bators}
       linkname='batman.originators'
       check=${batifupf}
@@ -189,7 +189,7 @@ if [ "$gluontarget" != "mediatek" ]; then
 #       echo ${upbridge} is golden
       else
        wert='0'
-       logger -s -t "eulenfunk-linkcheck" -p 5 bridge ${upbridge} gone missing
+       logger -s -t "neanderfunk-linkcheck" -p 5 bridge ${upbridge} gone missing
       fi
      linkname=bridgeinterfaces
      check=${upbridge}
@@ -208,11 +208,11 @@ if [ "$gluontarget" != "mediatek" ]; then
 #         echo ${upbridge}:${interfaced} is golden
         else
          wert='0'
-         logger -s -t "eulenfunk-linkcheck" -p 5 bridge-member ${upbridge}:${interfaced} gone missing
+         logger -s -t "neanderfunk-linkcheck" -p 5 bridge-member ${upbridge}:${interfaced} gone missing
         fi
         linkname=bridgeinterfaceports
         check=${upbridge}:${interfaced}
         valuecheck ${check}
       done
    done
-logger -s -t "eulenfunk-linkcheck" -p 5 ${logstring}
+logger -s -t "neanderfunk-linkcheck" -p 5 ${logstring}
