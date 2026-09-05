@@ -618,3 +618,40 @@ Status: **offen** / **entschieden** / **verworfen**.
 * Bleibt reines Entwicklungs-/Serverwerkzeug wie die anderen
   `scripts/*.sh`, wird **nicht** in den Feed synchronisiert
   (`scripts/sync-to-feed.sh` fasst nur die beiden Paketverzeichnisse an).
+
+## D-037 `firmware` auch auf Multidomain-Firmware erlaubt
+
+* Status: **entschieden** (adorfer, 2026-09-04: "Ja!")
+* Beantwortet die letzte offene Design-Frage aus DESIGN.md Abschnitt 14:
+  ein Knoten mit Multidomain-Firmware darf per `firmware`-Eintrag auf ein
+  anderes Image umgezogen werden, auch wenn ein reiner Domain-Wechsel
+  (ohne Flash, ohne Reboot) moeglich waere.
+* Umsetzung: `nodeplacer` prueft zu Beginn des `firmware`-Zweigs, ob
+  `/lib/gluon/domains/` existiert, und schreibt in dem Fall eine
+  Logzeile ("this is multi-domain firmware; installing another image via
+  'firmware' instead of switching domains locally"). Keine Blockade,
+  keine Rueckfrage - der Betreiber, der die Steuerdatei signiert hat,
+  weiss, warum er den schwereren Weg gewaehlt hat (z. B. um das
+  Multidomain-Image ganz zu verlassen).
+* Ungetestet wie der gesamte `domain`-Pfad, solange Multidomain
+  zurueckgestellt ist (D-026): kein Multidomain-Testimage vorhanden.
+
+## D-038 Backport v2021.1.x zurueckgestellt bis zu ausreichender Praxiserfahrung
+
+* Status: **entschieden** (adorfer, 2026-09-05: "Bitte zurueckstellen, bis
+  wir einen vollen Testing + echten Produktiveinsatz mit >12 echten
+  Einsaetzen gesehen haben. Weil das sonst zu viel Back/Forthporting wird
+  ... Es ist noch nicht mature genug. Aber ist definitiv auf der Todo")
+* Kein Backport-Build, keine v2021.1.x-spezifischen Anpassungen, bevor
+  nodeplacer auf v2023.2.x mit mindestens 12 echten Praxiseinsaetzen
+  (nicht nur Testknoten) gelaufen ist. Grund: das Paket ist noch in
+  Bewegung (D-030 bis D-037 kamen alle nach dem ersten Produktiv-Test
+  zustande); jede Aenderung muesste sonst doppelt gepflegt werden, ohne
+  dass klar ist, welcher Teil des Designs noch wackelt.
+* Bleibt auf der Roadmap (README/D-002 nennen v2021.1.x weiterhin als
+  Ziel), nur die Reihenfolge aendert sich: erst Reife auf v2023.2.x
+  zeigen, dann zurueckportieren.
+* Vorarbeit bleibt gueltig: der Quelltextvergleich in docs/TESTING.md
+  (gluon-switch-domain, Autoupdater-Optionen, check_site-API, respondd
+  identisch bzw. kompatibel in v2021.1.2) ist weiterhin die Grundlage,
+  wenn der Backport angegangen wird.

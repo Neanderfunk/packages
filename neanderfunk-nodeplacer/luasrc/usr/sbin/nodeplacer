@@ -209,6 +209,16 @@ elseif entry.method == 'firmware' then
 		os.exit(0)
 	end
 
+	-- D-037: 'firmware' is allowed on multi-domain firmware too, even
+	-- where a plain domain switch (no reboot, no flash) might have been
+	-- possible instead - the operator writing the manifest knows why a
+	-- full firmware move was asked for (e.g. leaving the multi-domain
+	-- image's set of domains behind). Just make that visible in the log.
+	if unistd.access('/lib/gluon/domains/') == 0 then
+		log('this is multi-domain firmware; installing another image via "firmware" '
+			.. 'instead of switching domains locally')
+	end
+
 	local branch = entry.branch or uci:get('autoupdater', 'settings', 'branch')
 	if not branch then
 		log('no autoupdater branch known')

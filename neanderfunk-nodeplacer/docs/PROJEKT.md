@@ -33,7 +33,9 @@ UCI-Config, der site.conf-Block und die Steuerdatei. Arbeitstitel war
 Paket vorhanden (`neanderfunk-nodeplacer/`), auf x86-64 gebaut und getestet, siehe
 [docs/TESTING.md](docs/TESTING.md). Erstes Ziel ist ein Release fuer
 Single-Domain-Firmware (Methode `firmware`); Multidomain ist bis danach
-zurueckgestellt (D-026).
+zurueckgestellt (D-026). Bisher primaer bei Neanderfunk getestet - Erfahrung
+mit anderen Site-Konfigurationen und Communities fehlt noch (D-038).
+**PRs and suggestions welcome!**
 
 | Dokument | Inhalt |
 |---|---|

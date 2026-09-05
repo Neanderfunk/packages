@@ -113,6 +113,14 @@ requires a procedure agreed between both communities (registration in the
 target domain, a migration firmware that copes with the leftover UCI
 configuration, timing). See `docs/DESIGN.md` section 15.
 
+## Status
+
+Developed and tested against Neanderfunk's own site configuration so far;
+we would like to see it used and tested by other communities too, since
+that is what it takes to mature the design before a v2021.1.x backport is
+worth doing (see the project's `docs/DECISIONS.md` D-038).
+**PRs and suggestions welcome!**
+
 ## License
 
 BSD-2-Clause. `src/uclient.c`, `src/hexutil.c`, `src/util.c` and

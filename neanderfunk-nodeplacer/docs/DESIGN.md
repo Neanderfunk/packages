@@ -389,24 +389,26 @@ UCI-Branch-Sections fuer die Pubkeys), daher `510`.
 
 ## 14. Offene Fragen
 
-Noch unentschieden:
-
-* Soll `firmware` bei Multidomain-Firmware erlaubt sein, wenn `domain`
-  moeglich waere? Vorschlag: ja, aber Warnung im Log; der Betreiber weiss,
-  was er tut. Geringe Prioritaet, solange Multidomain zurueckgestellt ist
-  (D-026).
-
-Erledigt (Nummerierung aus frueheren Fassungen dieses Dokuments, nur zum
+Keine offenen Design-Fragen mehr; alle frueheren Punkte sind entschieden
+(Nummerierung aus frueheren Fassungen dieses Dokuments, nur zum
 Wiederfinden in altem Text/Verlinkung):
 
 1. Name: **nodeplacer**, Paket `neanderfunk-nodeplacer` (D-001, D-029).
 2. C-Helfer aus der Autoupdater-Codebasis (D-015).
+3. `firmware` ist auch auf Multidomain-Firmware erlaubt, wenn `domain`
+   moeglich waere, mit Warnung im Log (D-037); der Betreiber weiss, was
+   er tut. Ungetestet, solange Multidomain zurueckgestellt ist (D-026).
 4. Registrierung und Fremd-Community (D-019/D-020), siehe Abschnitt 15.
 5. Config-Mode-Schalter: `neanderfunk-web-nodeplacer` (D-034).
 6. 3 Versuche in 7 Tagen, rollend, im RAM (D-012).
 7. Download uebernimmt der C-Helfer mit libuclient (D-015).
 8. C-Helfer gibt den ganzen Nutzdatenteil aus, Lua filtert; Datei hat nie
    mehr als 100, meist unter 10 Zeilen (D-021).
+
+Roadmap-Punkte, die keine Design-Fragen mehr sind, aber noch anstehen:
+Backport v2021.1.x zurueckgestellt bis zu ausreichender Praxiserfahrung
+(D-038), Release wartet auf das Buildsystem (D-027), Vorwaerts-Kompatibilitaet
+v2025.1 (Abschnitt 13) noch nicht begonnen.
 
 ## 15. Grenzen: Registrierung und Fremd-Domains
 
