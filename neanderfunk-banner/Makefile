@@ -19,7 +19,10 @@ define Package/$(PKG_NAME)
 endef
 
 define Package/$(PKG_NAME)/description
-	Banner file replacement + Tooling
+	Replaces /etc/banner and /etc/profile (as reversible symlinks, restored
+	on removal) with a Gluon login banner and a status line summarizing
+	uptime, gateway, VPN, wifi and mesh state. Also installs a few admin
+	shortcuts: nodeinfo, help, switch0, switchstatus, v4up.
 endef
 
 define Build/Prepare
