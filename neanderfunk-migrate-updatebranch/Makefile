@@ -1,6 +1,6 @@
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=eulenfunk-migrate-updatebranch
+PKG_NAME:=neanderfunk-migrate-updatebranch
 PKG_VERSION:=v2018.1
 PKG_RELEASE:=5
 
@@ -17,7 +17,7 @@ endef
 
 define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
-	./gluonShellDiet.sh $(1)/lib/gluon/upgrade/910-eulenfunk-migrate-updatebranch
+	./gluonShellDiet.sh $(1)/lib/gluon/upgrade/910-neanderfunk-migrate-updatebranch
 endef
 
 $(eval $(call BuildPackageGluon,$(PKG_NAME)))
