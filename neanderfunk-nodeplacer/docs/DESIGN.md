@@ -396,8 +396,8 @@ UCI-Branch-Sections fuer die Pubkeys), daher `510`.
    was er tut.
 4. (entschieden, D-019/D-020) Registrierung und Fremd-Community: siehe
    Abschnitt 15.
-5. Sollen Besitzer per Config-Mode (gluon-web) den Schalter sehen?
-   Erste Version: nein, nur UCI.
+5. (entschieden, D-034) Ja: `neanderfunk-web-nodeplacer` zeigt den Schalter
+   als eigenen Tab unter "Advanced settings".
 6. (entschieden, D-012) 3 Versuche in 7 Tagen, rollend, im RAM.
 7. (erledigt durch D-015) Download uebernimmt der C-Helfer mit libuclient.
 8. (entschieden, D-021) C-Helfer gibt den ganzen Nutzdatenteil aus, Lua

@@ -17,8 +17,8 @@ Status: **offen** / **entschieden** / **verworfen**.
   `gluon-scheduled-domain-switch` und `gluon-switch-domain`. Anforderung
   war: keine negativen, z. B. xenophoben Konnotationen wie "forced
   migration". "nodeplacer" (der Knoten wird platziert) erfuellt das.
-* Fuer ein Upstreaming in community-packages waere ein Community-Praefix
-  (`nef-nodeplacer`, `eulenfunk-nodeplacer`) ueblich; entscheiden wir dann.
+* Fuer ein Upstreaming waere ein Community-Praefix ueblich; **entschieden
+  durch D-029**: `neanderfunk-nodeplacer`.
 
 ## D-002 Primaere Zielversion
 
@@ -41,19 +41,14 @@ Status: **offen** / **entschieden** / **verworfen**.
 * Status: **entschieden** (adorfer: "libecdsautil ist perfekt", 2026-09-04)
 * Begruendung: liegt wegen des Autoupdaters auf jedem Knoten; gleiche
   Krypto, gleiche Schluesselformate, gleiche Semantik (n-of-m, legacy).
-* Umsetzungsform noch **offen**:
-  * (a) Paket `ecdsautils` als Abhaengigkeit, Aufruf von `ecdsaverify -s ... -p ... -n N <datei>`
-    aus Lua. Vorher muss Lua die Datei an `---` teilen und den oberen Teil
-    in eine Temp-Datei schreiben. Kein eigener C-Code, aber ein zusaetzliches
-    Feed-Paket im Image.
-  * (b) Kleiner C-Helper im Package (`src/verify.c`, CMake wie
-    `autoupdater/src`), der die Manifest-Semantik des Autoupdaters
-    (`manifest.c`: hashen bis `---`, Signaturen danach) 1:1 uebernimmt und
-    nur "gueltig ja/nein plus Anzahl" zurueckgibt. Code ist BSD-2-Clause und
-    kann uebernommen werden.
-  * Tendenz: (b), weil es ohne Temp-Dateien auskommt, keine Feed-Abhaengigkeit
-    einfuehrt und exakt das Verhalten des Autoupdaters hat. Nachteil:
-    Build-Komplexitaet und Backport-Test auf OpenWrt 19.07.
+* Umsetzungsform: zunaechst zwei Optionen erwogen -
+  (a) Paket `ecdsautils` als Abhaengigkeit, Aufruf von `ecdsaverify` aus
+  Lua (Temp-Datei noetig, zusaetzliches Feed-Paket), oder
+  (b) ein eigener C-Helfer, der die Manifest-Semantik des Autoupdaters
+  uebernimmt. **Entschieden fuer (b)** durch D-015 (erweitert auf Download +
+  Verify statt nur Verify) - dort auch der ausgefuehrte Code
+  (`neanderfunk-nodeplacer/src/fetch.c`), gebaut und auf dem Testknoten
+  verifiziert (siehe docs/TESTING.md).
 
 ## D-005 Multidomain-Wechsel ueber `gluon-switch-domain`
 
@@ -153,7 +148,9 @@ Status: **offen** / **entschieden** / **verworfen**.
 
 ## D-013 respondd-Provider
 
-* Status: **entschieden** (Vorschlag Claude, offen fuer Einspruch)
+* Status: **entschieden** (Vorschlag Claude, nie widersprochen, seither
+  gebaut, im Feed und auf dem Testknoten installiert - D-032/D-035
+  bestaetigen `/tmp/nodeplacer.state` als Datenquelle)
 * Kleiner Provider fuer `nodeinfo.software.nodeplacer`, damit auf der
   Karte sichtbar ist, welche Knoten adressiert wurden und haengen.
 
@@ -291,8 +288,9 @@ Status: **offen** / **entschieden** / **verworfen**.
   suchen rekursiv nach `Makefile`s, das Repo kann also direkt als
   `GLUON_SITE_FEEDS`-Feed eingebunden werden. Docs, Skizzen und Tests
   bleiben ausserhalb des Paketverzeichnisses.
-* Alternative (Paket in eulenfunk/packages einpflegen) bleibt fuer die
-  Auslieferung offen; fuer die Entwicklung ist ein eigenes Repo einfacher.
+* Alternative (Paket in eulenfunk/packages einpflegen) war fuer die
+  Auslieferung zunaechst offen; **entschieden durch D-028**: Feed ist
+  `Neanderfunk/packages`, nicht `eulenfunk/packages`.
 
 ## D-023 Aufruf des C-Helfers per os.execute mit Ausgabedatei
 
