@@ -1,6 +1,6 @@
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=eulenfunk-ch13to9
+PKG_NAME:=neanderfunk-ch13to9
 PKG_VERSION:=1
 
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
@@ -32,7 +32,7 @@ endef
 define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
 	./gluonShellDiet.sh $(1)/etc/init.d/ch13to9
-	./gluonShellDiet.sh $(1)/lib/gluon/upgrade/209-eulenfunk-ch13to9
+	./gluonShellDiet.sh $(1)/lib/gluon/upgrade/209-neanderfunk-ch13to9
 	./gluonShellDiet.sh $(1)/lib/gluon/ch13to9/ch13to9.lua
 endef
 

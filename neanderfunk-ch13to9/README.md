@@ -1,4 +1,4 @@
-eulenfunk-ch13to9
+neanderfunk-ch13to9
 =================
 
 this package moves nodes from channel 13 to 9 during initial upgrade.
@@ -22,4 +22,4 @@ PACKAGES_EULENFUNK_COMMIT=*/missing/*
 PACKAGES_EULENFUNK_BRANCH=v2020.1.x
 ```
 
-With this done you can add the package `eulenfunk-ch13to9` to your `site.mk`
+With this done you can add the package `neanderfunk-ch13to9` to your `site.mk`
