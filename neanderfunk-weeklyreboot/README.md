@@ -14,6 +14,6 @@ PACKAGES_EULENFUNK_COMMIT=*/missing/*
 PACKAGES_EULENFUNK_BRANCH=v2018.1.x
 ```
 
-Now you can add the package `gluon-weeklyreboot` to your site.mk
+Now you can add the package `neanderfunk-weeklyreboot` to your site.mk
 (`*/missing/*` has to be replaced by the github-commit-ID of the version you
 want to use, you have to pick it manually.)
