@@ -530,10 +530,13 @@ Status: **offen** / **entschieden** / **verworfen**.
   +neanderfunk-nodeplacer` ab.
 * Platzierung (adorfer: "Keine Ahnung, mach wie es einfacher ist"): ein
   eigener Tab "Nodeplacer" auf der bestehenden "Advanced settings"-Seite
-  (`admin`-Menu von `gluon-web-admin`), Gewicht 85, direkt nach
-  "Automatic updates" (80). Kein neues Untermenue, keine Aenderung an
-  einem fremden Paket noetig - jedes Feature dort registriert nur seinen
-  eigenen `entry({"admin", "<name>"}, ...)`.
+  (`admin`-Menu von `gluon-web-admin`), Gewicht 85, gedacht als "direkt
+  nach 'Automatic updates' (80)". Kein neues Untermenue, keine Aenderung
+  an einem fremden Paket noetig - jedes Feature dort registriert nur
+  seinen eigenen `entry({"admin", "<name>"}, ...)`. In der Praxis liegt
+  auf dem Testknoten noch ein Tab "Taster" (fremdes Paket, Gewicht
+  dazwischen) vor Nodeplacer - erwartbar und harmlos, die relative
+  Position zu "Automatische Updates" stimmt.
 * UI zeigt eine positive Checkbox "Enabled" (nicht "Disable"), invertiert
   beim Schreiben auf `nodeplacer.settings.disable` - konsistent mit jedem
   anderen Tab auf dieser Seite (`gluon-web-autoupdater` macht es fuer
@@ -541,17 +544,23 @@ Status: **offen** / **entschieden** / **verworfen**.
   schon positiv heisst).
 * Vorbild fuer die Form/Section/Flag-API: `gluon-web-autoupdater`s Modell
   (Apache-2.0), strukturell nachgebaut, kein Text uebernommen.
-* **Nicht getestet:** die eigentliche Rendering-/Interaktions-Pipeline.
-  Gluons Config-Mode laeuft in einem eigenen Boot-Modus mit eigenem
-  uhttpd (`/lib/gluon/setup-mode/rc.d/S50uhttpd`), der nur erreichbar
-  ist, wenn der Knoten explizit in diesen Modus (neu-)startet
-  (Taster/`gluon-enter-setup-mode`). Das haette einen zusaetzlichen,
-  eigenstaendigen Reboot des Testknotens in einen Sondermodus verlangt -
-  ungefragt nicht gemacht. Stattdessen: Host-Test mit einem
-  Form/Section/Flag/uci-Stub (`tests/test_web_nodeplacer.lua`) fuer die
-  Default-/Schreiblogik, echter `opkg install` auf dem Testknoten fuer
-  Dateiablage und Abhaengigkeitsaufloesung, `loadfile()` auf dem
-  Ziel-Lua-Interpreter fuer die Syntax, luacheck fehlerfrei.
+* Vor der visuellen Bestaetigung nur indirekt geprueft: Host-Test mit
+  einem Form/Section/Flag/uci-Stub (`tests/test_web_nodeplacer.lua`) fuer
+  die Default-/Schreiblogik, echter `opkg install` auf dem Testknoten
+  fuer Dateiablage und Abhaengigkeitsaufloesung, `loadfile()` auf dem
+  Ziel-Lua-Interpreter fuer die Syntax, luacheck fehlerfrei - die
+  eigentliche Rendering-/Interaktions-Pipeline war ungetestet, weil
+  Gluons Config-Mode in einem eigenen Boot-Modus mit eigenem uhttpd
+  laeuft (`/lib/gluon/setup-mode/rc.d/S50uhttpd`), der nur nach
+  explizitem (Re-)Start in diesen Modus erreichbar ist - einen
+  zusaetzlichen Reboot des Testknotens dafuer wollte ich nicht ungefragt
+  ausloesen.
+* **Visuell bestaetigt (adorfer, Screenshot, 2026-09-05):** Tab
+  "Nodeplacer" erscheint korrekt unter "Erweiterte Einstellungen",
+  Titel, Beschreibungstext und Checkbox-Label sind aus der de.po
+  uebersetzt ("Aktiviert", Haekchen gesetzt = disable=0), Formular
+  rendert wie die uebrigen Tabs (Zuruecksetzen/Speichern). Damit ist
+  D-034 vollstaendig verifiziert, nicht mehr nur per Code-Review.
 * `scripts/sync-to-feed.sh` synct jetzt beide Paketverzeichnisse
   (`neanderfunk-nodeplacer`, `neanderfunk-web-nodeplacer`).
 

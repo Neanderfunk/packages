@@ -338,11 +338,8 @@ regulaeren Build-Prozess.
   harmlosen Postinst-Fehler (aktuelle site.json des Knotens hat gerade
   keinen `nodeplacer`-Block, weil der Knoten inzwischen selbststaendig
   nach `02_met` verschoben wurde) - Dateien werden trotzdem installiert.
-* **Nicht getestet:** das tatsaechliche Rendern/Absenden des Formulars.
-  Config-Mode laeuft in einem eigenen Boot-Modus mit eigenem uhttpd, nur
-  erreichbar nach explizitem (Re-)Start in diesen Modus - das haette einen
-  zusaetzlichen Reboot des Testknotens verlangt und wurde nicht ungefragt
-  gemacht (D-034).
+* Rendern/Absenden des Formulars war zu diesem Zeitpunkt noch nicht
+  getestet, siehe Nachtrag unten.
 * Danach beide Pakete deinstalliert, Whiteouts und Testdateien entfernt,
   Knoten ohne offene UCI-Aenderungen (aktueller Site-Code: `nef-02_met`,
   Ergebnis des in der Zwischenzeit real erfolgten Domainwechsels ueber
@@ -362,3 +359,14 @@ Kein Flash, keine UCI-Aenderung. Der zuvor beobachtete Reflash-Loop
 (vgl. Screenshot vom selben Tag, altes Szenario ohne `target=`) tritt mit
 dem Fix nicht mehr auf. Bestaetigt von adorfer auf dem echten
 Produktionsbuild, nicht nur im Container-Test.
+
+### Nachtrag 2026-09-05: Config-Mode-Tab visuell bestaetigt
+
+adorfer hat einen Screenshot des echten Setup-Modes geschickt (Config-Mode
+ist nur ueber einen eigenen Boot-Modus mit eigenem uhttpd erreichbar, siehe
+oben - ich kann da selbst nicht hinschauen). Tab "Nodeplacer" erscheint auf
+der "Erweiterte Einstellungen"-Seite, zwischen "Taster" (fremdes Paket) und
+"Firmware aktualisieren"; Titel, Beschreibungstext und Checkbox-Label
+("Aktiviert") sind korrekt aus der `de.po` uebersetzt, Haekchen gesetzt
+entspricht `disable=0`. Formular mit "Zuruecksetzen"/"Speichern" wie die
+uebrigen Tabs auf der Seite. Damit ist D-034 vollstaendig verifiziert.
