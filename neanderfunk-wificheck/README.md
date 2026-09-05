@@ -1,4 +1,4 @@
-gluon wifi neighbour check
+neanderfunk-wificheck
 ==========================
 
 This script looks for wifi mesh neighbours. 
@@ -18,7 +18,7 @@ PACKAGES_EULENFUNK_COMMIT=1951b97db14ca7b098db76cd6c64363a14de3903
 PACKAGES_EULENFUNK_BRANCH=chaos-calmer
 ```
 
-With this done you can add the package `gluon-wificheck` to your site.mk
+With this done you can add the package `neanderfunk-wificheck` to your site.mk
 
 This branch of the script contains the wificheck version for the gluon branch
 `v2016.1.x` based on openwrt chaos-calmer, but should work with 2018.1.x as
