@@ -16,7 +16,7 @@ define Package/neanderfunk-ath9kblackout
 endef
 
 define Package/neanderfunk-ath9kblackout/description
-	Restartes the wifi if possible blackout is detected.
+	Restarts the wifi if a possible blackout is detected.
 endef
 
 define Build/Prepare
