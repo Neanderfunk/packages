@@ -38,28 +38,25 @@ endef
 define Package/$(PKG_NAME)/preinst
 #!/bin/sh
 cd "$${IPKG_INSTROOT}/etc/"
-if [ -h "./banner" ] ; then
-	/bin/rm "./banner"
-elif [ -f "./banner" ] ; then
+# Back up the original file exactly once, ever. Guarded by ".openwrt" already
+# existing so a re-install/upgrade (banner/profile already our symlink from a
+# prior install) can never re-run this and clobber the one true backup with
+# whatever transient content happened to be there instead.
+if [ ! -e "./banner.openwrt" ] && [ -f "./banner" ] && [ ! -h "./banner" ] ; then
 	/bin/mv "./banner" "./banner.openwrt"
 fi
-/bin/ln -s "./banner.openwrt" "./banner"
-
-if [ -h "./profile" ] ; then
-	/bin/rm "./profile"
-elif [ -f "./profile" ] ; then
+if [ ! -e "./profile.openwrt" ] && [ -f "./profile" ] && [ ! -h "./profile" ] ; then
 	/bin/mv "./profile" "./profile.openwrt"
 fi
-/bin/ln -s "./profile.openwrt" "./profile"
 exit 0
 endef
 
 define Package/$(PKG_NAME)/postinst
 #!/bin/sh
 cd "$${IPKG_INSTROOT}/etc/"
-[ -h "./banner" ] && /bin/rm -f "./banner"
+/bin/rm -f "./banner"
 /bin/ln -s "./banner.gluon" "./banner"
-[ -h "./profile" ] && /bin/rm -f "./profile"
+/bin/rm -f "./profile"
 /bin/ln -s "./profile.gluon" "./profile"
 exit $$?
 endef
