@@ -65,6 +65,22 @@ restart_wifi() {
 #     the node acting on a network that has not settled yet.
 checks_ok || exit 0
 
+# Einzelinstanz-Lock. Dieses Skript kann laenger laufen als sein Cron-Intervall:
+# reboot_when_not_running schlaeft zweimal 20 Sekunden, ein WLAN-Neustart
+# weitere 10. Ohne Lock
+# startet micrond den naechsten Lauf trotzdem, und zwei gleichzeitige Laeufe
+# zaehlen dieselbe Stoerung doppelt in die Strike-Dateien.
+#
+# Der Deskriptor 200 haelt das Skript selbst offen; busybox' flock kann diese
+# Form (am Knoten geprueft). Faellt flock aus, laeuft es wie bisher weiter -
+# ein fehlender Lock darf den Check nicht stilllegen.
+if command -v flock >/dev/null 2>&1 ; then
+	exec 200<"$0"
+	if ! flock -n 200 ; then
+		exit 0
+	fi
+fi
+
 # check for stale autoupdater
 if [ -f /tmp/autoupdate.lock ] ; then
   MAXAGE=$(($(date +%s)-60*${UPDATEWAIT}))

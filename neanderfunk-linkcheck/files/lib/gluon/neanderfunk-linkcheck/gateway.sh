@@ -17,6 +17,21 @@
 upgrade_started='/tmp/autoupdate.lock'
 [ -f $upgrade_started ] && exit
 
+# Einzelinstanz-Lock. Dieses Skript kann laenger laufen als sein Cron-Intervall:
+# bis zu zehn Pings je oeffentlichem Prefix, und davon kann es mehrere geben. Ohne Lock
+# startet micrond den naechsten Lauf trotzdem, und zwei gleichzeitige Laeufe
+# zaehlen dieselbe Stoerung doppelt in die Strike-Dateien.
+#
+# Der Deskriptor 200 haelt das Skript selbst offen; busybox' flock kann diese
+# Form (am Knoten geprueft). Faellt flock aus, laeuft es wie bisher weiter -
+# ein fehlender Lock darf den Check nicht stilllegen.
+if command -v flock >/dev/null 2>&1 ; then
+	exec 200<"$0"
+	if ! flock -n 200 ; then
+		exit 0
+	fi
+fi
+
 # Nothing at all within the first linkcheck.settings.check_uptime_min minutes:
 # right after a boot the anycast address is regularly not reachable yet, and
 # saying so would only cause needless alarm.

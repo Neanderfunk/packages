@@ -80,6 +80,22 @@ valuecheck ()
 upgrade_started='/tmp/autoupdate.lock'
 [ -f ${upgrade_started} ] && exit
 
+# Einzelinstanz-Lock. Dieses Skript kann laenger laufen als sein Cron-Intervall:
+# je Radio zwei "sleep 4" um den Scan, ein 20-Sekunden-Waechter um "iw station
+# dump", 15 Sekunden nach einem WLAN-Neustart, 10 vor einem Reboot. Ohne Lock
+# startet micrond den naechsten Lauf trotzdem, und zwei gleichzeitige Laeufe
+# zaehlen dieselbe Stoerung doppelt in die Strike-Dateien.
+#
+# Der Deskriptor 200 haelt das Skript selbst offen; busybox' flock kann diese
+# Form (am Knoten geprueft). Faellt flock aus, laeuft es wie bisher weiter -
+# ein fehlender Lock darf den Check nicht stilllegen.
+if command -v flock >/dev/null 2>&1 ; then
+	exec 200<"$0"
+	if ! flock -n 200 ; then
+		exit 0
+	fi
+fi
+
 # Two thresholds, deliberately separate:
 #   below linkcheck.settings.check_uptime_min (default 5 min) nothing runs at
 #     all - the network is still coming up, and "no neighbours" or "anycast not
@@ -179,7 +195,20 @@ if ! check_disabled "$checkgroup" ; then
     iwfile=/tmp/linkcheck.iwscan.$(uci get $linkexist.device)
     if [ ! -f $iwfile ] ; then
       sleep 4
-      iw dev ${linkname} scan lowpri passive > $iwfile
+      # Derselbe Waechter wie um "iw station dump" weiter unten: ein iw-Aufruf
+      # gegen ein verklemmtes Radio kann haengen bleiben, und dieser hier lief
+      # bisher ungesichert - der ganze Lauf haette dann gestanden, waehrend
+      # micrond alle 5 Minuten den naechsten startet.
+      ( iw dev "${linkname}" scan lowpri passive > "$iwfile" 2>/dev/null ) &
+      scanpid=$!
+      n=0
+      while [ $n -lt 20 ] && kill -0 $scanpid 2>/dev/null ; do sleep 1 ; n=$((n + 1)) ; done
+      if kill -0 $scanpid 2>/dev/null ; then
+        kill -9 $scanpid 2>/dev/null
+        logger -s -t "neanderfunk-linkcheck" -p 5 "[bsses] iw dev ${linkname} scan hangs, skipped"
+        rm -f "$iwfile"
+        continue
+       fi
       sleep 4
      fi
     bsses=$(cat $iwfile|grep "BSS .*:.*:.*:.*:.*:.*(on.*)"|wc -l)
