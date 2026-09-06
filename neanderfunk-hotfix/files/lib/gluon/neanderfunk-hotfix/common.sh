@@ -129,3 +129,59 @@ strike() {
 unstrike() {
 	rm -f "$1".* 2>/dev/null
 }
+
+# The syslog tag the functions below log under. healthcheck.sh sets it to
+# "neanderfunk-healthcheck" before sourcing this file, so the lines it has
+# always written stay unchanged; everything else logs as the package.
+: "${HOTFIX_TAG:=neanderfunk-hotfix}"
+
+safety_exit() {
+	logger -s -t "$HOTFIX_TAG" "safety checks failed $@, exiting with error code 2"
+	exit 2
+}
+
+# true while the autoupdater is downloading or writing the flash.
+#
+# The markers come from our own hooks in /usr/lib/autoupdater/*.d - see
+# 20neanderfunk-hotfix there. The file the original checks, /tmp/autoupdate.lock,
+# is created by nobody: it appears in no Gluon package, and on nodes running for
+# weeks it does not exist. It is still looked at, for the case that some other
+# package revives the convention, but it must not be the only guard.
+autoupdater_busy() {
+	[ -f /tmp/hotfix.autoupdater-flashing ] && return 0
+	[ -f /tmp/hotfix.autoupdater-running ] && return 0
+	[ -f /tmp/autoupdate.lock ] && return 0
+	return 1
+}
+
+now_reboot() {
+	# first parameter message
+	# second optional -f to force reboot even if autoupdater is running
+	#
+	# Below hotfix.settings.reboot_uptime_min the finding is still reported, it
+	# just does not lead to a reboot - see no_action_yet() above.
+	# the check name is the [tag] the caller put in front of the message
+	reason_check="${1#*[}" ; reason_check="${reason_check%%]*}"
+	if ! uptime_ok && ! acts_immediately "$reason_check" ; then
+		no_action_yet "$1"
+		return 0
+	fi
+	logger -s -t "$HOTFIX_TAG" -p 5 "rebooting... reason: $1"
+	LOG=/lib/gluon/neanderfunk-hotfix
+	[ ! -d $LOG ] && mkdir $LOG
+	LOG="$LOG/reboot.log"
+	# the first 5 times log the reason for a reboot in a file that is rebootsave
+	# (|| echo 0: on the very first reboot the file does not exist yet, and an
+	# empty $() would make the -gt comparison bail out with a shell error)
+	[ "$(wc -l < "$LOG" 2>/dev/null || echo 0)" -gt 5 ] || echo "$(date) $1" >> "$LOG"
+	# -f overrides this, but never a flash write in progress: an interrupted
+	# sysupgrade bricks the node, and no check is worth that.
+	if [ -f /tmp/hotfix.autoupdater-flashing ] ; then
+		safety_exit "autoupdater is writing the flash"
+	fi
+	if [ "$2" != "-f" ] && autoupdater_busy ; then
+		safety_exit "autoupdate running"
+	fi
+	sync
+	/sbin/reboot -f
+}

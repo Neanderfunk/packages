@@ -1,44 +1,17 @@
 #!/bin/sh
 # cc0, maintained by adorfer@nadeshda.org 
 
-# check_disabled(), uptime_ok(), reboot_uptime_limit() - see common.sh for the
-# uci keys (hotfix.<check>.disabled, hotfix.settings.reboot_uptime_min)
+# check_disabled(), uptime_ok(), reboot_uptime_limit(), now_reboot(),
+# safety_exit() - see common.sh for the uci keys (hotfix.<check>.disabled,
+# hotfix.settings.reboot_uptime_min)
+#
+# Keep the tag this script has always logged under, so anything watching the
+# syslog for "neanderfunk-healthcheck" keeps working.
+HOTFIX_TAG='neanderfunk-healthcheck'
 . /lib/gluon/neanderfunk-hotfix/common.sh
 
 # wait 60 minutes if autoupdater is running
 UPDATEWAIT='60'
-
-safety_exit() {
-  logger -s -t "neanderfunk-healthcheck" "safety checks failed $@, exiting with error code 2"
-  exit 2
-}
-
-now_reboot() {
-  # first parameter message
-  # second optional -f to force reboot even if autoupdater is running
-  #
-  # Below hotfix.settings.reboot_uptime_min the finding is still reported, it
-  # just does not lead to a reboot - see no_action_yet() in common.sh.
-  # the check name is the [tag] the caller put in front of the message
-  reason_check="${1#*[}" ; reason_check="${reason_check%%]*}"
-  if ! uptime_ok && ! acts_immediately "$reason_check" ; then
-    no_action_yet "$1"
-    return 0
-  fi
-  logger -s -t "neanderfunk-healthcheck" -p 5 "rebooting... reason: $1"
-  LOG=/lib/gluon/neanderfunk-hotfix
-  [ ! -d $LOG ] && mkdir $LOG
-  LOG="$LOG/reboot.log"
-  # the first 5 times log the reason for a reboot in a file that is rebootsave
-  # (|| echo 0: on the very first reboot the file does not exist yet, and an
-  # empty $() would make the -gt comparison bail out with a shell error)
-  [ "$(wc -l < "$LOG" 2>/dev/null || echo 0)" -gt 5 ] || echo "$(date) $1" >> "$LOG"
-  if [ "$2" != "-f" ] && [ -f /tmp/autoupdate.lock ] ; then
-    safety_exit "autoupdate running"
-  fi
-  sync
-  /sbin/reboot -f
-}
 
 restart_wifi() {
   # same rule as now_reboot: report below the action threshold, do not act
