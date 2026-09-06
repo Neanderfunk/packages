@@ -13,6 +13,13 @@ config settings 'settings'
 	# always win over the site.conf.
 	#option reboot_uptime_min '60'
 
+	# deadman watchdog for micrond itself: micrond starts watchdog.sh every
+	# N minutes, an instance not relieved within 3*N minutes reboots the node
+	#option watchdog_interval_min '5'
+	# how long a running autoupdater may go without relieving the watchdog
+	# before it is considered stuck and the node is rebooted anyway
+	#option autoupdater_stale_min '300'
+
 # --- healthcheck.sh (*/7) ---
 config check 'stale_lock'
 config check 'kernel_bug'
@@ -27,6 +34,7 @@ config check 'respondd'
 config check 'dropbear'
 config check 'bridge_ports'
 config check 'mesh_neighbours'
+config check 'watchdog'
 
 # --- rebootIfNoGw.sh (*/8) ---
 config check 'no_gateway'

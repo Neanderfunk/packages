@@ -2,3 +2,4 @@
 */7 * * * * /lib/gluon/neanderfunk-hotfix/healthcheck.sh
 */15 * * * * /lib/gluon/neanderfunk-hotfix/IfNoWificlient.sh
 
+*/5 * * * * /lib/gluon/neanderfunk-hotfix/watchdog.sh

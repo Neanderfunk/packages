@@ -1,0 +1,8 @@
+#!/bin/sh
+# The autoupdater stops micrond right about now (see 10gluon-autoupdater), so
+# the hotfix watchdog stops being relieved. Leave it the uptime at which this
+# run started, so it can tell "an update is legitimately running" from "micrond
+# is dead" - and reboot anyway once the run exceeds
+# hotfix.settings.autoupdater_stale_min.
+read up rest < /proc/uptime
+echo "${up%.*}" > /tmp/autoupdater-running

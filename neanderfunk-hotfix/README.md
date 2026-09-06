@@ -107,4 +107,44 @@ Checks
 | `no_gateway` | no batman gateway in range | reboot |
 | `ipv6_anycast` | the IPv6 anycast address is unreachable | reboot |
 | `no_wifi_clients` | clients were seen and then all disappeared | wifi restart |
+| `watchdog` | deadman switch for micrond itself, see below | reboot |
 
+Watchdog (micrond deadman switch)
+---------------------------------
+
+Every other check here runs from micrond. If micrond itself dies - crash, OOM
+kill, or stopped and never restarted - nothing on the node would ever notice or
+reboot it again. `watchdog.sh` closes that hole:
+
+micrond starts it every `watchdog_interval_min` minutes (default 5). Each new
+instance relieves its predecessor by killing it. An instance that is *not*
+relieved within 3x that interval concludes there is no micrond starting jobs any
+more, and reboots.
+
+Everything after its sleep is deliberately fork-free, because the situation it
+exists for includes running out of memory, where starting `logger`, `date` or
+`/sbin/reboot` may simply fail: `echo`, `read` and `kill` are ash builtins, the
+reason goes to `/dev/kmsg` (which still shows up in `logread`) and the reboot
+goes through `/proc/sysrq-trigger` - `s` to sync, `b` to reboot immediately.
+`/sbin/reboot -f` is only a fallback for kernels without sysrq.
+
+The autoupdater legitimately stops micrond while it downloads and flashes, and
+that must not be mistaken for a dead micrond. Three hooks installed by this
+package leave markers behind:
+
+| hook | marker | meaning |
+| --- | --- | --- |
+| `download.d/20neanderfunk-hotfix` | `/tmp/autoupdater-running` (uptime at start) | an update is running |
+| `upgrade.d/20neanderfunk-hotfix` | `/tmp/autoupdater-flashing` | sysupgrade is about to write the flash |
+| `abort.d/20neanderfunk-hotfix` | removes both | the update was aborted |
+
+While `autoupdater-flashing` exists the watchdog **never** reboots - interrupting
+a flash write bricks the node. While an update is merely running it reboots only
+once that run exceeds `autoupdater_stale_min` minutes (default 300), on the
+assumption that the updater is then stuck rather than working.
+
+```
+uci set hotfix.settings.watchdog_interval_min='5'
+uci set hotfix.settings.autoupdater_stale_min='300'
+uci commit hotfix
+```
