@@ -97,12 +97,13 @@ local gwoffmaxcount = tonumber(uci:get('ssid-changer', 'settings', 'gwofflinemax
 local off_count = 0
 local file = io.open(tmp, 'r')
 
-local is_offline = 0
+-- tmp_state is only a diagnostic now ("was the node considered offline at the
+-- last window boundary?", handy when chasing reports about stuck SSIDs). It is
+-- deliberately not read back for any decision: see offline_ssid_is_configured().
 local state_file = io.open(tmp_state, 'r')
 local gwoffstate_file = io.open(tmp_gwoffstate, 'r')
 
 if state_file then
-	is_offline = tonumber(state_file:read("*a")) or 0
 	state_file:close()
 else
 	state_file = io.open(tmp_state, 'w')
@@ -138,7 +139,15 @@ local function calculate_tq_limit()
 	handle:close()
 
 	if not gateway_tq then
-		safety_exit('tq_limit can not be calculated without gateway')
+		-- We only get here when has_default_gw4() was true, so a gateway does
+		-- exist - batctl just didn't report a parsable TQ for the selected one
+		-- right now (e.g. while gateway election is still settling after a
+		-- reconnect). Do NOT exit the script here: that would skip the
+		-- "revert to the normal SSID" path below and keep a recovered node on
+		-- the offline SSID. Fall back to what the non-tq_limit path would say
+		-- for an existing gateway instead.
+		log('no parsable gateway TQ, falling back to online for this run')
+		return 'online'
 	end
 	local is_online
 
@@ -149,7 +158,7 @@ local function calculate_tq_limit()
 	else
 		-- in the middle part we consider us offline if there was at least one offline incidents
 		-- or we were offline before the current monitor interval
-		is_online = off_count > 0
+		is_online = off_count == 0
 	end
 
 	if is_online then
@@ -193,14 +202,42 @@ else
 	end
 end
 
+-- Is any client radio currently carrying the offline SSID? The /tmp bookkeeping
+-- can be lost (files are truncated on open and only flushed on close, so a kill
+-- in between leaves them empty, and tonumber('') silently becomes 0), while the
+-- offline SSID lives on in the uncommitted wireless delta. Deciding the revert
+-- from off_count alone would then never fire again and the node would stay on
+-- the offline SSID until its next reboot, with the config looking untouched.
+local function offline_ssid_is_configured()
+	for i = 0, 2 do
+		if uci:get('wireless', 'client_radio' .. i, 'ssid') == offline_ssid then
+			return true
+		end
+	end
+	return false
+end
+
 if status == 'online' then
 	log_debug("node is online")
 	-- only revert and reconf if we were offline in the current monitoring timeframe or before
 	-- to reduce impact
-	if off_count > 0 then
+	if off_count > 0 or offline_ssid_is_configured() then
 		log("reverting offline ssid back to default wireless config")
 		uci:revert('wireless')
 		os.execute('wifi reconf')
+
+		-- Clear the offline bookkeeping right away. Without this, off_count
+		-- keeps its old value until the next switch_timeframe boundary, so
+		-- this branch would run again on every single following minute -
+		-- reverting an already reverted config and restarting wifi (kicking
+		-- clients) once a minute for up to switch_timeframe minutes.
+		off_count = 0
+		file = io.open(tmp, 'w')
+		file:write("0")
+		file:close()
+		state_file = io.open(tmp_state, 'w')
+		state_file:write("0")
+		state_file:close()
 	end
 elseif status == 'offline' then
 	log_debug("node is considered offline")
@@ -208,8 +245,14 @@ elseif status == 'offline' then
 	-- set SSID offline, only if uptime is less than FIRST or exactly a multiplicative of switch_timeframe
 	if uptime_minutes < first or is_switch_time == 0 then
 
-		-- check if off_count is more than half of the monitor duration
-		if is_offline == 0 and off_count >= math.floor(monitor_duration / 2) then
+		-- Check if off_count is more than half of the monitor duration.
+		-- The "is it already applied?" half of this guard is answered from the
+		-- actual wireless config rather than from the is_offline bookkeeping:
+		-- is_offline is written from `status` at every window boundary, even on
+		-- boundaries where the SSID was NOT switched (off_count below the
+		-- threshold). It then reads as "already offline" forever after, which
+		-- blocked the switch for the whole time a node stayed offline.
+		if not offline_ssid_is_configured() and off_count >= math.floor(monitor_duration / 2) then
 			-- if has been offline for at least half checks in monitor duration
 			-- set the SSID to the offline SSID
 			-- and disable owe client radios
@@ -248,4 +291,5 @@ if is_switch_time == 0 then
 		state_file:write("0")
 	end
 	file:close()
+	state_file:close()
 end
