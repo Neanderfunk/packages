@@ -45,6 +45,7 @@ define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
 	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-hotfix/healthcheck.sh
 	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-hotfix/check_hostapd.sh
+	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-hotfix/check_wifi_firmware.sh
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))

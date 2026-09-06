@@ -2,3 +2,8 @@
 */15 * * * * /lib/gluon/neanderfunk-hotfix/IfNoWificlient.sh
 
 */5 * * * * /lib/gluon/neanderfunk-hotfix/watchdog.sh
+
+# Own entry rather than a line in healthcheck.sh: a crashed wifi firmware
+# leaves the node deaf, and waiting out healthcheck's 7 minute period twice
+# would take a quarter of an hour. The check is two globs and a read.
+*/3 * * * * /lib/gluon/neanderfunk-hotfix/check_wifi_firmware.sh

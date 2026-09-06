@@ -143,10 +143,15 @@ safety_exit() {
 # true while the autoupdater is downloading or writing the flash.
 #
 # The markers come from our own hooks in /usr/lib/autoupdater/*.d - see
-# 20neanderfunk-hotfix there. The file the original checks, /tmp/autoupdate.lock,
-# is created by nobody: it appears in no Gluon package, and on nodes running for
-# weeks it does not exist. It is still looked at, for the case that some other
-# package revives the convention, but it must not be the only guard.
+# 20neanderfunk-hotfix there.
+#
+# /tmp/autoupdate.lock, which this and several community packages used to check
+# on its own, is written by nobody today: it appears in no Gluon package and in
+# no patch of our firmware tree, and on nodes running for weeks it does not
+# exist. It is a leftover from a local autoupdater patch of the 2021.1.x days
+# that created it. Still looked at here in case the convention is revived
+# somewhere, but it must not be the only guard - as a sole guard it protects
+# nothing.
 autoupdater_busy() {
 	[ -f /tmp/hotfix.autoupdater-flashing ] && return 0
 	[ -f /tmp/hotfix.autoupdater-running ] && return 0

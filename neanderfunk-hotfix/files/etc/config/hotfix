@@ -50,3 +50,6 @@ config check 'watchdog'
 config check 'no_wifi_clients'
 
 config check 'br_client_ipv6'
+
+# --- check_wifi_firmware.sh (*/3) ---
+config check 'wifi_firmware'

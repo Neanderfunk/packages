@@ -165,7 +165,51 @@ Checks
 | `respondd` | respondd not running | reboot |
 | `dropbear` | dropbear not running | reboot |
 | `no_wifi_clients` | clients were seen and then all disappeared | wifi restart |
+| `wifi_firmware` | mt76 wifi firmware crashed, see below | reboot |
 | `watchdog` | deadman switch for micrond itself, see below | reboot |
+
+`stale_lock` is listed for completeness but cannot currently fire: nothing
+writes `/tmp/autoupdate.lock` any more (see below).
+
+Crashed wifi firmware (`wifi_firmware`)
+---------------------------------------
+
+`/sys/kernel/debug/ieee80211/phy*/mt76/rf_regval` is a register window into the
+running wifi firmware. While that firmware lives, reading it yields a value;
+once it has crashed the file is still there but the read fails. "Present but
+unreadable" is therefore a fairly direct crash detector, and there is no remedy
+short of a reboot - the firmware is loaded when the module probes, so
+`wifi down; wifi up` does not reload it.
+
+Runs on its own `*/3` schedule rather than inside `healthcheck.sh` (`*/7`),
+because a node whose wifi firmware is dead is deaf to clients and waiting out
+two 7 minute periods would cost a quarter of an hour.
+
+Ported from `ffac-mt7915-hotfix` in community-packages, which this replaces.
+What changed:
+
+* The original expanded `phy*` **twice**, independently - once in `ls`, once in
+  `cat`. On a device where one phy has the file and another does not, the `ls`
+  succeeds while the `cat` fails, and the node reboots over a file that was
+  never there. Here every phy is looked at on its own.
+* Uptime thresholds. The original had none, so it could reboot two minutes into
+  a boot while the firmware was still coming up.
+* Two consecutive failed reads before acting, so one bad read is not enough.
+* A working autoupdater guard (see below).
+* Switchable per node like every other check.
+
+Deliberately **not** immediate: on a node that has been up for days - the normal
+case - the reboot follows about six minutes after the firmware dies. Only inside
+the first hour after a boot is it held back, and that is exactly where a
+genuinely broken chip would otherwise reboot-loop every few minutes. Held back,
+the worst case is one reboot per hour, with the finding in the log throughout.
+`uci set hotfix.wifi_firmware.immediate='1'` overrides that per node.
+
+Despite the original's name this is not mt7915-specific - the debugfs path is
+mt76-generic. On chips that do not export `rf_regval` (a Xiaomi 4A Gigabit with
+`mt7603e`/`mt76x2e`) nothing matches and the check does nothing. Worth knowing,
+because on that device the original's `cat` fails too: only its `ls` guard kept
+it from rebooting the node every two minutes.
 
 Watchdog (micrond deadman switch)
 ---------------------------------
@@ -200,6 +244,18 @@ package leave markers behind:
 | `download.d/20neanderfunk-hotfix` | `/tmp/hotfix.autoupdater-running` (uptime at start) | an update is running |
 | `upgrade.d/20neanderfunk-hotfix` | `/tmp/hotfix.autoupdater-flashing` | sysupgrade is about to write the flash |
 | `abort.d/20neanderfunk-hotfix` | removes both | the update was aborted |
+
+These markers are what `now_reboot()` in `common.sh` consults, so **every** check
+of this package is held off while an update runs, and none of them can reboot
+during a flash write - not even one called with `-f`.
+
+The file this used to check instead, `/tmp/autoupdate.lock`, is written by
+nobody: it appears in no Gluon package and in no patch of our firmware tree, and
+on nodes running for weeks it does not exist. It is a leftover from a local
+autoupdater patch of the 2021.1.x days. Several community packages
+(`ffac-mt7915-hotfix`, `tecff-broken-wlan-workaround`) still guard themselves
+with it alone, which means they are not guarded at all. It is still consulted
+here, in case the convention is ever revived, but never on its own.
 
 While `autoupdater-flashing` exists the watchdog **never** reboots - interrupting
 a flash write bricks the node. While an update is merely running it reboots only
