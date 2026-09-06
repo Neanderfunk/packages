@@ -97,10 +97,20 @@ Checks
 | `batman_originators` | originators reachable via a batman interface (wifi mesh links are excluded on purpose) | wifi restart, reboot |
 | `bridges` | a bridge that was present has disappeared | wifi restart, reboot |
 | `bridge_ports` | a port that was part of a bridge dropped out of it | wifi restart, reboot |
+| `mesh_neighbours` | a wifi mesh radio that had >=2 neighbours now has none | wifi restart, reboot |
+| `no_gateway` | no batman gateway in range for 4 runs (`gateway.sh`) | reboot |
+| `ipv6_anycast` | the IPv6 anycast address unreachable for 4 runs (`gateway.sh`) | reboot |
 
-All of these follow the same rule: a check only arms once it has seen at least
+The first seven follow the same rule: a check only arms once it has seen at least
 2 of whatever it counts during this runtime, and only then does losing all of
 them escalate. A node that is legitimately alone therefore never escalates, and
 because the markers live in `/tmp`, an outage costs at most one reboot - after
 it the node is not armed again until it has really seen neighbours again.
+
+`no_gateway` and `ipv6_anycast` run from a second cron entry (`gateway.sh`,
+every 8 minutes) and arm the same way: only a node that has seen a gateway, or
+reached the anycast address, at least once since boot can reboot over losing it.
+Four consecutive failures - roughly half an hour - are needed. Both used to live
+in neanderfunk-hotfix; they ask whether the network still works, not whether
+this node is healthy, so they belong here.
 

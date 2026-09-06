@@ -1,1 +1,2 @@
 */5 * * * * /lib/gluon/neanderfunk-linkcheck/linkcheck.sh &> /dev/null
+*/8 * * * * /lib/gluon/neanderfunk-linkcheck/gateway.sh

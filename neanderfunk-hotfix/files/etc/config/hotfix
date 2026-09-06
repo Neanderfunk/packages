@@ -31,17 +31,12 @@ config check 'ksoftirqd_malloc'
 config check 'hostapd_pids'
 config check 'dfs_failcheck'
 config check 'tunneldigger'
-config check 'br_client_ipv6'
 config check 'load'
 config check 'respondd'
 config check 'dropbear'
-config check 'bridge_ports'
-config check 'mesh_neighbours'
 config check 'watchdog'
-
-# --- rebootIfNoGw.sh (*/8) ---
-config check 'no_gateway'
-config check 'ipv6_anycast'
 
 # --- IfNoWificlient.sh (*/15) ---
 config check 'no_wifi_clients'
+
+config check 'br_client_ipv6'

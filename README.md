@@ -19,16 +19,20 @@ This is done for compatblity issues with certain android(tm) devices, refusing t
 
 ### neanderfunk-hotfix
 
-Hotfix-collection-VFN: Reboot if no Wifi clients or if no Gateway connection, 
-looking for 
-- disappeared batman-gw (failing batman transglobal tables) 
-- disappeared:ac1/64 anycast (failing iv6<>batman binding)
-- divers kernel/malloc issues if device is on the way down to freeze
-- frozen wifi driver 
-- ap with disappeared clients for long time
-- dfs-scan pannics 
-- hostapd with non matching pid-files, rendered disfunctional
-- illogical high number of tunneldigger clients active at the same time
+Local health of the node itself - everything that is wrong on this box rather
+than out in the network. Looks for
+- kernel/malloc issues on the way down to a freeze
+- a frozen wifi driver, dfs-scan panics
+- hostapd with non-matching pid files, rendered dysfunctional
+- an AP whose clients have all been gone for a long time
+- an illogical number of tunneldigger instances
+- br-client without an address from the site's own (ULA) prefix
+- respondd or dropbear not running
+- a deadman watchdog for micrond itself
+Every check can be switched off individually and the reboot hold-off after a
+boot is configurable. See [](neanderfunk-hotfix/README.md).
+Questions about the network around the node - missing gateway, anycast,
+neighbours, bridge ports - live in neanderfunk-linkcheck instead.
 
 ### neanderfunk-migrate-updatebranch ###
 
@@ -41,7 +45,12 @@ Banner file replacement, Some nice messages on login and more aliases set.
 
 ### neanderfunk-linkcheck
 
-WIFI-Neighborcheck. check if interfaces with previously 2 and more neighbors have lost all neigbors for longer, see [](neanderfunk-linkcheck/README.md)
+Everything about the network around the node: an interface that had 2 or more
+neighbours and has lost all of them, a batman interface or a bridge that has
+disappeared, a port that dropped out of its bridge, no batman gateway in range,
+and the IPv6 anycast address gone unreachable. Escalates from a wifi restart to
+a reboot; each check is individually switchable.
+See [](neanderfunk-linkcheck/README.md)
 
 ### neanderfunk-ssid-changer
 

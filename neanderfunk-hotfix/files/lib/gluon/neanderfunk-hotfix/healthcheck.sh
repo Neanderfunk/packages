@@ -84,48 +84,6 @@ check_disabled tunneldigger || {
 [ "$(ps |grep -c -e "/usr/bin/[t]unneldigger")" -ge "7" ] && now_reboot "[tunneldigger] too many Tunneldigger instances"
 true; }
 
-# br-client without ipv6 in prefix-range
-if ! check_disabled br_client_ipv6 && [ "$(ip -6 addr show to "$(jsonfilter -i /lib/gluon/site.json -e '$.prefix6')" dev br-client | grep -c inet6)" == "0" ]; then
-  now_reboot "[br_client_ipv6] br-client without ipv6 in prefix-range (probably none)"
-fi
-
-# An eth or wifi-mesh interface can silently drop out of its bridge after an
-# interface flap - everything else still looks healthy, the port is just gone
-# from the bridge. Ports are read from /sys/class/net/<bridge>/brif (exact, no
-# brctl column parsing) and remembered per bridge in /tmp, so the list rebuilds
-# from reality after a reboot.
-# Three consecutive misses are required before rebooting: `wifi reconf` takes
-# wifi interfaces out of their bridge for a moment, and that must not reboot the
-# node. At the */7 cron interval that means a port has to stay gone for ~21 min.
-check_bridge_ports() {
-  local brif bridge port seen current
-  for brif in /sys/class/net/*/brif ; do
-    [ -d "$brif" ] || continue
-    bridge="$(basename "$(dirname "$brif")")"
-    # No special case for a bridge that currently has no ports at all: losing
-    # every port is exactly the failure this is looking for, and the three
-    # strikes below keep a transient from rebooting the node.
-    current=" $(ls "$brif" 2>/dev/null | tr '\n' ' ')"
-    for port in $(ls "$brif" 2>/dev/null) ; do
-      touch "/tmp/hotfix.brport.$bridge.$port.seen"
-      unstrike "/tmp/hotfix.brport.$bridge.$port.gone"
-    done
-    for seen in /tmp/hotfix.brport."$bridge".*.seen ; do
-      [ -e "$seen" ] || continue
-      port="${seen#/tmp/hotfix.brport.$bridge.}"
-      port="${port%.seen}"
-      case "$current" in
-        *" $port "*) continue ;;
-      esac
-      case "$(strike "/tmp/hotfix.brport.$bridge.$port.gone")" in
-        1) logger -s -t "neanderfunk-healthcheck" -p 5 "interface $port missing from bridge $bridge" ;;
-        2) ;;
-        *) now_reboot "[bridge_ports] interface $port dropped out of bridge $bridge" ;;
-      esac
-    done
-  done
-}
-check_disabled bridge_ports || check_bridge_ports
 
 reboot_when_not_running() {
   (pgrep $1 || sleep 20 ; pgrep $1 || now_reboot "[$1] $1 not running") &> /dev/null
@@ -138,78 +96,20 @@ check_disabled load || { [ "$(cat /proc/loadavg|cut -d" " -f3|tr -d .)" -ge "201
 check_disabled respondd || reboot_when_not_running respondd
 check_disabled dropbear || reboot_when_not_running dropbear
 
-iw_dev_reboot_freeze() {
-  # first parameter defines the time to wait
-  # calls `iw` with the rest of the arguments given to the function
-  local t=$1 ; shift
-  iw dev $@ &
-  # get the bg process
-  local p=$!
-  sleep $t
-  # kill -0 does nothing, but returns true if the process exists
-  kill -0 $p 2>/dev/null && now_reboot "[mesh_neighbours] 'iw dev $@ freezes for more than $t s'"
-}
-
-scan() {
-  # call iw $dev scan to repair defunc wifi
-  logger -s -t "neanderfunk-healthcheck" -p 5 "neighbour lost, running iw scan"
-  iw_dev_reboot_freeze 30 $1 scan lowpri passive>/dev/null
-}
-
-# check all radios for lost neighbours ("no island")
-#
-# A mesh radio that has seen a real neighbourhood (>=2 neighbours) during this
-# runtime and then sees none at all for a long time is suspicious: either the
-# mesh interface is broken wifi-wise, or it dropped out of its bridge.
-#
-# Arming only after >=2 neighbours, and only for this runtime (the markers live
-# in /tmp), does two things: a node that is legitimately alone never escalates,
-# and a real outage costs at most one reboot - afterwards /tmp is empty, so the
-# node is not armed again until it has actually seen neighbours again.
-#
-# Before this, the check only ever compared against the previous run and reacted
-# with an iw scan. Worse, N_LOG is rewritten every run, so once *all* neighbours
-# were gone the comparison list was empty too and the check went silent exactly
-# when the node was islanded.
-if ! check_disabled mesh_neighbours ; then
-for mesh_radio in `uci show wireless 2>/dev/null| grep -E -o '(ibss|mesh)_radio[0-9]+' | awk '!seen[$0]++'`; do
-  radio="$(uci get wireless.$mesh_radio.device)"
-  if [[ "$(uci -q get wireless.$radio.disabled)" != "1" && "$(uci -q get wireless.$mesh_radio.disabled)" != "1" ]]; then
-    DEV="$(uci get wireless.$mesh_radio.ifname)"
-    N_LOG="/tmp/hotfix.mesh-neighbours.$mesh_radio"
-    INHOOD="/tmp/hotfix.mesh-inhood.$mesh_radio"
-    GONE="/tmp/hotfix.mesh-gone.$mesh_radio"
-    OLD_NEIGHBOURS=$(cat $N_LOG 2>/dev/null)
-    # fill log with new neighbours
-    iw_dev_reboot_freeze 20 $DEV station dump | grep -e "^Station " | cut -f 2 -d ' ' > $N_LOG
-    NEIGHBOURS="$(wc -l < "$N_LOG" 2>/dev/null | tr -d ' ')"
-
-    # arm once a real neighbourhood has been seen during this runtime
-    [ "$NEIGHBOURS" -ge 2 ] && touch "$INHOOD"
-
-    if [ -f "$INHOOD" ] && [ "$NEIGHBOURS" -eq 0 ] ; then
-      # had >=2, now none at all: try the cheap remedies first, then reboot
-      case "$(strike "$GONE")" in
-        1) logger -s -t "neanderfunk-healthcheck" -p 5 "lost all mesh neighbours on $DEV (had >=2 before)"
-           scan "$DEV" ;;
-        2) ;;
-        3) logger -s -t "neanderfunk-healthcheck" -p 5 "still no mesh neighbours on $DEV, restarting wifi"
-           restart_wifi ;;
-        *) now_reboot "[mesh_neighbours] no mesh neighbours on $DEV for 4 checks (had >=2 before)" ;;
-      esac
+# br-client without an address from the site prefix. site.conf's prefix6 is the
+# domain's own ULA prefix (fd..), which the node assigns to itself - so this is a
+# local network-config fault, not a question of reachability, and it stays here
+# rather than in linkcheck. Escalates over four runs before rebooting.
+if ! check_disabled br_client_ipv6 ; then
+  prefix="$(jsonfilter -i /lib/gluon/site.json -e '@.prefix6' 2>/dev/null)"
+  # without a prefix6 there is nothing to compare against, so do not reboot. The
+  # old version compared against an empty prefix, which made grep -c report 0 and
+  # would have rebooted the node every 7 minutes.
+  if [ -n "$prefix" ] ; then
+    if [ "$(ip -6 addr show to "$prefix" dev br-client 2>/dev/null | grep -c inet6)" = "0" ] ; then
+      [ "$(strike /tmp/hotfix.brclient-noaddr)" -ge 4 ] && now_reboot "[br_client_ipv6] br-client has no address from the site prefix"
     else
-      unstrike "$GONE"
-      # only some neighbours vanished: cheap remedy, scan once and stop.
-      # The break used to sit inside a ( ) subshell, where it cannot break the
-      # enclosing loop, so every lost neighbour triggered another scan - each
-      # blocking for up to 30s in iw_dev_reboot_freeze.
-      for NEIGHBOUR in $OLD_NEIGHBOURS; do
-         if ! grep -q "$NEIGHBOUR" "$N_LOG" ; then
-           scan "$DEV"
-           break
-         fi
-      done
+      unstrike /tmp/hotfix.brclient-noaddr
     fi
   fi
-done
 fi

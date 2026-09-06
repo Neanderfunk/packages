@@ -6,7 +6,7 @@
 # site.conf:
 #   hotfix = {
 #     reboot_uptime_min = 60,                        -- optional, minutes
-#     disabled_checks = { 'load', 'ipv6_anycast' },  -- optional
+#     disabled_checks = { 'load', 'tunneldigger' },  -- optional
 #   },
 
 sitefile=/lib/gluon/site.json

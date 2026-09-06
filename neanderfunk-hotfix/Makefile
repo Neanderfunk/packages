@@ -15,12 +15,14 @@ define Package/$(PKG_NAME)
 endef
 
 define Package/$(PKG_NAME)/description
-	Four independent micrond jobs that detect and work around conditions a node
-	otherwise wouldn't recover from on its own: no gateway/no wifi clients for
-	a while (reboot), batman-adv/atheros driver "deadly wounded" states, too
-	many stray tunneldigger instances, a hung `iw` call, or hostapd processes
-	with stale pid files (restart wifi/hostapd). See README.md for details on
-	each check.
+	Micrond jobs that detect and work around conditions a node otherwise
+	wouldn't recover from on its own, all of them about the health of this box
+	rather than the network around it: batman-adv/atheros driver "deadly
+	wounded" states, too many stray tunneldigger instances, hostapd processes
+	with stale pid files, an AP whose clients have all disappeared, br-client
+	without an address from the site prefix, respondd or dropbear gone, and a
+	deadman watchdog for micrond itself. Checks about the network - gateway,
+	anycast, mesh neighbours, bridge ports - live in neanderfunk-linkcheck.
 	Each check can be switched off per node (uci set hotfix.<check>.disabled=1)
 	and the reboot hold-off after a boot is adjustable
 	(hotfix.settings.reboot_uptime_min, default 60 minutes); both can be
@@ -41,7 +43,6 @@ endef
 
 define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
-	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-hotfix/rebootIfNoGw.sh 
 	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-hotfix/healthcheck.sh
 	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-hotfix/check_hostapd.sh
 endef

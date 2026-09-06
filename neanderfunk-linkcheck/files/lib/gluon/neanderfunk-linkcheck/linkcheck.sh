@@ -1,53 +1,8 @@
 #! /bin/sh
-#
-# Every single check can be switched off on a node:
-#     uci set linkcheck.<check>.disabled='1' ; uci commit linkcheck
-# The <check> name is part of the reason logged before a wifi restart or a
-# reboot, so it can be read off `logread -f` while watching a node.
-# `uci show linkcheck` lists the available names.
-#
-# How long after a boot no check may reboot (minutes, default 60):
-#     uci set linkcheck.settings.reboot_uptime_min='90' ; uci commit linkcheck
-# It can be preset community-wide from the site.conf, see
-# /lib/gluon/upgrade/500-neanderfunk-linkcheck and the README.
-#
-# These helpers are deliberately duplicated from neanderfunk-hotfix rather than
-# shared: the two packages are independent and neither may need the other
-# installed.
+# Link and topology checks: does this node still have the neighbours, batman
+# interfaces and bridge ports it had before? See common.sh for the uci keys.
 
-# true when the named check is switched off on this node
-check_disabled() {
-	if [ "$(uci -q get linkcheck."$1".disabled)" = "1" ] ; then
-		return 0
-	fi
-	return 1
-}
-
-# minimum uptime in seconds before a check may reboot; unset or non-numeric
-# falls back to the 60 minutes this used to be hardcoded to
-uptime_ok() {
-	local m
-	m="$(uci -q get linkcheck.settings.reboot_uptime_min)"
-	case "$m" in
-		''|*[!0-9]*) m=60 ;;
-	esac
-	[ "$(sed 's/\..*//g' /proc/uptime)" -gt "$((m * 60))" ]
-}
-
-# Count consecutive failures: strike <prefix> records one more and prints how
-# many there are now. One marker file per strike rather than a single counter
-# file on purpose - a counter file is truncated on every write, so being killed
-# in that window resets the count to zero.
-strike() {
-	local n=1
-	while [ -e "$1.$n" ] ; do n=$((n + 1)) ; done
-	touch "$1.$n"
-	echo "$n"
-}
-
-unstrike() {
-	rm -f "$1".* 2>/dev/null
-}
+. /lib/gluon/neanderfunk-linkcheck/common.sh
 
 valuecheck ()
 # this checks for multiple problems on the same IF, tries to resolve, or reboots as last resort
@@ -236,65 +191,93 @@ if [ "$gluontarget" != "mediatek" ] && ! check_disabled "$checkgroup" ; then
      fi
    done
 
-## 4) check for disappearing bridge interfaces
+## 4) bridges and the ports in them
 #
-# get current bridges
-  bridgeslist=$(brctl show |cut -f1|sort -u|sed '/^\s*$/d'|grep -v "bridge name")
-  # create flag files in /tmp
-  for bridgename in ${bridgeslist}; do
-    echo $(date)>/tmp/linkcheck.bridge${ifnameseparator}${bridgename}${ifnameseparator}up
-    interfaces=$(brctl show ${bridgename}|sed -e 's/\t/                     /g'|cut -c 100-|sed -e 's/ //g'|tail -n +2)
-    for interface in ${interfaces}; do
-      echo $(date)>/tmp/linkcheck.bridgeif${ifnameseparator}${bridgename}${ifnameseparator}port${ifnameseparator}${interface}${ifnameseparator}up
-     done
-   done
+# Read from /sys/class/net/<bridge>/brif. That is exact; parsing brctl's
+# whitespace columns (cut -c 100-) depends on the width of the bridge name and
+# id and silently yields nothing when they differ.
+#
+# The port half of this used to exist a second time in neanderfunk-hotfix. It
+# lives here now - a port dropping out of its bridge is a link question, and
+# two independent copies would have escalated the same outage twice.
+if ! check_disabled bridges || ! check_disabled bridge_ports ; then
+  bridges_now=""
+  for brif in /sys/class/net/*/brif ; do
+    [ -d "$brif" ] || continue
+    b="$(basename "$(dirname "$brif")")"
+    bridges_now="$bridges_now $b"
+    touch "/tmp/linkcheck.bridge-seen.$b"
+    for port in $(ls "$brif" 2>/dev/null) ; do
+      touch "/tmp/linkcheck.brport-seen.$b.$port"
+    done
+  done
 
-  # get all previously seen bridges by flag files
-  for upbridgesf in "/tmp/linkcheck.bridge${ifnameseparator}*${ifnameseparator}up"; do
-    :
-#    echo file # $upbridgesf
-   done
-#  echo upbridgesf ${upbridgesf}
-  # check if all prviously seen are in current list
-  checkgroup='bridges'
-  for upbridgef in ${upbridgesf}; do
-    check_disabled bridges && check_disabled bridge_ports && break
-    [ -e "${upbridgef}" ] || continue
-    upbridge=$(echo ${upbridgef}|cut -d${ifnameseparator} -f2)
-#    echo check if by file: ${upbridge} # individually previsously seen file
-    if [[ "${bridgeslist}" =~ "${upbridge}"   ]]; then
-       wert='2'
-#       echo ${upbridge} is golden
+  if ! check_disabled bridges ; then
+    checkgroup='bridges'
+    linkname='bridge'
+    for f in /tmp/linkcheck.bridge-seen.* ; do
+      [ -e "$f" ] || continue
+      b="${f#/tmp/linkcheck.bridge-seen.}"
+      case " $bridges_now " in
+        *" $b "*) wert=2 ;;
+        *) wert=0 ; logger -s -t "neanderfunk-linkcheck" -p 5 "[bridges] bridge $b gone missing" ;;
+      esac
+      check="$b"
+      valuecheck "$check"
+    done
+  fi
+
+  if ! check_disabled bridge_ports ; then
+    checkgroup='bridge_ports'
+    linkname='bridgeport'
+    for f in /tmp/linkcheck.brport-seen.* ; do
+      [ -e "$f" ] || continue
+      rest="${f#/tmp/linkcheck.brport-seen.}"
+      b="${rest%%.*}"
+      port="${rest#*.}"
+      if [ -e "/sys/class/net/$b/brif/$port" ] ; then
+        wert=2
       else
-       wert='0'
-       logger -s -t "neanderfunk-linkcheck" -p 5 bridge ${upbridge} gone missing
+        wert=0
+        logger -s -t "neanderfunk-linkcheck" -p 5 "[bridge_ports] $port dropped out of bridge $b"
       fi
-     linkname=bridgeinterfaces
-     check=${upbridge}
-     checkgroup='bridges'
-     check_disabled bridges || valuecheck ${check}
-     for interfacesf in "/tmp/linkcheck.bridgeif${ifnameseparator}${upbridge}${ifnameseparator}port${ifnameseparator}*${ifnameseparator}up"; do
-       :
-      done
-#     echo file  ${interfacesf}
-     checkgroup='bridge_ports'
-     for interfacef in ${interfacesf}; do
-       check_disabled bridge_ports && break
-       [ -e "${interfacef}" ] || continue
-       interfaced=$(echo ${interfacef}|cut -d${ifnameseparator} -f4)
-#       echo testing ${upbridge}:${interfaced}
-       interfaces=$(brctl show ${upbridge}|sed -e 's/\t/                     /g'|cut -c 100-|sed -e 's/ //g'|tail -n +2)
-#       echo ${interfaces}
-       if [[ "${interfaces}" =~ "${interfaced}" ]]; then
-         wert='2'
-#         echo ${upbridge}:${interfaced} is golden
-        else
-         wert='0'
-         logger -s -t "neanderfunk-linkcheck" -p 5 bridge-member ${upbridge}:${interfaced} gone missing
-        fi
-        linkname=bridgeinterfaceports
-        check=${upbridge}:${interfaced}
-        valuecheck ${check}
-      done
-   done
+      check="$b:$port"
+      valuecheck "$check"
+    done
+  fi
+fi
+
+## 5) wifi mesh neighbours per mesh interface
+#
+# Moved here from neanderfunk-hotfix: "did this radio lose all its neighbours"
+# is a link question. valuecheck already implements exactly the rule we want -
+# arm at >=2 seen, then escalate when it drops to none.
+checkgroup='mesh_neighbours'
+if ! check_disabled "$checkgroup" ; then
+  linkname='meshpeers'
+  for mesh_radio in $(uci show wireless 2>/dev/null | grep -E -o '(ibss|mesh)_radio[0-9]+' | awk '!seen[$0]++') ; do
+    radio="$(uci -q get wireless.${mesh_radio}.device)"
+    [ "$(uci -q get wireless.${radio}.disabled)" = "1" ] && continue
+    [ "$(uci -q get wireless.${mesh_radio}.disabled)" = "1" ] && continue
+    dev="$(uci -q get wireless.${mesh_radio}.ifname)"
+    [ -z "$dev" ] && continue
+    # iw can hang on a wedged radio, so run it in the background and give up
+    # after 20s rather than stalling the whole run
+    out="/tmp/linkcheck.meshpeers.${mesh_radio}.count"
+    ( iw dev "$dev" station dump 2>/dev/null | grep -c "^Station " > "$out" ) &
+    p=$!
+    n=0
+    while [ $n -lt 20 ] && kill -0 $p 2>/dev/null ; do sleep 1 ; n=$((n + 1)) ; done
+    if kill -0 $p 2>/dev/null ; then
+      kill -9 $p 2>/dev/null
+      logger -s -t "neanderfunk-linkcheck" -p 5 "[mesh_neighbours] iw dev $dev station dump hangs, skipped"
+      continue
+    fi
+    wert="$(cat "$out" 2>/dev/null)"
+    case "$wert" in ''|*[!0-9]*) continue ;; esac
+    check="${mesh_radio}"
+    valuecheck "$check"
+  done
+fi
+
 logger -s -t "neanderfunk-linkcheck" -p 5 ${logstring}

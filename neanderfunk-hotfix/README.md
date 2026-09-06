@@ -1,27 +1,35 @@
 # neanderfunk-hotfix
 
-This package will add a cronjob that fixes some problems that rarely occur, but are easy to work around. 
+Micrond jobs that detect and work around conditions a node otherwise would not
+recover from on its own. Everything here is about the health of *this box*.
+Questions about the network around it - is there still a batman gateway, are
+the mesh neighbours gone, did an interface drop out of its bridge - belong to
+neanderfunk-linkcheck and are deliberately not duplicated here.
 
-### Safety checks:
-To be sure, that the script is not disturbing the start and update process:
-- if autoupdater is running, `exit`
-- if the router started less than 5 minutes ago, `exit`
+### Safety checks
 
-### Workarounds
-- check if we have lost any neighbours, `iw dev $DEV scan`
-- if dropbear is not running, reboot (probably ram was full, so more services might've crashed)
-- reboot if there was a kernel (batman) error
+Before any check may act:
 
-### Healthcheck
-- (don't do anything the first 50 minutes after router is started, uptimecheck)
-- batman-adv eadly wounded situation (ksoftirqd/mem alloc error) -> reboot
-- atherosdriver deadly wounded situations (mem alloc errors) -> reboot
-- too many l2tp tunneldigger instances running (3+, means: restarting without killing old zombies, otherwiese hours of slow death)
-- br-client interface not initialized with any valid IPv6 (router is just meshing, but will not be able so show statuspage or get updates)
-- respondd died or dropbear not running: If this happens, something very strange happended to the system. -> reboot
-- iw on wifi hangs (does not terminate, this is a servere atheros bug) -> detect and reboot.
-- iw scan with lowpri, to force the wifi to wake up (just in case of strange powermanagement behavoir)
-- check for radio neigbors and report them to log, to have some stats in the logread, in case no map with history/grafana etc in reach
+- an autoupdater run in progress (`/tmp/autoupdate.lock`): exit. A lock older
+  than 60 minutes is a hung autoupdater and gets a reboot of its own
+  (`stale_lock`).
+- uptime below `hotfix.settings.reboot_uptime_min` (default 60 minutes): exit.
+  A node must have a chance to come up and find its neighbours before anything
+  reboots it again.
+
+### What it looks at
+
+- batman-adv deadly-wounded situations (ksoftirqd / memory allocation errors)
+- atheros driver deadly-wounded situations (memory allocation errors)
+- too many l2tp tunneldigger instances (restarting without reaping the old
+  ones, otherwise hours of slow death)
+- hostapd processes whose pid files no longer match, rendering them useless
+- hostapd failing its DFS check
+- an AP that had wifi clients and then lost all of them for a long time
+- br-client without an address from the site's own (ULA) `prefix6` - the node
+  is meshing, but cannot show its status page or fetch updates
+- respondd or dropbear gone: something very strange happened to the system
+- micrond itself dying, caught by a deadman watchdog (see below)
 
 Manual installation
 ===================
@@ -82,7 +90,7 @@ set on the node - so a local `uci set` always wins over the site default:
 ```lua
   hotfix = {
     reboot_uptime_min = 60,                 -- optional, minutes, default 60
-    disabled_checks = { 'load', 'ipv6_anycast' },  -- optional
+    disabled_checks = { 'load', 'tunneldigger' },  -- optional
   },
 ```
 
@@ -102,10 +110,6 @@ Checks
 | `load` | 5 minute load average above 2 | reboot |
 | `respondd` | respondd not running | reboot |
 | `dropbear` | dropbear not running | reboot |
-| `bridge_ports` | a port that was part of a bridge dropped out of it | reboot |
-| `mesh_neighbours` | a mesh radio that had >=2 neighbours now has none | scan, wifi restart, reboot |
-| `no_gateway` | no batman gateway in range | reboot |
-| `ipv6_anycast` | the IPv6 anycast address is unreachable | reboot |
 | `no_wifi_clients` | clients were seen and then all disappeared | wifi restart |
 | `watchdog` | deadman switch for micrond itself, see below | reboot |
 
