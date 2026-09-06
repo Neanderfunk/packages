@@ -34,11 +34,18 @@ if [ "${phy:0:3}" = "phy" ] ; then
       sleep 10
     fi
   fi
+  # printf statt echo $var: "wifi status" liefert JSON ueber viele Zeilen (auf
+  # den Testknoten 63 bzw. 125), und unquotiert macht die Wortzerlegung daraus
+  # EINE Zeile. Damit war das "grep -A 6 $radio" wirkungslos - es gibt ja nur
+  # eine Zeile - und "grep -c up: false" haette fuer jedes Radio angeschlagen,
+  # sobald irgendeines unten ist. Der Block soll aber genau das Radio treffen,
+  # um das es gerade geht.
   wifistatus=$(wifi status)
   radio="radio"${phy:3:1}
   sema="/tmp/hotfix.wifipending"
-  if [ $(echo $wifistatus|grep -A 6 $radio|cut -d":" -f1-10|grep -c "up: false") -eq 1 ] ; then
-    if [ $(echo $wifistatus|grep -A 6 $radio|cut -d":" -f1-10|grep -c "pending: true") -eq 1 ] ; then
+  radiostatus=$(printf '%s\n' "$wifistatus" | grep -A 6 "$radio")
+  if [ "$(printf '%s\n' "$radiostatus" | grep -c "up: false")" -ge 1 ] ; then
+    if [ "$(printf '%s\n' "$radiostatus" | grep -c "pending: true")" -ge 1 ] ; then
       rm -f $sema.ok.$radio.* 2>/dev/null
       if [ "$(strike $sema.fail.$radio)" -ge 3 ] ; then
         logger -s -t "neanderfunk-healthcheck" "[hostapd_pids] hostapd down and pending on $radio"
@@ -53,8 +60,8 @@ if [ "${phy:0:3}" = "phy" ] ; then
   client="client"${phy:3:1}
   sema="/tmp/hotfix.channelunknown"
   iwstat=$(iwinfo $client info)
-  if [ $(echo $iwstat|grep -i "Mode: Master"|wc -l) -eq 1 ] ; then
-    if [ $(echo $iwstat|grep -i "Channel: unknown"|wc -l) -eq 1 ] ; then
+  if [ "$(printf '%s\n' "$iwstat" | grep -ci "Mode: Master")" -ge 1 ] ; then
+    if [ "$(printf '%s\n' "$iwstat" | grep -ci "Channel: unknown")" -ge 1 ] ; then
       rm -f $sema.ok.$client.* 2>/dev/null
       if [ "$(strike $sema.fail.$client)" -ge 3 ] ; then
         logger -s -t "neanderfunk-healthcheck" "[hostapd_pids] channel $client unknown"

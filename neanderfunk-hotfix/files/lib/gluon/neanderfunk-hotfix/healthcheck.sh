@@ -83,7 +83,12 @@ check_disabled ksoftirqd_malloc || { dmesg | grep "ksoftirqd" | grep -q "page al
 # interate over hostapd threads running 
 check_disabled hostapd_pids || ps|grep hostapd|grep .pid|xargs -r -n 10 /lib/gluon/neanderfunk-hotfix/check_hostapd.sh
 #check if hostapd-DFS scanning is broken according to sylogs
-if ! check_disabled dfs_failcheck && [ $(logread -l 5|grep -c  "daemon.warn hostapd: Failed to check if DFS is required") -gt 0 ] ; then
+# -l 200 statt -l 5: der Check laeuft alle 7 Minuten, und in dieser Zeit
+# entstehen auf einem normalen Knoten weit mehr als fuenf Logzeilen (allein
+# node-whisperer schreibt alle 30 Sekunden). Die Meldung haette also in genau
+# den letzten fuenf Zeilen stehen muessen, und das dreimal hintereinander -
+# der Check konnte praktisch nie ausloesen.
+if ! check_disabled dfs_failcheck && [ "$(logread -l 200|grep -c "daemon.warn hostapd: Failed to check if DFS is required")" -gt 0 ] ; then
   if [ "$(strike /tmp/hotfix.dfscheckfail)" -ge 3 ] ; then
     logger -s -t "neanderfunk-healthcheck" "[dfs_failcheck] hostapd DFS failcheck, restarting wifi"
     restart_wifi
@@ -97,7 +102,10 @@ if ! check_disabled dfs_failcheck && [ $(logread -l 5|grep -c  "daemon.warn host
 
 # too many tunneldigger restarts
 check_disabled tunneldigger || {
-[ "$(ps |grep -c -e tunneldigger\ restart -e tunneldigger-watchdog)" -ge "4" ] && now_reboot "[tunneldigger] too many Tunneldigger watchdogs"
+# [t] wie in der Zeile darunter: ohne die Klammer findet das grep sich selbst in
+# der ps-Ausgabe wieder (am Knoten gemessen: Grundwert 1 statt 0), die Schwelle
+# lag damit faktisch bei 3 statt bei 4.
+[ "$(ps |grep -c -e "[t]unneldigger restart" -e "[t]unneldigger-watchdog")" -ge "4" ] && now_reboot "[tunneldigger] too many Tunneldigger watchdogs"
 [ "$(ps |grep -c -e "/usr/bin/[t]unneldigger")" -ge "7" ] && now_reboot "[tunneldigger] too many Tunneldigger instances"
 true; }
 
