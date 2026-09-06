@@ -1,0 +1,174 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Neanderfunk <projekt@neanderfunk.de>
+Date: Sun, 6 Sep 2026 17:50:54 +0200
+Subject: [PATCH] batadv: report the TQ of the selected gateway, not of the VPN
+ neighbour
+
+Byte 1 of the batman_adv information element is what the NodeMonitor app shows
+as "Gateway". It carried stats.vpn.tq, which batadv.c only sets inside
+
+    if (!strncmp(ifname, "mesh-vpn", ...))
+
+so it is 0 by construction on any node without a mesh-vpn interface. Such a
+node then shows "Gateway: Nicht Erreichbar" in the app even with an excellent
+gateway. Measured on two Gluon v2023.2 nodes: one meshing over LAN with a
+gateway at TQ 240, one over wifi at TQ 236 - both sent 0.
+
+Query BATADV_CMD_GET_GATEWAYS and take the TQ of the entry batman marks with
+BATADV_ATTR_FLAG_BEST. Byte 0 keeps answering the separate question "is there
+a VPN uplink", so nothing about the wire format or the app changes - the
+gateway byte simply starts telling the truth.
+---
+ src/batadv.c      | 71 +++++++++++++++++++++++++++++++++++++++++++++++
+ src/batadv.h      |  8 ++++++
+ src/information.c | 14 +++++++++-
+ 3 files changed, 92 insertions(+), 1 deletion(-)
+
+diff --git a/src/batadv.c b/src/batadv.c
+index bcc1a09..4e3ddcc 100644
+--- a/src/batadv.c
++++ b/src/batadv.c
+@@ -26,6 +26,11 @@ struct clients_netlink_opts {
+ 	struct batadv_nlquery_opts query_opts;
+ };
+ 
++struct gw_netlink_opts {
++	struct batadv_nlquery_opts query_opts;
++	struct nw_batadv_neighbor_stats *stats;
++};
++
+ static const enum batadv_nl_attrs parse_orig_list_mandatory[] = {
+ 	BATADV_ATTR_ORIG_ADDRESS,
+ 	BATADV_ATTR_NEIGH_ADDRESS,
+@@ -34,6 +39,11 @@ static const enum batadv_nl_attrs parse_orig_list_mandatory[] = {
+ 	BATADV_ATTR_LAST_SEEN_MSECS,
+ };
+ 
++static const enum batadv_nl_attrs parse_gw_list_mandatory[] = {
++	BATADV_ATTR_ORIG_ADDRESS,
++	BATADV_ATTR_TQ,
++};
++
+ static const enum batadv_nl_attrs clients_mandatory[] = {
+ 	BATADV_ATTR_TT_FLAGS,
+ 	BATADV_ATTR_LAST_SEEN_MSECS,
+@@ -110,6 +120,67 @@ int nw_get_batadv_neighbor_stats(struct nw_batadv_neighbor_stats *stats) {
+ }
+ 
+ 
++/* Pick the TQ of the gateway batman has actually selected. The originator dump
++ * above cannot answer this: it knows neighbours, and the gateway is usually
++ * several hops away. Without it the only TQ reported is the one towards a
++ * mesh-vpn neighbour, which is 0 on every node that meshes over wifi or LAN
++ * instead of a VPN - however good its actual gateway is. */
++static int parse_gw_list_netlink_cb(struct nl_msg *msg, void *arg)
++{
++	struct nlattr *attrs[BATADV_ATTR_MAX+1];
++	struct nlmsghdr *nlh = nlmsg_hdr(msg);
++	struct batadv_nlquery_opts *query_opts = arg;
++	struct genlmsghdr *ghdr;
++	struct gw_netlink_opts *opts;
++
++	opts = batadv_container_of(query_opts, struct gw_netlink_opts,
++				   query_opts);
++
++	if (!genlmsg_valid_hdr(nlh, 0))
++		return NL_OK;
++
++	ghdr = nlmsg_data(nlh);
++
++	if (ghdr->cmd != BATADV_CMD_GET_GATEWAYS)
++		return NL_OK;
++
++	if (nla_parse(attrs, BATADV_ATTR_MAX, genlmsg_attrdata(ghdr, 0),
++		      genlmsg_len(ghdr), batadv_genl_policy))
++		return NL_OK;
++
++	if (batadv_genl_missing_attrs(attrs, parse_gw_list_mandatory,
++				      BATADV_ARRAY_SIZE(parse_gw_list_mandatory)))
++		return NL_OK;
++
++	/* Only the entry batman marks as the selected one */
++	if (!attrs[BATADV_ATTR_FLAG_BEST])
++		return NL_OK;
++
++	opts->stats->gateway.tq = nla_get_u8(attrs[BATADV_ATTR_TQ]);
++	opts->stats->gateway.selected = 1;
++
++	return NL_OK;
++}
++
++int nw_get_batadv_gateway(struct nw_batadv_neighbor_stats *stats) {
++	struct gw_netlink_opts opts = {
++		.query_opts = {
++			.err = 0,
++		},
++		.stats = stats,
++	};
++	int ret;
++
++	ret = batadv_genl_query("bat0", BATADV_CMD_GET_GATEWAYS,
++				parse_gw_list_netlink_cb, NLM_F_DUMP,
++				&opts.query_opts);
++	if (ret < 0) {
++		return -1;
++	}
++
++	return 0;
++}
++
+ static int parse_clients_list_netlink_cb(struct nl_msg *msg, void *arg)
+ {
+ 	struct nlattr *attrs[BATADV_ATTR_MAX+1];
+diff --git a/src/batadv.h b/src/batadv.h
+index 34a3c03..86e339d 100644
+--- a/src/batadv.h
++++ b/src/batadv.h
+@@ -9,7 +9,15 @@ struct nw_batadv_neighbor_stats {
+ 		int connected;
+ 		int tq;
+ 	} vpn;
++	/* TQ towards the batman gateway that is actually selected, over
++	 * whichever interface it is reached. Independent of vpn.tq above,
++	 * which only ever describes a mesh-vpn neighbour. */
++	struct {
++		int selected;
++		int tq;
++	} gateway;
+ };
+ 
+ int nw_get_batadv_neighbor_stats(struct nw_batadv_neighbor_stats *stats);
++int nw_get_batadv_gateway(struct nw_batadv_neighbor_stats *stats);
+ int nw_get_batadv_clients();
+diff --git a/src/information.c b/src/information.c
+index c6e3ca5..3a82164 100644
+--- a/src/information.c
++++ b/src/information.c
+@@ -90,6 +90,10 @@ int node_whisperer_information_batman_adv_collect(uint8_t *buffer, size_t buffer
+ 	ret = nw_get_batadv_neighbor_stats(&stats);
+ 	if (ret)
+ 		return -1;
++
++	/* Ask for the selected gateway separately. Failing that is not fatal:
++	 * a node without a gateway then reports 0, exactly as before. */
++	nw_get_batadv_gateway(&stats);
+ 	
+ 	ret = nw_get_batadv_clients();
+ 	if (ret < 0) {
+@@ -99,7 +103,15 @@ int node_whisperer_information_batman_adv_collect(uint8_t *buffer, size_t buffer
+ 	}	
+ 
+ 	buffer[0] = stats.vpn.connected ? 1 : 0;
+-	buffer[1] = stats.vpn.tq;
++	/* Byte 1 is what NodeMonitor labels "Gateway". It used to carry
++	 * stats.vpn.tq, which is only ever set for a mesh-vpn neighbour - so a
++	 * node meshing over wifi or LAN reported 0 and the app said
++	 * "Gateway: Nicht Erreichbar" no matter how good its gateway was. It now
++	 * carries the TQ of the gateway batman has selected, over whichever
++	 * interface. Same position, same range, same meaning as the label, so
++	 * the app keeps working unchanged. Byte 0 still answers the separate
++	 * question "is there a VPN uplink". */
++	buffer[1] = stats.gateway.selected ? stats.gateway.tq : 0;
+ 
+ 	tmp = htons(stats.originator_count);
+ 	memcpy(&buffer[2], &tmp, sizeof(tmp));

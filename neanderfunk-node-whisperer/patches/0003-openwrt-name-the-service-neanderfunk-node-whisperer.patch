@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Neanderfunk <projekt@neanderfunk.de>
+Date: Sun, 6 Sep 2026 17:51:36 +0200
+Subject: [PATCH] openwrt: name the service neanderfunk-node-whisperer
+
+Neanderfunk ships this as its own package next to the community-packages one.
+Renaming the binary, the init service and the uci package keeps the two from
+colliding on any file, so neither blocks the other in a build tree; a CONFLICTS
+declaration in the package still prevents both from being installed at once,
+because two daemons must not set vendor elements on the same interfaces.
+
+The ubus object name stays node_whisperer on purpose: it is a runtime name, it
+is baked into the C source, and only one of the two daemons can ever run.
+---
+ openwrt/node-whisperer/files/node-whisperer.init | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/openwrt/node-whisperer/files/node-whisperer.init b/openwrt/node-whisperer/files/node-whisperer.init
+index d9c46cf..1aa0dc1 100644
+--- a/openwrt/node-whisperer/files/node-whisperer.init
++++ b/openwrt/node-whisperer/files/node-whisperer.init
+@@ -4,8 +4,8 @@
+ START=95
+ USE_PROCD=1
+ 
+-NAME=node-whisperer
+-PROG=/usr/bin/node-whisperer
++NAME=neanderfunk-node-whisperer
++PROG=/usr/bin/neanderfunk-node-whisperer
+ 
+ . /usr/share/libubox/jshn.sh
+ . /lib/functions.sh
+@@ -35,7 +35,7 @@ uci_nw() {
+ load_config() {
+ 	ubus -t 10 wait_for node_whisperer
+ 
+-	config_load node-whisperer
++	config_load neanderfunk-node-whisperer
+ 	config_foreach uci_nw settings
+ }
+ 
+@@ -49,14 +49,14 @@ service_started() {
+ }
+ 
+ service_triggers() {
+-	procd_add_reload_trigger node-whisperer
++	procd_add_reload_trigger neanderfunk-node-whisperer
+ }
+ 
+ start_service()
+ {
+-	DISABLED="$(uci -q get node-whisperer.settings.disabled)"
++	DISABLED="$(uci -q get neanderfunk-node-whisperer.settings.disabled)"
+ 	DISABLED="${DISABLED:-0}"
+-	LOG_LEVEL="$(uci -q get node-whisperer.settings.log_level)"
++	LOG_LEVEL="$(uci -q get neanderfunk-node-whisperer.settings.log_level)"
+ 	LOG_LEVEL="${LOG_LEVEL:-3}"
+ 
+ 	[ "$DISABLED" -gt 0 ] && return

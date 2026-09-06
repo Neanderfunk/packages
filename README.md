@@ -83,6 +83,18 @@ target, so an mt7621 board with different wifi is left alone, and holds a
 cool-down so a backlog that does not clear cannot restart wifi every two
 minutes. See [](neanderfunk-mt7915-backlog/README.md)
 
+### neanderfunk-node-whisperer ###
+
+kodiert Statusinformationen in die Beacons der Client-WLANs, auslesbar mit der
+App NodeMonitor. Fork von `ffda-node-whisperer` mit zwei lokalen Korrekturen:
+eine fehlende Domain wird auf Single-Domain-Firmware nicht mehr alle 30 Sekunden
+als Fehler ins Syslog geschrieben, und das Byte, das die App als "Gateway"
+anzeigt, traegt jetzt den TQ des tatsaechlich gewaehlten Batman-Gateways statt
+des TQ eines mesh-vpn-Nachbarn - ein Knoten, der ueber WLAN oder LAN mesht,
+galt sonst als "Gateway nicht erreichbar". Drahtformat und App bleiben
+unveraendert. Upstream ist gepinnt, unsere Aenderungen liegen als Patches
+daneben; siehe [](neanderfunk-node-whisperer/README.md) samt Backport-Anleitung.
+
 ### neanderfunk-nodeplacer ###
 
 moves individual nodes to another domain of the same community, controlled by a

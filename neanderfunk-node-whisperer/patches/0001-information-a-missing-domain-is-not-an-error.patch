@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Neanderfunk <projekt@neanderfunk.de>
+Date: Sun, 6 Sep 2026 17:50:21 +0200
+Subject: [PATCH] information: a missing domain is not an error
+
+gluonutil_get_domain() returns NULL on a single-domain firmware - there is
+simply no domain to report. The collector returned -1 for that, and the daemon
+logs every negative return at error level, so every node of every single-domain
+community writes
+
+    node-whisperer: Error collecting Information for id=4 name=domain code=-1
+
+to the syslog on every round, forever. Measured on a Gluon v2023.2 node:
+/lib/gluon/domains/ does not exist, gluon.core.domain is unset, and site.json's
+domain_code is empty.
+
+Report -ENODATA instead and let the daemon skip such a source quietly. Real
+collection failures keep their error message.
+---
+ src/daemon.c      | 8 ++++++++
+ src/information.c | 6 +++++-
+ 2 files changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/src/daemon.c b/src/daemon.c
+index b636150..ecdcc8c 100644
+--- a/src/daemon.c
++++ b/src/daemon.c
+@@ -4,6 +4,7 @@
+ #include <string.h>
+ #include <unistd.h>
+ #include <stddef.h>
++#include <errno.h>
+ 
+ #include "node-whisperer.h"
+ #include "daemon.h"
+@@ -85,6 +86,13 @@ static int nw_daemon_create_vendor_element_buf(struct nw *instance) {
+ 			log_error("Too much Information for id=%d name=%s",
+ 				  information_sources[i].type, information_sources[i].name);
+ 			return -ENOMEM;
++		} else if (ret == -ENODATA) {
++			/* Not applicable on this node - not an error. Skip quietly,
++			 * otherwise a single-domain firmware logs an error for the
++			 * domain source on every round, forever. */
++			log_debug("No Information applicable for id=%d name=%s",
++				  information_sources[i].type, information_sources[i].name);
++			continue;
+ 		} else if (ret < 0) {
+ 			/* Error */
+ 			log_error("Error collecting Information for id=%d name=%s code=%d",
+diff --git a/src/information.c b/src/information.c
+index 91dcc7f..c6e3ca5 100644
+--- a/src/information.c
++++ b/src/information.c
+@@ -4,6 +4,7 @@
+ #include <string.h>
+ #include <unistd.h>
+ #include <stddef.h>
++#include <errno.h>
+ 
+ #include <arpa/inet.h>
+ #include <linux/unistd.h>
+@@ -176,7 +177,10 @@ int node_whisperer_information_domain_collect(uint8_t *buffer, size_t buffer_siz
+ 
+ 	dom = gluonutil_get_domain();
+ 	if (!dom) {
+-		ret = -1;
++		/* Not a multi-domain firmware: there is simply no domain to
++		 * report. -ENODATA tells the caller to skip this source quietly
++		 * instead of logging an error on every single round. */
++		ret = -ENODATA;
+ 		goto out_free;
+ 	}
+ 
