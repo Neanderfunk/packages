@@ -97,13 +97,16 @@ fi
 
 # 2) running over wifimesh-interfaces, looking for other SSIDs on the same wifi via iwscan lowpri
 
-# The scan breaks mesh links on wifi6 / filogic hardware (mt7915). It does not
-# on the older mt76 chips: a Xiaomi 4A Gigabit (ramips/mt7621, mt7603e plus
-# mt76x2e) scans without trouble. Testing the OpenWrt target caught filogic
-# only by accident - an mt7621 board carrying an mt7915 PCIe card reports
-# "ramips" and would have been scanned anyway - so ask the driver, per radio,
-# and keep the target test as a fallback for when the driver link is not
-# readable (interface down, no sysfs entry).
+# The scan breaks mesh links on wifi6 hardware (mt7915). It does not on the
+# older mt76 chips: a Xiaomi 4A Gigabit (ramips/mt7621, mt7603e plus mt76x2e)
+# scans without trouble.
+#
+# This used to test the OpenWrt target for "mediatek", which did not work at
+# all: a D-Link COVR-X1860 - the very device the guard was written for - is an
+# mt7621 SoC with mt7915 radios and reports DISTRIB_TARGET='ramips/mt7621', so
+# the test never matched and the node got scanned anyway. Ask the driver
+# instead, per radio, and keep the target test only as a fallback for when the
+# driver link is not readable (interface down, no sysfs entry).
 gluontarget=$(cat /etc/openwrt_release|grep DISTRIB_TARGET|cut -d"=" -f2|tr -d \'|cut -d/ -f1)
 radio_is_wifi6() {
   # $1: ifname
