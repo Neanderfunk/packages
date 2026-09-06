@@ -1,0 +1,19 @@
+# Note that the clock has been set by ntp during this boot.
+#
+# ntpd runs with "-S /usr/sbin/ntpd-hotplug", which fires an ntp hotplug event
+# on synchronisation; ACTION=stratum is the one that means "time is valid" -
+# OpenWrt's own 25-dnsmasqsec handler uses exactly that condition.
+#
+# The marker lives in /tmp on purpose: it is gone after a reboot and has to be
+# earned again, so it always answers "was the clock set since THIS boot".
+#
+# Why weeklyreboot cares: without ntp the clock starts at the firmware's build
+# time on every boot (sysfixtime). If the image happened to be built on a
+# Thursday around 02:00, such a node reaches the cron time "15 3 * * 4" about an
+# hour after every boot - and reboots again, forever. Requiring this marker
+# breaks that loop: a node that never gets ntp simply never does its weekly
+# reboot, which is right, because it cannot know when Thursday 03:15 is.
+
+[ "$ACTION" = "stratum" ] || exit 0
+
+touch /tmp/weeklyreboot.clock-synced

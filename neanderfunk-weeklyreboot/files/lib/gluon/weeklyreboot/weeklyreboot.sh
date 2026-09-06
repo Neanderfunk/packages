@@ -60,6 +60,42 @@ autoupdater_running() {
 	return 1
 }
 
+uptime_s="$(sed 's/\..*//g' /proc/uptime)"
+
+# Not right after a boot. The node has just come up; rebooting it again buys
+# nothing. Checked here rather than at the top, because the delay above can be
+# up to 2.7 hours and what matters is the uptime at reboot time.
+if [ "$uptime_s" -le 3600 ] ; then
+	logger -s -t "neanderfunk-weeklyreboot" -p 5 "booted less than an hour ago, skipping this week's reboot"
+	exit 0
+fi
+
+# Is the cron time meaningful at all?
+#
+# Without ntp the clock starts at the firmware build time on every boot
+# (sysfixtime). A node whose image happened to be built on a Thursday around
+# 02:00 therefore reaches "15 3 * * 4" roughly an hour after every boot - and
+# reboots again, forever. Reported from the field.
+#
+# Such a node should still be restarted regularly, just not by the weekday: the
+# cron fires once per (wrong) week either way, so requiring seven days of uptime
+# turns it into a genuine weekly reboot instead of an hourly loop.
+#
+# The marker comes from our /etc/hotplug.d/ntp handler and lives in /tmp, so it
+# has to be earned again after every boot. Deliberately no fallback along the
+# lines of "the clock is far past the build time": on a node running for months
+# without ntp, sysfixtime carries the wrong clock forward through the newest
+# file mtime, so that test would eventually pass and bring the loop back.
+if [ ! -f /tmp/weeklyreboot.clock-synced ] ; then
+	if [ "$uptime_s" -le 604800 ] ; then
+		logger -s -t "neanderfunk-weeklyreboot" -p 5 \
+			"clock never set by ntp since boot and uptime only $((uptime_s / 3600))h - waiting for 7 days instead of the weekday"
+		exit 0
+	fi
+	logger -s -t "neanderfunk-weeklyreboot" -p 5 \
+		"clock never set by ntp since boot, but uptime is $((uptime_s / 86400)) days - rebooting on uptime"
+fi
+
 if autoupdater_running ; then
 	logger -s -t "neanderfunk-weeklyreboot" -p 5 "autoupdater is running, skipping this week's reboot"
 	exit 2
