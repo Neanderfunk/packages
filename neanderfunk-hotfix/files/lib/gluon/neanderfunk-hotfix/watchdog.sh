@@ -6,7 +6,8 @@
 # ever notice or reboot it again. This closes that hole:
 #
 # micrond starts this script every hotfix.settings.watchdog_interval_min
-# minutes. Each new instance relieves its predecessor by killing it. An
+# minutes. Each new instance relieves its predecessor by writing its own pid
+# into the pid file; the predecessor sees that on its next slice and exits. An
 # instance that is *not* relieved within 3x that interval concludes that no
 # micrond is starting jobs any more, and reboots the node.
 #
@@ -53,14 +54,20 @@ case "$stale" in ''|*[!0-9]*) stale=300 ;; esac
 deadline=$((interval * 3 * 60))
 stale_s=$((stale * 60))
 
-# relieve the predecessor
-if [ -f "$PIDFILE" ] ; then
-	read oldpid < "$PIDFILE"
-	case "$oldpid" in
-		''|*[!0-9]*) ;;
-		*) [ "$oldpid" = "$$" ] || kill "$oldpid" 2>/dev/null ;;
-	esac
-fi
+# Relieve the predecessor by taking over the pid file - it notices on its next
+# slice that the file no longer names it and exits by itself.
+#
+# This used to `kill` the predecessor. That worked, but it cost two things on
+# every single run: the killed shell died from SIGTERM, so micrond logged
+# "Terminated" at daemon.err - 288 lines a day per node, at error priority, for
+# an entirely routine event - and the `sleep` it was sitting in outlived its
+# shell, so three orphaned `sleep 900` accumulated (deadline 900s, started
+# every 300s). Both were measured on the test nodes.
+#
+# Nothing has to kill anything now. The script itself only ever changes across
+# a sysupgrade, and that reboots the node, so there is no case where an
+# instance of an older, non-slice-aware version is still running when this one
+# starts.
 echo $$ > "$PIDFILE"
 
 # fork-free from here on
@@ -73,12 +80,37 @@ reboot_now() {
 	reboot -f
 }
 
+# The deadline is waited out in slices so being relieved can be noticed in
+# between. 30 seconds is short enough that a relieved instance disappears
+# promptly and long enough to stay negligible: one fork of `sleep` per slice,
+# and `read` is a builtin.
+slice=30
+[ "$deadline" -lt "$slice" ] && slice="$deadline"
+waited=0
+
 while : ; do
-	if ! sleep "$deadline" ; then
+	if ! sleep "$slice" ; then
 		# could not even fork sleep - that is the out-of-memory case this
 		# watchdog is meant to survive, and waiting longer will not help
 		reboot_now "unable to fork (out of memory?)"
 	fi
+
+	# Has a newer instance taken over? Only a readable pid file naming someone
+	# else counts. An unreadable or empty one (a full /tmp, say) means we keep
+	# watching rather than quietly disarming the watchdog - several instances
+	# watching at once is harmless, none watching is not.
+	if read cur 2>/dev/null < "$PIDFILE" ; then
+		case "$cur" in
+			''|*[!0-9]*) cur=$$ ;;
+		esac
+	else
+		cur=$$
+	fi
+	[ "$cur" = "$$" ] || exit 0
+
+	waited=$((waited + slice))
+	[ "$waited" -lt "$deadline" ] && continue
+	waited=0
 
 	# still here: nobody relieved us, so micrond is not starting jobs any more
 
