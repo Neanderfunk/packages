@@ -87,6 +87,47 @@ if [ "$(ip -6 addr show to "$(jsonfilter -i /lib/gluon/site.json -e '$.prefix6')
   now_reboot "br-client without ipv6 in prefix-range (probably none)"
 fi
 
+# An eth or wifi-mesh interface can silently drop out of its bridge after an
+# interface flap - everything else still looks healthy, the port is just gone
+# from the bridge. Ports are read from /sys/class/net/<bridge>/brif (exact, no
+# brctl column parsing) and remembered per bridge in /tmp, so the list rebuilds
+# from reality after a reboot.
+# Three consecutive misses are required before rebooting: `wifi reconf` takes
+# wifi interfaces out of their bridge for a moment, and that must not reboot the
+# node. At the */7 cron interval that means a port has to stay gone for ~21 min.
+check_bridge_ports() {
+  local brif bridge port seen current
+  for brif in /sys/class/net/*/brif ; do
+    [ -d "$brif" ] || continue
+    bridge="$(basename "$(dirname "$brif")")"
+    # No special case for a bridge that currently has no ports at all: losing
+    # every port is exactly the failure this is looking for, and the three
+    # strikes below keep a transient from rebooting the node.
+    current=" $(ls "$brif" 2>/dev/null | tr '\n' ' ')"
+    for port in $(ls "$brif" 2>/dev/null) ; do
+      touch "/tmp/brport.$bridge.$port.seen"
+      rm -f "/tmp/brport.$bridge.$port.gone."* 2>/dev/null
+    done
+    for seen in /tmp/brport."$bridge".*.seen ; do
+      [ -e "$seen" ] || continue
+      port="${seen#/tmp/brport.$bridge.}"
+      port="${port%.seen}"
+      case "$current" in
+        *" $port "*) continue ;;
+      esac
+      if [ -f "/tmp/brport.$bridge.$port.gone.2" ] ; then
+        now_reboot "interface $port dropped out of bridge $bridge"
+      elif [ -f "/tmp/brport.$bridge.$port.gone.1" ] ; then
+        touch "/tmp/brport.$bridge.$port.gone.2"
+      else
+        logger -s -t "neanderfunk-healthcheck" -p 5 "interface $port missing from bridge $bridge"
+        touch "/tmp/brport.$bridge.$port.gone.1"
+      fi
+    done
+  done
+}
+check_bridge_ports
+
 reboot_when_not_running() {
   (pgrep $1 || sleep 20 ; pgrep $1 || now_reboot "$1 not running") &> /dev/null
 }
