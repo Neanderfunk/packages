@@ -101,6 +101,13 @@ Checks
 | `no_gateway` | no batman gateway in range for 4 runs (`gateway.sh`) | reboot |
 | `ipv6_anycast` | the IPv6 anycast address unreachable for 4 runs (`gateway.sh`) | reboot |
 
+A wifi restart happens at most once per run, no matter how many checks reach
+their third strike in it. A real outage takes every check down at the same
+time, and one full `wifi down`/`wifi up` plus settle time per interface used to
+mean minutes of thrashing, with each restart cutting into the previous one
+before it had settled. The strikes are still counted per check, so the
+escalation to the fourth - the reboot - is unaffected.
+
 The first seven follow the same rule: a check only arms once it has seen at least
 2 of whatever it counts during this runtime, and only then does losing all of
 them escalate. A node that is legitimately alone therefore never escalates, and

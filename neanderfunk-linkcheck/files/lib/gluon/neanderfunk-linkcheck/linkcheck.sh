@@ -33,13 +33,25 @@ valuecheck ()
       logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 2nd: ${linkname}.${check}"
       ;;
     3)
-      logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 3rd: ${linkname}.${check}, wifi restart"
-      wifi down
-      killall hostapd >/dev/null 2>&1
-      rm -f /var/run/wifi-*.pid >/dev/null 2>&1
-      wifi config
-      wifi up
-      sleep 15
+      # Once per run, not once per check. A real outage takes every check down
+      # at the same time, so they all reach their 3rd strike in the same run -
+      # which used to mean one full wifi restart plus sleep 15 per interface,
+      # each new "wifi down" cutting into the previous "wifi up" before it had
+      # settled. Minutes of thrashing, and the restart never got a fair chance
+      # to work. The strikes are still counted per check, so the escalation to
+      # the 4th (reboot) is unchanged.
+      if [ -n "${wifi_restarted}" ] ; then
+        logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 3rd: ${linkname}.${check}, wifi already restarted this run"
+      else
+        logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 3rd: ${linkname}.${check}, wifi restart"
+        wifi_restarted=1
+        wifi down
+        killall hostapd >/dev/null 2>&1
+        rm -f /var/run/wifi-*.pid >/dev/null 2>&1
+        wifi config
+        wifi up
+        sleep 15
+      fi
       ;;
     *)
       logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 4th: ${linkname}.${check}, rebooting!"
