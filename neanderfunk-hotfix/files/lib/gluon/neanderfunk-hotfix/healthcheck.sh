@@ -157,23 +157,63 @@ scan() {
   iw_dev_reboot_freeze 30 $1 scan lowpri passive>/dev/null
 }
 
-# check all radios for lost neighbours
+# check all radios for lost neighbours ("no island")
+#
+# A mesh radio that has seen a real neighbourhood (>=2 neighbours) during this
+# runtime and then sees none at all for a long time is suspicious: either the
+# mesh interface is broken wifi-wise, or it dropped out of its bridge.
+#
+# Arming only after >=2 neighbours, and only for this runtime (the markers live
+# in /tmp), does two things: a node that is legitimately alone never escalates,
+# and a real outage costs at most one reboot - afterwards /tmp is empty, so the
+# node is not armed again until it has actually seen neighbours again.
+#
+# Before this, the check only ever compared against the previous run and reacted
+# with an iw scan. Worse, N_LOG is rewritten every run, so once *all* neighbours
+# were gone the comparison list was empty too and the check went silent exactly
+# when the node was islanded.
 for mesh_radio in `uci show wireless 2>/dev/null| grep -E -o '(ibss|mesh)_radio[0-9]+' | awk '!seen[$0]++'`; do
   radio="$(uci get wireless.$mesh_radio.device)"
   if [[ "$(uci -q get wireless.$radio.disabled)" != "1" && "$(uci -q get wireless.$mesh_radio.disabled)" != "1" ]]; then
     DEV="$(uci get wireless.$mesh_radio.ifname)"
     N_LOG="/tmp/mesh_neighbours_$mesh_radio"
+    INHOOD="/tmp/mesh_inhood_$mesh_radio"
+    GONE="/tmp/mesh_gone_$mesh_radio"
     OLD_NEIGHBOURS=$(cat $N_LOG 2>/dev/null)
     # fill log with new neighbours
     iw_dev_reboot_freeze 20 $DEV station dump | grep -e "^Station " | cut -f 2 -d ' ' > $N_LOG
-    for NEIGHBOUR in $OLD_NEIGHBOURS; do
-       # scan once and stop. The break used to sit inside a ( ) subshell, where
-       # it cannot break the enclosing loop, so every lost neighbour triggered
-       # another scan - each blocking for up to 30s in iw_dev_reboot_freeze.
-       if ! grep -q "$NEIGHBOUR" "$N_LOG" ; then
-         scan "$DEV"
-         break
-       fi
-    done
+    NEIGHBOURS="$(wc -l < "$N_LOG" 2>/dev/null | tr -d ' ')"
+
+    # arm once a real neighbourhood has been seen during this runtime
+    [ "$NEIGHBOURS" -ge 2 ] && touch "$INHOOD"
+
+    if [ -f "$INHOOD" ] && [ "$NEIGHBOURS" -eq 0 ] ; then
+      # had >=2, now none at all: try the cheap remedies first, then reboot
+      if [ -f "$GONE.3" ] ; then
+        now_reboot "no mesh neighbours on $DEV for 4 checks (had >=2 before)"
+      elif [ -f "$GONE.2" ] ; then
+        logger -s -t "neanderfunk-healthcheck" -p 5 "still no mesh neighbours on $DEV, restarting wifi"
+        touch "$GONE.3"
+        restart_wifi
+      elif [ -f "$GONE.1" ] ; then
+        touch "$GONE.2"
+      else
+        logger -s -t "neanderfunk-healthcheck" -p 5 "lost all mesh neighbours on $DEV (had >=2 before)"
+        touch "$GONE.1"
+        scan "$DEV"
+      fi
+    else
+      rm -f "$GONE".* 2>/dev/null
+      # only some neighbours vanished: cheap remedy, scan once and stop.
+      # The break used to sit inside a ( ) subshell, where it cannot break the
+      # enclosing loop, so every lost neighbour triggered another scan - each
+      # blocking for up to 30s in iw_dev_reboot_freeze.
+      for NEIGHBOUR in $OLD_NEIGHBOURS; do
+         if ! grep -q "$NEIGHBOUR" "$N_LOG" ; then
+           scan "$DEV"
+           break
+         fi
+      done
+    fi
   fi
 done
