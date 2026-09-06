@@ -23,3 +23,20 @@ PACKAGES_EULENFUNK_BRANCH=v2020.1.x
 ```
 
 With this done you can add the package `neanderfunk-ch13to9` to your `site.mk`
+
+Stand 2026-09-06
+----------------
+
+Das Paket war wirkungslos: es waehlte die Radios ueber
+`uci get wireless.radio0.hwmode`, und OpenWrt 21.02 hat `hwmode` durch `band`
+ersetzt - auf jedem aktuellen Knoten liefert das nichts, der ganze
+Erkennungsblock wurde uebersprungen. Ausserdem lag es doppelt im Feed
+(`/lib/gluon/ch13to9/ch13to9.lua`, aufgerufen von einem selbstloeschenden
+`/etc/init.d/ch13to9`, plus byte-identisch als Upgrade-Skript), und das Gate im
+init.d war `if [ $(uci get ...) ]` - ein blosser String-Test, der fuer "0"
+genauso wahr ist wie fuer "1".
+
+Jetzt gibt es nur noch das Upgrade-Skript. Es laeuft bei jedem
+`gluon-reconfigure`, iteriert die `wifi-device`-Sektionen statt radio0/radio1
+von Hand durchzugehen, erkennt 2,4 GHz ueber `band` (mit `hwmode` als
+Rueckfall) und schreibt nur, wenn wirklich etwas zu aendern ist.

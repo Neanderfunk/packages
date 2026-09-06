@@ -31,9 +31,7 @@ endef
 
 define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
-	./gluonShellDiet.sh $(1)/etc/init.d/ch13to9
 	./gluonShellDiet.sh $(1)/lib/gluon/upgrade/209-neanderfunk-ch13to9
-	./gluonShellDiet.sh $(1)/lib/gluon/ch13to9/ch13to9.lua
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
