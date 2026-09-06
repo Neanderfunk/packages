@@ -68,6 +68,46 @@ no_action_yet() {
 	logger -s -t "neanderfunk-hotfix" -p 5 "$1 - no action taken, uptime below hotfix.settings.reboot_uptime_min ($(($(reboot_uptime_limit) / 60))min)"
 }
 
+# Some faults must not wait out reboot_uptime_min. A check listed here acts as
+# soon as it fires, whatever the uptime:
+#
+#   kernel_bug  "Kernel bug detected" is a BUG()/oops. gluon#680 reports that
+#               afterwards "any invocation of ip, ifconfig, brctl, batctl etc
+#               will result in a stuck system" - there is no self-recovery and
+#               no remedy short of a reboot. Worse for us: our own other checks
+#               shell out to exactly those tools, so a node in this state may
+#               not even manage to report anything. Holding it for an hour buys
+#               nothing and costs an hour of a dead node.
+#
+# Everything else deliberately keeps the hold-off:
+#   ath_malloc, ksoftirqd_malloc  can be a transient OOM *during boot* on small
+#               devices (openwrt forum on "ath: skbuff alloc of size ... failed":
+#               "could be OOM during peak mem consumption while booting, but it
+#               may look ok later on"). Acting at once would reboot-loop a
+#               32 MiB node at every boot. Both also recur - the freifunk forum
+#               reports page allocation failures every 5 to 10 seconds - so a
+#               delayed reaction still fires, and the node limps rather than
+#               dying outright.
+#   load        right after a boot the load is legitimately high, and the 5
+#               minute average is not meaningful before the node has been up
+#               5 minutes at all.
+#
+# Per node this can be changed in either direction:
+#     uci set hotfix.load.immediate='1'      ; uci commit hotfix
+#     uci set hotfix.kernel_bug.immediate='0' ; uci commit hotfix
+acts_immediately() {
+	local v
+	v="$(uci -q get hotfix."$1".immediate)"
+	case "$v" in
+		1) return 0 ;;
+		0) return 1 ;;
+	esac
+	case "$1" in
+		kernel_bug) return 0 ;;
+	esac
+	return 1
+}
+
 # Count consecutive failures. strike <prefix> records one more and prints how
 # many there are now, so a check reads as
 #     [ "$(strike /tmp/hotfix.gw-gone)" -ge 4 ] && reboot

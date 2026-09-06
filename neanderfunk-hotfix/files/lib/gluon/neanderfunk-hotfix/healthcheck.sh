@@ -19,7 +19,9 @@ now_reboot() {
   #
   # Below hotfix.settings.reboot_uptime_min the finding is still reported, it
   # just does not lead to a reboot - see no_action_yet() in common.sh.
-  if ! uptime_ok ; then
+  # the check name is the [tag] the caller put in front of the message
+  reason_check="${1#*[}" ; reason_check="${reason_check%%]*}"
+  if ! uptime_ok && ! acts_immediately "$reason_check" ; then
     no_action_yet "$1"
     return 0
   fi

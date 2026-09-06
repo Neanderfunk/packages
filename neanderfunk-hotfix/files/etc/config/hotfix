@@ -2,6 +2,11 @@
 #
 # Switch a single check off on this node:
 #   uci set hotfix.<check>.disabled='1' ; uci commit hotfix
+#
+# Let a check act immediately instead of waiting out reboot_uptime_min,
+# or make one that does so wait like the rest:
+#   uci set hotfix.<check>.immediate='1' ; uci commit hotfix
+# kernel_bug is immediate by default - see the README for why.
 # The <check> name is part of the reason logged before a reboot or a wifi
 # restart, so it can be read straight off `logread -f` while watching a node.
 

@@ -110,6 +110,44 @@ Strikes keep counting while action is withheld, so a problem that is still
 there when the node passes `reboot_uptime_min` is acted on straight away rather
 than starting its count over.
 
+Checks that do not wait
+-----------------------
+
+`reboot_uptime_min` withholds action for everything except `kernel_bug` and the
+`watchdog`, on evidence rather than taste:
+
+* **`kernel_bug`** - "Kernel bug detected" is a `BUG()`/oops.
+  [gluon#680](https://github.com/freifunk-gluon/gluon/issues/680) reports that
+  afterwards *"any invocation of ip, ifconfig, brctl, batctl etc will result in
+  a stuck system"*: no self-recovery, and no remedy short of a reboot. On top of
+  that, the other checks here shell out to exactly those tools, so a node in
+  this state may not even manage to report anything. Waiting an hour buys
+  nothing and costs an hour of a dead node.
+* **`watchdog`** - a deadman switch with an hour of grace is not a deadman
+  switch. It never used the hold-off.
+
+The others keep it deliberately:
+
+* **`ath_malloc`, `ksoftirqd_malloc`** - can be a transient OOM *while booting*
+  on small devices; the OpenWrt forum on `ath: skbuff alloc of size ... failed`
+  notes it "could be OOM during peak mem consumption while booting, but it may
+  look ok later on". Acting at once would reboot-loop a 32 MiB node at every
+  boot. Both also recur - the Freifunk forum reports page allocation failures
+  every 5 to 10 seconds - so nothing is lost by waiting, and the node limps
+  rather than dying outright.
+* **`load`** - right after a boot the load is legitimately high, and the 5
+  minute average is not meaningful before the node has been up 5 minutes.
+
+Changeable per node in either direction:
+
+```
+uci set hotfix.load.immediate='1'        # act at once
+uci set hotfix.kernel_bug.immediate='0'  # make it wait like the rest
+uci commit hotfix
+```
+
+Below `check_uptime_min` nothing runs at all, not even the immediate checks.
+
 Checks
 ------
 
