@@ -33,4 +33,15 @@ define Package/$(PKG_NAME)/description
 	per node (uci set mt7915backlog.settings.disabled=1). See README.md.
 endef
 
+# BuildPackageGluon would install ./files by itself; we take the default and add
+# the comment stripping the other shell packages of this feed use. Measured on
+# backlog.sh: 5265 -> 2138 bytes raw, 2400 -> 904 compressed. The comments stay
+# in the repository, only the installed copy is stripped.
+# $(Gluon/Build/Install) is Gluon's own default, used the same way by
+# gluon-core, gluon-autoupdater and others.
+define Package/$(PKG_NAME)/install
+	$(Gluon/Build/Install)
+	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-mt7915-backlog/backlog.sh
+endef
+
 $(eval $(call BuildPackageGluon,$(PKG_NAME)))

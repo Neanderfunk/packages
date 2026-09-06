@@ -26,12 +26,17 @@ endef
 define Build/Configure
 endef
 
+# Die Datei ist Lua (#!/usr/bin/lua), nicht Shell. Sie lag unter files/ und
+# wurde mit gluonShellDiet.sh behandelt - einem sed, das Zeilen mit '#'
+# entfernt. Lua kommentiert mit '--', der Aufruf entfernte also exakt null
+# Zeilen. Jetzt liegt sie unter luasrc/ und geht durch Gluons eigenen
+# Lua-Minifier, so wie es neanderfunk-wifi-blackout im selben Feed macht.
 define Build/Compile
+	$(call GluonSrcDiet,./luasrc,$(PKG_BUILD_DIR)/luadest/)
 endef
 
 define Package/$(PKG_NAME)/install
-	$(CP) ./files/* $(1)/
-	./gluonShellDiet.sh $(1)/lib/gluon/upgrade/209-neanderfunk-ch13to9
+	$(CP) $(PKG_BUILD_DIR)/luadest/* $(1)/
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
