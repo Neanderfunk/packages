@@ -75,8 +75,11 @@ initially there were at lease two neighbours. See [](neanderfunk-wificheck/READM
 
 ### neanderfunk-mt7915-backlog ###
 
-restarts wifi if the mt7915e driver shows the known backlog-fill failure
-symptom, see [](neanderfunk-mt7915-backlog/README.md)
+restarts wifi if an mt7915 radio's txq backlog fills up, the known mcu-timeout
+symptom. Looks at the driver of each radio rather than trusting the build
+target, so an mt7621 board with different wifi is left alone, and holds a
+cool-down so a backlog that does not clear cannot restart wifi every two
+minutes. See [](neanderfunk-mt7915-backlog/README.md)
 
 ### neanderfunk-nodeplacer ###
 
