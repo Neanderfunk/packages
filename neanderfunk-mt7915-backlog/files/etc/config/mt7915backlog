@@ -1,0 +1,18 @@
+# neanderfunk-mt7915-backlog
+#
+# Switch the check off on this node:
+#   uci set mt7915backlog.settings.disabled='1' ; uci commit mt7915backlog
+
+config settings 'settings'
+	# Backlog in packets that counts as stuck. Deliberately not preset here:
+	# unset means the built-in default of 50.
+	#option threshold '50'
+	# Minutes before wifi may be restarted again, so a backlog that does not
+	# clear cannot restart wifi every two minutes. Default 30.
+	#option cooldown_min '30'
+	#option disabled '0'
+	# Minutes after a boot before the backlog is even looked at. Default 5.
+	#option check_uptime_min '5'
+	# Minutes after a boot before wifi may actually be restarted; below this
+	# a high backlog is only reported. Default 60.
+	#option reboot_uptime_min '60'
