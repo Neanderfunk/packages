@@ -12,6 +12,11 @@ define Package/$(PKG_NAME)
   CATEGORY:=Gluon
   TITLE:=weekly reboot scheduled on thursdays
   DEPENDS:=+gluon-core +micrond
+  # ffac-weeklyreboot installs the same two paths (the worker and the micron.d
+  # entry) and does the same job; gluon-weeklyreboot is what this package was
+  # called before the rename and still exists upstream. Either together with
+  # this one means two weekly reboots fighting over the same files.
+  CONFLICTS:=ffac-weeklyreboot gluon-weeklyreboot
 endef
 
 define Package/$(PKG_NAME)/description

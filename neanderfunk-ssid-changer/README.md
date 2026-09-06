@@ -109,3 +109,17 @@ Some SSID changers are in use in:
 -   [Freifunk Berlin](https://github.com/freifunk-berlin/falter-packages/tree/master/packages/falter-berlin-ssid-changer)
 -   [Freifunk Stuttgart](https://gitlab.freifunk-stuttgart.de/firmware/gluon-packages.git)
 -   [Freifunk Altdorf](https://github.com/tecff/gluon-packages/tree/main/tecff-ssid-changer)
+
+
+Mutually exclusive packages
+---------------------------
+
+This package declares `CONFLICTS:=ffac-ssid-changer gluon-ssid-changer`. It is a
+fork of `ffac-ssid-changer` and installs the exact same six paths, uses the same
+`/tmp` state files and drives the same SSID, so the two can only be installed
+together by mistake - the package manager now refuses instead of leaving it to
+whoever edits `image-customization.lua`. `gluon-ssid-changer` is the older shell
+variant this feed used to carry (removed here, still present upstream).
+
+`ffac-eol-ssid` is *not* a conflict: different purpose, different files, and it
+can be used alongside this one.

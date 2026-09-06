@@ -24,3 +24,11 @@ PACKAGES_EULENFUNK_BRANCH=v2018.1.x
 Now you can add the package `neanderfunk-weeklyreboot` to your site.mk
 (`*/missing/*` has to be replaced by the github-commit-ID of the version you
 want to use, you have to pick it manually.)
+
+
+Mutually exclusive packages
+---------------------------
+
+Declares `CONFLICTS:=ffac-weeklyreboot gluon-weeklyreboot`. `ffac-weeklyreboot`
+installs the same two paths and does the same job; `gluon-weeklyreboot` is what
+this package was called before the rename and still exists upstream.

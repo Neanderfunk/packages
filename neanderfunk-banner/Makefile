@@ -13,6 +13,10 @@ define Package/$(PKG_NAME)
   CATEGORY:=Customization
   TITLE:=Banner file replacement
   DEPENDS:=+gluon-core +busybox
+  # ffmuc-custom-banner also owns /etc/banner.gluon and also replaces the login
+  # banner, just by templating it from an upgrade script instead of symlinking.
+  # Both installed at once would clobber each other's file.
+  CONFLICTS:=ffmuc-custom-banner
   MAINTAINER:=Eulenfunk www.eulenfunk.de Andreas Dorfer
   URL:=https://github.com/Neanderfunk/packages
   SOURCE:=https://github.com/Neanderfunk/packages.git

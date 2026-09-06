@@ -33,3 +33,11 @@ PACKAGES_EULENFUNK_BRANCH=v2023.2.x
 With this done you can add the package `neanderfunk-banner` to your `site.mk`
 (`*/missing/*` has to be replaced by the github-commit-ID of the version you
 want to use, you have to pick it manually.)
+
+
+Mutually exclusive packages
+---------------------------
+
+Declares `CONFLICTS:=ffmuc-custom-banner`. That package also owns
+`/etc/banner.gluon` and also replaces the login banner - it templates it from an
+upgrade script rather than symlinking - so the two would clobber each other.
