@@ -23,6 +23,10 @@ reboot_if_old() {
 	uptime_ok || return 0
 	sync
 	reboot -f
+	# reboot -f does not necessarily return immediately, and if it does there is
+	# no point running the remaining checks - they would only log a second
+	# reboot reason for the same event.
+	exit
 }
 
 # --- batman gateway ---------------------------------------------------------
