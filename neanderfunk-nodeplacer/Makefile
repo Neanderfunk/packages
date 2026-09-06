@@ -16,7 +16,7 @@ define Package/neanderfunk-nodeplacer
   TITLE:=Move individual nodes to another domain, controlled by a signed manifest
   DEPENDS:=+gluon-core +autoupdater +micrond +gluon-web-admin \
 	+libgluonutil +libjson-c +libubox +libuclient +libuci +libecdsautil
-  CONFLICTS:=+gluon-hoodselector
+  CONFLICTS:=gluon-hoodselector
   MAINTAINER:=Neanderfunk <technik@neanderfunk.de>
 endef
 

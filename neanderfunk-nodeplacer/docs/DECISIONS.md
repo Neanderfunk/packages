@@ -700,3 +700,28 @@ Status: **offen** / **entschieden** / **verworfen**.
   naechsten Lauf einmalig aus dem Feed (Liste `REMOVE`), synct danach nur
   noch `neanderfunk-nodeplacer`. `scripts/build-x86-container.sh` baut
   nur noch das eine Paket.
+
+## D-040
+
+Fehler: `CONFLICTS:=+gluon-hoodselector` war wirkungslos. Das fuehrende `+`
+ist DEPENDS-Syntax; OpenWrt entfernt es nur dort.
+
+* Beleg aus `include/package-ipkg.mk` (openwrt-23.05):
+  `strip_deps=$(strip $(subst +,,$(filter-out @%,$(1))))` wird ueber
+  `filter_deps` **ausschliesslich** auf `DEPENDS` angewandt
+  (`IDEPEND_$(1):=$$(call filter_deps,$$(DEPENDS))`), waehrend `CONFLICTS`
+  unveraendert durchgereicht wird:
+  `$$(call addfield,Conflicts,$$(call mergelist,$(CONFLICTS))`.
+  Im Control-File stand also `Conflicts: +gluon-hoodselector` — ein Paket
+  dieses Namens gibt es nicht, der Konflikt hat nie gegriffen. Beide Pakete
+  liessen sich gleichzeitig in ein Image nehmen, obwohl sie sich
+  widersprechen (beide entscheiden ueber die Domain eines Knotens).
+* Behoben: `CONFLICTS:=gluon-hoodselector`.
+* **Dieselbe Vorlage ist upstream kaputt:** Gluons eigenes
+  `package/gluon-hoodselector/Makefile` schreibt
+  `CONFLICTS:=+gluon-config-mode-domain-select`. `gluon-logging` macht es
+  dagegen richtig (`CONFLICTS:=gluon-web-logging`). Von dort stammt die
+  falsche Schreibweise vermutlich. Kandidat fuer einen Upstream-Bugreport.
+* Merke fuer alle Makefiles dieses Projekts: das `+` gehoert nur in
+  `DEPENDS`. In `CONFLICTS` und `PROVIDES` steht der reine Paketname.
+
