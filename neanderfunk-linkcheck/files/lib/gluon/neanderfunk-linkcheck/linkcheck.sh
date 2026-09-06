@@ -195,7 +195,14 @@ if ! check_disabled "$checkgroup" ; then
       continue
      fi
     if radio_is_wifi6 "${linkname}" ; then
-      logger -s -t "neanderfunk-linkcheck" -p 5 "[bsses] ${linkname} is wifi6/mt7915, not scanning it"
+      # Once per boot, not every five minutes. On a ZyXEL NWA50AX Pro this
+      # fires for mesh0, client0 and client1 on every run - three identical
+      # lines every five minutes, about 1700 a day, saying the same thing the
+      # first one said. The state is static: a radio does not stop being wifi6.
+      if [ ! -e "/tmp/linkcheck.wifi6.${linkname}" ] ; then
+        touch "/tmp/linkcheck.wifi6.${linkname}"
+        logger -s -t "neanderfunk-linkcheck" -p 5 "[bsses] ${linkname} is wifi6/mt7915, not scanning it (logged once per boot)"
+      fi
       continue
      fi
     iwfile=/tmp/linkcheck.iwscan.$(uci get $linkexist.device)
