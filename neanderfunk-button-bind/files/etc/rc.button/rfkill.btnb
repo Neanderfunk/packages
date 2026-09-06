@@ -23,8 +23,11 @@ else
 fi
 ;;
 
-*) # Default, WLAN on/off
-/etc/rc.button/rfkill.owrt 
+*) # Default, WLAN on/off - hand over to OpenWrt's own handler.
+# Guarded: 888-neanderfunk-button-bind only saves it if the target shipped one,
+# so on a target without an rfkill handler this would otherwise call a
+# non-existent file on every button press.
+[ -x /etc/rc.button/rfkill.owrt ] && /etc/rc.button/rfkill.owrt
 ;;
 esac
 exit 0

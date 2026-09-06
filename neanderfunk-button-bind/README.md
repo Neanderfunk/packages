@@ -17,6 +17,35 @@ Verfügbare Funktionen (`uci set button-bind.wifi.function=N; uci commit`):
 
 Einstellbar ist das auch im Config-Mode unter „Taster".
 
+Knoten ohne Taster oder ohne WLAN
+---------------------------------
+
+Die Seite erscheint im Config-Mode nur, wenn der Knoten überhaupt Taster hat,
+und die WLAN-Optionen nur, wenn er WLAN hat:
+
+| Knoten | „Taster"-Seite | angebotene Optionen |
+| --- | --- | --- |
+| Taster + WLAN (z. B. COVR-X1860) | ja | alle vier |
+| Taster, kein WLAN | ja | nur „Funktionslos" und „Nachtmodus" |
+| kein Taster (z. B. x86-VM) | nein | – |
+
+Erkannt wird das am **Device Tree**: ein Target mit Tastern deklariert sie dort
+(der COVR hat `/sys/firmware/devicetree/base/keys` mit `reset` und `wps`, die
+x86-VM hat gar keinen Device Tree). Zwei naheliegende Signale taugen dafür
+ausdrücklich *nicht*, beide am echten Gerät gegengeprüft:
+
+* `/dev/input` liefert das Ergebnis **verkehrt herum** — `gpio-button-hotplug`
+  erzeugt Hotplug-Events statt Input-Devices, der COVR hat deshalb gar keinen
+  `/dev/input`-Eintrag, während die x86-VM „Power Button" und eine AT-Tastatur
+  meldet.
+* `/etc/hotplug.d/button/` wird von Paketen befüllt (`gluon-setup-mode` legt
+  dort seinen Handler ab) und ist auf beiden Knoten identisch.
+
+Ohne Taster passiert auch sonst nichts Schädliches: `rfkill.btnb` wird mangels
+Button-Event nie aufgerufen. Der Symlink auf `/etc/rc.button/rfkill` wird
+trotzdem gesetzt — genau so hält es Gluon mit seinem eigenen
+Setup-Mode-Button-Handler.
+
 Herkunft und Credits
 --------------------
 
@@ -43,6 +72,14 @@ Nur das Nötige, damit es hier sauber läuft:
   den Endlos-Aufruf. Auf einem Knoten nachgestellt und bestätigt. Gesichert
   wird jetzt genau einmal, und nur wenn `rfkill` wirklich noch die
   Originaldatei ist.
+* Die Config-Mode-Seite ist an vorhandene Taster gekoppelt und die
+  WLAN-Optionen an vorhandenes WLAN (siehe oben). Das Original zeigte beides
+  bedingungslos — auf einer x86-VM ohne Taster und ohne WLAN also eine Seite,
+  die „Wifi an/aus" anbietet.
+* Der Default-Zweig in `rfkill.btnb` prüft jetzt mit `[ -x ... ]`, ob
+  `rfkill.owrt` überhaupt existiert. Auf einem Target, dessen base-files kein
+  `rfkill` mitbringen, sichert das Upgrade-Skript keines, und der Aufruf ginge
+  ins Leere.
 * `uci get` → `uci -q get` in beiden Skripten: fehlt die Config oder die
   Option, schrieb das Original eine Fehlermeldung nach stderr. Am Verhalten
   ändert sich nichts, der Default-Zweig greift so oder so.
