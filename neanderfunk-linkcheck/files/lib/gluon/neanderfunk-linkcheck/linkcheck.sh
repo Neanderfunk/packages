@@ -164,9 +164,15 @@ iface_is_up() {
 
 radio_is_wifi6() {
   # $1: ifname
-  drv="$(readlink -f "/sys/class/net/$1/device/driver" 2>/dev/null)"
-  case "${drv##*/}" in
-    mt7915*) return 0 ;;
+  # Ask for the kernel module, not the driver name: on a ZyXEL NWA50AX Pro
+  # (mediatek/filogic) the radios sit in the SoC and the driver is called
+  # "mt798x-wmac", while the module is the same mt7915e as on the COVR. The
+  # driver name alone would miss every filogic node; here it only happened to
+  # work because the target fallback below caught them.
+  mod="$(readlink -f "/sys/class/net/$1/device/driver/module" 2>/dev/null)"
+  [ -n "$mod" ] || mod="$(readlink -f "/sys/class/net/$1/device/driver" 2>/dev/null)"
+  case "${mod##*/}" in
+    mt7915*|mt798*) return 0 ;;
   esac
   [ "$gluontarget" = "mediatek" ]
 }

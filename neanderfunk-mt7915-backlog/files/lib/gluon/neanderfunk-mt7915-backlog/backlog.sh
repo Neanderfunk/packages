@@ -5,7 +5,9 @@
 #
 # Ported from ffac-mt7915-backlog, see README.md. Differences to the original:
 #
-#   * Only mt7915 phys are looked at. The package gate is by build target
+#   * Only mt7915 phys are looked at, identified by their kernel module rather
+#     than the driver name - see the comment at the loop. The package gate is
+#     by build target
 #     (ramips_mt7621, mediatek_filogic, mediatek_mt7622) plus kmod-mt7915e, but
 #     an mt7621 board need not carry an mt7915 radio at all: a Xiaomi Mi Router
 #     4A Gigabit is ramips/mt7621 with mt7603e and mt76x2e, and this script was
@@ -52,9 +54,24 @@ for phy in /sys/class/ieee80211/phy* ; do
 	[ -e "$phy" ] || continue
 	phy_name="$(basename "$phy")"
 
-	drv="$(readlink -f "$phy/device/driver" 2>/dev/null)"
-	case "${drv##*/}" in
-		mt7915*) ;;
+	# Ask for the kernel *module*, not the driver name. On a ZyXEL NWA50AX Pro
+	# (mediatek/filogic) the radios are built into the SoC, so the mt7915 code
+	# registers them through a platform driver called "mt798x-wmac" - the same
+	# mt7915e module, a different driver name. Gating on the driver name skipped
+	# every filogic node, and those are precisely the ones that show the
+	# symptom: on that ZyXEL phy0 has 19 packet-limit overflows and 155 hash
+	# collisions, while the COVR-X1860 we did look at has none.
+	mod="$(readlink -f "$phy/device/driver/module" 2>/dev/null)"
+	mod="${mod##*/}"
+	if [ -z "$mod" ] ; then
+		# No module link (built-in, or sysfs laid out differently). Fall back to
+		# the driver name, then to the build target - the package only installs
+		# on mt7915-capable targets in the first place.
+		drv="$(readlink -f "$phy/device/driver" 2>/dev/null)"
+		mod="${drv##*/}"
+	fi
+	case "$mod" in
+		mt7915*|mt798*) ;;
 		*) continue ;;
 	esac
 
