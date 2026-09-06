@@ -1,6 +1,5 @@
 #!/usr/bin/lua
 
-site = require("gluon.site")
 local uci = require("simple-uci").cursor()
 
 --- log to stdout (visible during a live gluon-reconfigure run) and syslog
@@ -80,46 +79,46 @@ local function htmode_or_default(interface, grep_pattern)
 	return nil
 end
 
---- first of all, get the right 2.4GHz wifi interface
+--- Which radio is 2.4 GHz, which is 5 GHz?
+---
+--- This used to be worked out from the channel number: below 16 means 2.4,
+--- above means 5, and "auto" was mapped to 999 - which put a 2.4 GHz radio set
+--- to "auto" into the 5 GHz slot, and from there into the country and htmode
+--- logic meant for 5 GHz. uci answers the question directly since OpenWrt
+--- 21.02 replaced hwmode with band, so ask that instead; hwmode stays as the
+--- older spelling. Measured on the test nodes: band is 2g/5g everywhere,
+--- hwmode is empty.
+---
+--- Iterating the wifi-device sections also drops the old assumption that the
+--- radios are exactly radio0 and radio1.
 local interface24 = false
 local interface50 = false
-if uci:get('wireless', 'radio0', 'htmode') then
-	chanR0string = uci:get('wireless', 'radio0', 'channel')
-	if tonumber( chanR0string ) ~= nil then  --- bypass 'auto'
-		chanR0 = tonumber(chanR0string)
-	else
-		chanR0 = 999
+
+local function band_of(radio)
+	local band = uci:get('wireless', radio, 'band')
+	if band then
+		return band
 	end
-	if chanR0 < 16 then
-		interface24 = 'radio0'
-		chanR1string = uci:get('wireless', 'radio1', 'channel')
-		if tonumber( chanR1string ) ~= nil then  --- bypass 'auto'
-			chanR1 = tonumber(chanR1string)
-		else
-			chanR1 = 999
-		end
-		if chanR1 then
-			if chanR1 > 15 then
-			       interface50 = 'radio1'
-			end
-		end
-	elseif chanR0 > 15  then
-		interface50 = 'radio0'
-		chanR1string = uci:get('wireless', 'radio1', 'channel')
-		if tonumber( chanR1string ) ~= nil then  --- bypass 'auto'
-			chanR1 = tonumber(chanR1string)
-		else
-			chanR1 = 999
-		end
-		if chanR1 then
-			if chanR1 < 16 then
-				interface24 = 'radio1'
-			end
-		end
-	else
-		os.exit(0) -- something went wrong
+	local hwmode = uci:get('wireless', radio, 'hwmode')
+	if hwmode == '11g' or hwmode == '11b' then
+		return '2g'
+	elseif hwmode == '11a' then
+		return '5g'
 	end
+	return nil
 end
+
+uci:foreach('wireless', 'wifi-device',
+	function(section)
+		local radio = section['.name']
+		local band = band_of(radio)
+		if band == '2g' and not interface24 then
+			interface24 = radio
+		elseif band == '5g' and not interface50 then
+			interface50 = radio
+		end
+	end
+)
 
 if not interface24 and not interface50 then
 	log("no 2.4GHz/5GHz radio found, nothing to do")
@@ -177,17 +176,18 @@ if interface24 then
 	end
 end
 if interface50 then
-	if interface50 == 'radio0' or interface50 == 'radio1' then
-		if channel50 ~= 'auto' and uci:get('gluon', 'wireless', 'outdoor') ~= '1' then  --- don't do if outdoor is enabled
-			uci:set('wireless', interface50, 'country', country)
-			uci:save('wireless')
-			uci:commit('wireless')
-			cmd('/sbin/wifi reconf')
-			local VHT = htmode_or_default(interface50, '80\\|40')
-			if VHT then
-				htmode50 = VHT
-				uci:set('wireless', interface50, 'htmode', htmode50)
-			end
+	-- an "interface50 == 'radio0' or 'radio1'" guard used to sit here. It was a
+	-- sanity check on the hand-rolled detection above and would have skipped a
+	-- third radio outright, so it is gone with that detection.
+	if channel50 ~= 'auto' and uci:get('gluon', 'wireless', 'outdoor') ~= '1' then  --- don't do if outdoor is enabled
+		uci:set('wireless', interface50, 'country', country)
+		uci:save('wireless')
+		uci:commit('wireless')
+		cmd('/sbin/wifi reconf')
+		local VHT = htmode_or_default(interface50, '80\\|40')
+		if VHT then
+			htmode50 = VHT
+			uci:set('wireless', interface50, 'htmode', htmode50)
 		end
 	end
 end

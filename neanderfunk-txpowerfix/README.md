@@ -56,3 +56,24 @@ PACKAGES_EULENFUNK_BRANCH=v2018.1.x
 ```
 
 With this done you can add the package `neanderfunk-txpowerfix` to your `site.mk`
+
+Radio-Erkennung (Stand 2026-09-06)
+----------------------------------
+
+Welches Radio 2,4 GHz ist und welches 5 GHz, wurde frueher aus der Kanalnummer
+geschlossen: unter 16 heisst 2,4, darueber 5, und ein nicht lesbarer Kanal
+wurde zu 999. Das ging an zwei Stellen schief:
+
+* **Ein Knoten mit nur einem Radio bekam ein Phantom-5-GHz-Radio.** Auf einem
+  TP-Link WR1043ND v2 gibt es kein `radio1`; `uci get wireless.radio1.channel`
+  liefert nichts, daraus wurde 999, und 999 > 15 ergab `interface50 = radio1`.
+  Folge: die Landeskennung wurde vom Phantom-Zweig entschieden und ueberschrieb
+  die richtige Entscheidung aus dem 2,4-GHz-Zweig (bei Kanal 12 oder 13 also
+  falsch), dazu zwei ueberfluessige `wifi reconf` und `iwinfo`-Aufrufe auf ein
+  Geraet, das es nicht gibt.
+* **Ein 2,4-GHz-Radio auf `channel=auto`** wurde ebenfalls zu 999 und landete im
+  5-GHz-Zweig.
+
+Seit OpenWrt 21.02 beantwortet `band` (`2g`/`5g`) die Frage direkt; `hwmode`
+bleibt als aeltere Schreibweise als Rueckfall. Ausserdem werden jetzt die
+`wifi-device`-Sektionen durchlaufen statt fest `radio0`/`radio1` anzunehmen.
