@@ -274,7 +274,9 @@ if ! check_disabled bridges || ! check_disabled bridge_ports ; then
         wert=0
         logger -s -t "neanderfunk-linkcheck" -p 5 "[bridge_ports] $port dropped out of bridge $b"
       fi
-      check="$b:$port"
+      # ifnameseparator, not ":" - see its definition above, the file itself
+      # warns that ":" may cause issues in these marker file names
+      check="${b}${ifnameseparator}${port}"
       valuecheck "$check"
     done
   fi
