@@ -17,10 +17,18 @@
 upgrade_started='/tmp/autoupdate.lock'
 [ -f $upgrade_started ] && exit
 
+# Nothing at all within the first linkcheck.settings.check_uptime_min minutes:
+# right after a boot the anycast address is regularly not reachable yet, and
+# saying so would only cause needless alarm.
+checks_ok || exit 0
+
 reboot_if_old() {
 	# $1: check name for the log, $2: reason
+	if ! uptime_ok ; then
+		no_action_yet "[$1] $2"
+		return 0
+	fi
 	logger -s -t "neanderfunk-linkcheck" -p 5 "[$1] $2, rebooting"
-	uptime_ok || return 0
 	sync
 	reboot -f
 	# reboot -f does not necessarily return immediately, and if it does there is

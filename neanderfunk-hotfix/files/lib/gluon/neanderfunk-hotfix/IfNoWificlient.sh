@@ -6,6 +6,8 @@ upgrade_started='/tmp/autoupdate.lock'
 
 [ -f $upgrade_started ] && exit
 check_disabled no_wifi_clients && exit 0
+# nothing at all within the first hotfix.settings.check_uptime_min minutes
+checks_ok || exit 0
 
 cliifs=$(/usr/sbin/brctl show | sed -n -e '/^br-client[[:space:]]/,/^\S/ { /^\(br-client[[:space:]]\|\t\)/s/^.*\t//p }' | grep -v "bat0\|eth\|local-port" | tr '\n' ' ')
 
@@ -36,6 +38,12 @@ if [ -z "$C_MACS" ] ; then
   # only escalate on a node that has seen clients at least once since boot
   if [ -f /tmp/hotfix.wificlients-seen ] && [ "$(strike /tmp/hotfix.wificlients-gone)" -ge 4 ] ; then
     [ -f $upgrade_started ] && exit
+    if ! uptime_ok ; then
+      # report it, but do not touch wifi yet - the strikes stay, so the restart
+      # happens on the first run past hotfix.settings.reboot_uptime_min
+      no_action_yet no_wifi_clients "wireless stations disappeared for long"
+      exit 0
+    fi
     logger -s -t "hotfix-IfNoWificlient" -p 5 "[no_wifi_clients] wireless stations disappeared for long, restarting Wifi"
     rm -f /tmp/hotfix.wificlients-seen 2>/dev/null
     unstrike /tmp/hotfix.wificlients-gone

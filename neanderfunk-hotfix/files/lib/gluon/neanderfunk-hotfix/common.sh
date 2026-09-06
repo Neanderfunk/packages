@@ -32,9 +32,40 @@ reboot_uptime_limit() {
 	echo $((m * 60))
 }
 
-# true once the node is old enough to be rebooted by a check
+# true once the node is old enough for a check to ACT on what it found -
+# reboot, wifi restart, any network reinit. A check below this limit still
+# runs and still logs; see no_action_yet().
 uptime_ok() {
 	[ "$(sed 's/\..*//g' /proc/uptime)" -gt "$(reboot_uptime_limit)" ]
+}
+
+# Minimum uptime in seconds before a check may even run (minutes, default 5):
+#     uci set hotfix.settings.check_uptime_min='10' ; uci commit hotfix
+# Right after a boot the network is often not up yet, and a check firing then
+# would only report a problem that is not one. Below this limit nothing runs
+# and nothing is logged.
+check_uptime_limit() {
+	local m
+	m="$(uci -q get hotfix.settings.check_uptime_min)"
+	case "$m" in
+		''|*[!0-9]*) m=5 ;;
+	esac
+	echo $((m * 60))
+}
+
+# true once the node is old enough for the checks to run at all
+checks_ok() {
+	[ "$(sed 's/\..*//g' /proc/uptime)" -gt "$(check_uptime_limit)" ]
+}
+
+# Log that a check found something but is not acting on it yet. Between
+# check_uptime_min and reboot_uptime_min the checks run and report, they just
+# do not reboot, restart wifi or otherwise touch the network - so whoever
+# watches `logread -f` right after a boot sees the finding without the node
+# acting on a network that is still settling.
+no_action_yet() {
+	# $1: the finding, already carrying its [check] tag
+	logger -s -t "neanderfunk-hotfix" -p 5 "$1 - no action taken, uptime below hotfix.settings.reboot_uptime_min ($(($(reboot_uptime_limit) / 60))min)"
 }
 
 # Count consecutive failures. strike <prefix> records one more and prints how

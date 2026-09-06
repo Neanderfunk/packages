@@ -40,7 +40,9 @@ valuecheck ()
       # settled. Minutes of thrashing, and the restart never got a fair chance
       # to work. The strikes are still counted per check, so the escalation to
       # the 4th (reboot) is unchanged.
-      if [ -n "${wifi_restarted}" ] ; then
+      if ! uptime_ok ; then
+        no_action_yet "[${checkgroup}] lost neighbours 3rd: ${linkname}.${check}"
+      elif [ -n "${wifi_restarted}" ] ; then
         logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 3rd: ${linkname}.${check}, wifi already restarted this run"
       else
         logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 3rd: ${linkname}.${check}, wifi restart"
@@ -54,14 +56,18 @@ valuecheck ()
       fi
       ;;
     *)
+      # not within the first linkcheck.settings.reboot_uptime_min minutes of
+      # uptime. The .inhood arming already bounds an outage to one reboot (the
+      # markers live in /tmp), this keeps the rate down on top. Report first,
+      # then decide - so the finding shows up in the log either way.
+      if ! uptime_ok ; then
+        no_action_yet "[${checkgroup}] lost neighbours 4th: ${linkname}.${check}"
+        return
+      fi
       logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 4th: ${linkname}.${check}, rebooting!"
       sleep 10
       upgrade_started='/tmp/autoupdate.lock'
       [ -f ${upgrade_started} ] && exit
-      # not within the first linkcheck.settings.reboot_uptime_min minutes of
-      # uptime. The .inhood arming already bounds an outage to one reboot (the
-      # markers live in /tmp), this keeps the rate down on top.
-      uptime_ok || exit
       reboot -f
       # reboot -f does not necessarily return immediately
       exit
@@ -73,6 +79,14 @@ valuecheck ()
 #do not run run while node is firmware flashing
 upgrade_started='/tmp/autoupdate.lock'
 [ -f ${upgrade_started} ] && exit
+
+# Two thresholds, deliberately separate:
+#   below linkcheck.settings.check_uptime_min (default 5 min) nothing runs at
+#     all - the network is still coming up, and "no neighbours" or "anycast not
+#     answering" then is not a fault worth reporting;
+#   below linkcheck.settings.reboot_uptime_min (default 60 min) the checks run
+#     and report what they find, but nothing restarts wifi or reboots.
+checks_ok || exit 0
 
 ifnameseparator=','  # charcters like . - # or even : may cause issues
 

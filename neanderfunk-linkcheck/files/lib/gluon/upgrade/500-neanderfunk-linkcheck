@@ -4,6 +4,7 @@
 #
 # site.conf:
 #   linkcheck = {
+#     check_uptime_min  = 5,
 #     reboot_uptime_min = 60,                  -- optional, minutes
 #     disabled_checks = { 'bsses' },           -- optional
 #   },
@@ -11,6 +12,11 @@
 sitefile=/lib/gluon/site.json
 
 uci -q get linkcheck.settings >/dev/null || uci -q set linkcheck.settings=settings
+
+if [ -z "$(uci -q get linkcheck.settings.check_uptime_min)" ] ; then
+	v="$(jsonfilter -i "$sitefile" -e '@.linkcheck.check_uptime_min' 2>/dev/null)"
+	[ -n "$v" ] && uci -q set linkcheck.settings.check_uptime_min="$v"
+fi
 
 if [ -z "$(uci -q get linkcheck.settings.reboot_uptime_min)" ] ; then
 	v="$(jsonfilter -i "$sitefile" -e '@.linkcheck.reboot_uptime_min' 2>/dev/null)"

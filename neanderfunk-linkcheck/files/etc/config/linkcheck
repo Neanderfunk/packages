@@ -11,6 +11,11 @@ config settings 'settings'
 	# and it lets the community preset a value from the site.conf (see
 	# /lib/gluon/upgrade/500-neanderfunk-linkcheck).
 	#option reboot_uptime_min '60'
+	# How long after a boot no check runs AT ALL (minutes, default 5).
+	# Below this the network is usually still coming up and any finding
+	# would be noise. Between the two limits the checks run and report,
+	# but never reboot or restart wifi.
+	#option check_uptime_min '5'
 
 config check 'batadv_neighbours'
 config check 'bsses'

@@ -5,6 +5,7 @@
 #
 # site.conf:
 #   hotfix = {
+#     check_uptime_min  = 5,
 #     reboot_uptime_min = 60,                        -- optional, minutes
 #     disabled_checks = { 'load', 'tunneldigger' },  -- optional
 #   },
@@ -13,7 +14,12 @@ sitefile=/lib/gluon/site.json
 
 uci -q get hotfix.settings >/dev/null || uci -q set hotfix.settings=settings
 
-# only when the node has no value of its own; unset means the built-in 60
+# only when the node has no value of its own; unset means the built-in default
+if [ -z "$(uci -q get hotfix.settings.check_uptime_min)" ] ; then
+	v="$(jsonfilter -i "$sitefile" -e '@.hotfix.check_uptime_min' 2>/dev/null)"
+	[ -n "$v" ] && uci -q set hotfix.settings.check_uptime_min="$v"
+fi
+
 if [ -z "$(uci -q get hotfix.settings.reboot_uptime_min)" ] ; then
 	v="$(jsonfilter -i "$sitefile" -e '@.hotfix.reboot_uptime_min' 2>/dev/null)"
 	[ -n "$v" ] && uci -q set hotfix.settings.reboot_uptime_min="$v"

@@ -16,25 +16,34 @@ safety_exit() {
 now_reboot() {
   # first parameter message
   # second optional -f to force reboot even if autoupdater is running
-  logger -s -t "neanderfunk-healthcheck" -p 5 "rebooting... reason: $1"
-  if uptime_ok ; then
-    LOG=/lib/gluon/neanderfunk-hotfix
-    [ ! -d $LOG ] && mkdir $LOG
-    LOG="$LOG/reboot.log"
-    # the first 5 times log the reason for a reboot in a file that is rebootsave
-    # (|| echo 0: on the very first reboot the file does not exist yet, and an
-    # empty $() would make the -gt comparison bail out with a shell error)
-    [ "$(wc -l < "$LOG" 2>/dev/null || echo 0)" -gt 5 ] || echo "$(date) $1" >> "$LOG"
-    if [ "$2" != "-f" ] && [ -f /tmp/autoupdate.lock ] ; then
-      safety_exit "autoupdate running"
-    fi
-    sync
-    /sbin/reboot -f
+  #
+  # Below hotfix.settings.reboot_uptime_min the finding is still reported, it
+  # just does not lead to a reboot - see no_action_yet() in common.sh.
+  if ! uptime_ok ; then
+    no_action_yet "$1"
+    return 0
   fi
-  logger -s -t "neanderfunk-healthcheck" -p 5 "no reboot yet, uptime below hotfix.settings.reboot_uptime_min"
+  logger -s -t "neanderfunk-healthcheck" -p 5 "rebooting... reason: $1"
+  LOG=/lib/gluon/neanderfunk-hotfix
+  [ ! -d $LOG ] && mkdir $LOG
+  LOG="$LOG/reboot.log"
+  # the first 5 times log the reason for a reboot in a file that is rebootsave
+  # (|| echo 0: on the very first reboot the file does not exist yet, and an
+  # empty $() would make the -gt comparison bail out with a shell error)
+  [ "$(wc -l < "$LOG" 2>/dev/null || echo 0)" -gt 5 ] || echo "$(date) $1" >> "$LOG"
+  if [ "$2" != "-f" ] && [ -f /tmp/autoupdate.lock ] ; then
+    safety_exit "autoupdate running"
+  fi
+  sync
+  /sbin/reboot -f
 }
 
-restart_wifi() { 
+restart_wifi() {
+  # same rule as now_reboot: report below the action threshold, do not act
+  if ! uptime_ok ; then
+    no_action_yet "wifi" "wifi restart wanted"
+    return 0
+  fi
   logger -s -t "neanderfunk-healthcheck" "wifi hard restart"
   wifi down
   killall hostapd 2>/dev/null
@@ -45,8 +54,14 @@ restart_wifi() {
 }
 
 
-# don't do anything within the first hotfix.settings.reboot_uptime_min minutes
-uptime_ok || safety_exit "no check due to uptime low!"
+# Two thresholds, deliberately separate:
+#   below hotfix.settings.check_uptime_min (default 5 min) nothing runs at all -
+#     the network is still coming up and any finding would be noise;
+#   below hotfix.settings.reboot_uptime_min (default 60 min) the checks run and
+#     report what they find, but nothing reboots or restarts wifi. That way
+#     someone watching `logread -f` right after a boot sees the finding without
+#     the node acting on a network that has not settled yet.
+checks_ok || exit 0
 
 # check for stale autoupdater
 if [ -f /tmp/autoupdate.lock ] ; then

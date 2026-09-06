@@ -81,10 +81,26 @@ set on the node - so a local `uci set` always wins over the site default:
 
 ```lua
   linkcheck = {
+    check_uptime_min  = 5,                  -- optional, minutes, default 5
     reboot_uptime_min = 60,                 -- optional, minutes, default 60
     disabled_checks = { 'bsses' },  -- optional
   },
 ```
+
+Two uptime thresholds
+---------------------
+
+They do different jobs and are set separately:
+
+| below | what happens |
+| --- | --- |
+| `check_uptime_min` (default 5 min) | nothing runs at all. Right after a boot the network is usually still coming up, and "no gateway" or "anycast not answering" then is not a fault - reporting it would only cause needless alarm. |
+| `reboot_uptime_min` (default 60 min) | the checks run and **report what they find**, but take no action: no reboot, no wifi restart, no network reinit. The log line says so explicitly, naming the key that withheld it. |
+| above both | normal operation. |
+
+Strikes keep counting while action is withheld, so a problem that is still
+there when the node passes `reboot_uptime_min` is acted on straight away rather
+than starting its count over.
 
 Checks
 ------

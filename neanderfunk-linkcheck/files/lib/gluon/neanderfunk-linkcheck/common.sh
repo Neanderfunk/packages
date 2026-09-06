@@ -24,8 +24,10 @@ check_disabled() {
 	return 1
 }
 
-# minimum uptime in seconds before a check may reboot; unset or non-numeric
-# falls back to the 60 minutes this used to be hardcoded to
+# true once the node is old enough for a check to ACT on what it found -
+# reboot, wifi restart, any network reinit. Below this limit a check still
+# runs and still logs; see no_action_yet(). Unset or non-numeric falls back to
+# the 60 minutes this used to be hardcoded to.
 uptime_ok() {
 	local m
 	m="$(uci -q get linkcheck.settings.reboot_uptime_min)"
@@ -33,6 +35,42 @@ uptime_ok() {
 		''|*[!0-9]*) m=60 ;;
 	esac
 	[ "$(sed 's/\..*//g' /proc/uptime)" -gt "$((m * 60))" ]
+}
+
+# Minimum uptime in seconds before a check may even run (minutes, default 5):
+#     uci set linkcheck.settings.check_uptime_min='10' ; uci commit linkcheck
+# Right after a boot the network is often not up yet; an anycast ping failing
+# then is not a fault worth reporting. Below this limit nothing runs at all.
+check_uptime_limit() {
+	local m
+	m="$(uci -q get linkcheck.settings.check_uptime_min)"
+	case "$m" in
+		''|*[!0-9]*) m=5 ;;
+	esac
+	echo $((m * 60))
+}
+
+# true once the node is old enough for the checks to run at all
+checks_ok() {
+	[ "$(sed 's/\..*//g' /proc/uptime)" -gt "$(check_uptime_limit)" ]
+}
+
+# reboot_uptime_limit in minutes, for log messages
+reboot_uptime_min() {
+	local m
+	m="$(uci -q get linkcheck.settings.reboot_uptime_min)"
+	case "$m" in
+		''|*[!0-9]*) m=60 ;;
+	esac
+	echo "$m"
+}
+
+# Log that a check found something but is not acting on it yet. Between
+# check_uptime_min and reboot_uptime_min the checks run and report, they just
+# do not reboot or restart wifi.
+no_action_yet() {
+	# $1: the finding, already carrying its [check] tag
+	logger -s -t "neanderfunk-linkcheck" -p 5 "$1 - no action taken, uptime below linkcheck.settings.reboot_uptime_min ($(reboot_uptime_min)min)"
 }
 
 # Count consecutive failures: strike <prefix> records one more and prints how
