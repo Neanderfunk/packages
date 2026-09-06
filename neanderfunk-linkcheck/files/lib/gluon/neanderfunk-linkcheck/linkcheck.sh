@@ -95,13 +95,22 @@ ifnameseparator=','  # charcters like . - # or even : may cause issues
 checkgroup='batadv_neighbours'
 if ! check_disabled "$checkgroup" ; then
 batversion=$(batctl -v |cut -d" " -f 2|grep -o '[0-9]\+'| tr -d '\012\015')
+# an unparsable version must not turn the comparison below into a shell error;
+# everything current is far past that threshold anyway
+case "$batversion" in ''|*[!0-9]*) batversion=999999 ;; esac
 linkname='batadv'
 batmeshs=$(batctl if|cut -d":" -f 1|tr '\n' ' ')
 for batm in ${batmeshs}; do
-  if [ $batversion -gt 20163 ] ; then
-   result=$(batctl n|grep ${batm}|awk '{print $2}'|sort|uniq|wc -l)
+  # tail -n +3 strips the two header lines, as section 3 already does. Without
+  # it the grep also matched the first one, which names the primary interface
+  # ("MainIF/MAC: primary0/42:6b:..."): primary0 then reported a phantom
+  # neighbour count of 1 - awk pulled the word "adv" out of that header - even
+  # though batctl n lists no neighbour for it at all. It never escalated only
+  # because arming needs >=2 and the phantom count is always exactly 1.
+  if [ "$batversion" -gt 20163 ] ; then
+   result=$(batctl n|tail -n +3|grep ${batm}|awk '{print $2}'|sort|uniq|wc -l)
   else
-   result=$(batctl -n|grep ${batm}|awk '{print $2}'|sort|uniq|wc -l)
+   result=$(batctl -n|tail -n +3|grep ${batm}|awk '{print $2}'|sort|uniq|wc -l)
   fi
   check=${batm}
   wert=$result
@@ -122,6 +131,21 @@ fi
 # instead, per radio, and keep the target test only as a fallback for when the
 # driver link is not readable (interface down, no sysfs entry).
 gluontarget=$(cat /etc/openwrt_release|grep DISTRIB_TARGET|cut -d"=" -f2|tr -d \'|cut -d/ -f1)
+# Is this netdev actually up? uci's "disabled" flag is not enough: on a
+# COVR-X1860 mesh_radio1 has disabled='0' and a netdev, but operstate "down",
+# because radio1 sits on channel "auto" and a mesh interface needs a fixed one.
+# Scanning or polling such an interface always yields zero - and a radio that
+# had armed before it went down would escalate all the way to a reboot just
+# because someone switched it off. A radio that is merely deaf is still
+# operationally up, so this does not hide the case these checks exist for.
+iface_is_up() {
+  # $1: ifname
+  case "$(cat "/sys/class/net/$1/operstate" 2>/dev/null)" in
+    up) return 0 ;;
+  esac
+  return 1
+}
+
 radio_is_wifi6() {
   # $1: ifname
   drv="$(readlink -f "/sys/class/net/$1/device/driver" 2>/dev/null)"
@@ -145,6 +169,9 @@ if ! check_disabled "$checkgroup" ; then
   rm /tmp/linkcheck.iwscan.* 2>/dev/null
   for linkexist in $linksexist; do
     linkname=$(uci get $linkexist.ifname)
+    if ! iface_is_up "${linkname}" ; then
+      continue
+     fi
     if radio_is_wifi6 "${linkname}" ; then
       logger -s -t "neanderfunk-linkcheck" -p 5 "[bsses] ${linkname} is wifi6/mt7915, not scanning it"
       continue
@@ -179,7 +206,7 @@ if ! check_disabled "$checkgroup" ; then
  fi
 
 # 3) check for disappearing batman-interfaces
-  wirebatlinks='mesh-vpn primary0 br-mesh_other br-mesh_lan br-mesh_wan br-wan br-lan br-mesh_other1 br-mesh_other2 br-mesh_other3 br-mesh_other4 br-mesh_other5'
+  # (a companion list "wirebatlinks" used to sit here, assigned and never read)
   wifibatlinks='mesh0 mesh1 mesh2 mesh3'
 
   # inventory of bat-interfaces, from all possible sources, probably unneccesary
@@ -310,6 +337,7 @@ if ! check_disabled "$checkgroup" ; then
     [ "$(uci -q get wireless.${mesh_radio}.disabled)" = "1" ] && continue
     dev="$(uci -q get wireless.${mesh_radio}.ifname)"
     [ -z "$dev" ] && continue
+    iface_is_up "$dev" || continue
     # iw can hang on a wedged radio, so run it in the background and give up
     # after 20s rather than stalling the whole run
     out="/tmp/linkcheck.meshpeers.${mesh_radio}.count"
