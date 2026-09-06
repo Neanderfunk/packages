@@ -1,6 +1,10 @@
 #!/bin/sh
 # cc0, maintained by adorfer@nadeshda.org 
 
+# check_disabled(), uptime_ok(), reboot_uptime_limit() - see common.sh for the
+# uci keys (hotfix.<check>.disabled, hotfix.settings.reboot_uptime_min)
+. /lib/gluon/neanderfunk-hotfix/common.sh
+
 # wait 60 minutes if autoupdater is running
 UPDATEWAIT='60'
 
@@ -13,7 +17,7 @@ now_reboot() {
   # first parameter message
   # second optional -f to force reboot even if autoupdater is running
   logger -s -t "neanderfunk-healthcheck" -p 5 "rebooting... reason: $1"
-  if [ "$(sed 's/\..*//g' /proc/uptime)" -gt "3600" ] ; then
+  if uptime_ok ; then
     LOG=/lib/gluon/neanderfunk-hotfix
     [ ! -d $LOG ] && mkdir $LOG
     LOG="$LOG/reboot.log"
@@ -27,7 +31,7 @@ now_reboot() {
     sync
     /sbin/reboot -f
   fi
-  logger -s -t "neanderfunk-healthcheck" -p 5 "no reboot during first hour"
+  logger -s -t "neanderfunk-healthcheck" -p 5 "no reboot yet, uptime below hotfix.settings.reboot_uptime_min"
 }
 
 restart_wifi() { 
@@ -41,30 +45,30 @@ restart_wifi() {
 }
 
 
-# don't do anything the first 60 minutes
-[ "$(sed 's/\..*//g' /proc/uptime)" -gt "3600" ] || safety_exit "no check due to uptime low!"
+# don't do anything within the first hotfix.settings.reboot_uptime_min minutes
+uptime_ok || safety_exit "no check due to uptime low!"
 
 # check for stale autoupdater
 if [ -f /tmp/autoupdate.lock ] ; then
   MAXAGE=$(($(date +%s)-60*${UPDATEWAIT}))
   LOCKAGE=$(date -r /tmp/autoupdate.lock +%s)
-  if [ "$MAXAGE" -gt "$LOCKAGE" ] ; then
-    now_reboot "stale autoupdate.lock file" -f
+  if [ "$MAXAGE" -gt "$LOCKAGE" ] && ! check_disabled stale_lock ; then
+    now_reboot "[stale_lock] stale autoupdate.lock file" -f
   fi
   safety_exit "autoupdate running"
 fi
 
 # batman-adv crash when removing interface in certain configurations
-dmesg | grep -q "Kernel bug" && now_reboot "gluon issue #680"
+check_disabled kernel_bug || { dmesg | grep -q "Kernel bug" && now_reboot "[kernel_bug] gluon issue #680" ; true ; }
 # ath/ksoftirq-malloc-errors (upcoming oom scenario)
-dmesg | grep "ath" | grep "alloc of size" | grep -q "failed" && now_reboot "ath0 malloc fail"
-dmesg | grep "ksoftirqd" | grep -q "page allocation failure" && now_reboot "kernel malloc fail"
+check_disabled ath_malloc || { dmesg | grep "ath" | grep "alloc of size" | grep -q "failed" && now_reboot "[ath_malloc] ath0 malloc fail" ; true ; }
+check_disabled ksoftirqd_malloc || { dmesg | grep "ksoftirqd" | grep -q "page allocation failure" && now_reboot "[ksoftirqd_malloc] kernel malloc fail" ; true ; }
 # interate over hostapd threads running 
-ps|grep hostapd|grep .pid|xargs -r -n 10 /lib/gluon/neanderfunk-hotfix/check_hostapd.sh
+check_disabled hostapd_pids || ps|grep hostapd|grep .pid|xargs -r -n 10 /lib/gluon/neanderfunk-hotfix/check_hostapd.sh
 #check if hostapd-DFS scanning is broken according to sylogs
-if [ $(logread -l 5|grep -c  "daemon.warn hostapd: Failed to check if DFS is required") -gt 0 ] ; then
+if ! check_disabled dfs_failcheck && [ $(logread -l 5|grep -c  "daemon.warn hostapd: Failed to check if DFS is required") -gt 0 ] ; then
   if [ -f /tmp/dfscheckfail.2 ] ; then
-    logger -s -t "neanderfunk-healthcheck" "hostapd DFS failcheck, restarting wifi"
+    logger -s -t "neanderfunk-healthcheck" "[dfs_failcheck] hostapd DFS failcheck, restarting wifi"
     restart_wifi
     rm -f /tmp/dfscheckfail.* 2>/dev/null
     sleep 10
@@ -79,12 +83,14 @@ if [ $(logread -l 5|grep -c  "daemon.warn hostapd: Failed to check if DFS is req
 
 
 # too many tunneldigger restarts
-[ "$(ps |grep -c -e tunneldigger\ restart -e tunneldigger-watchdog)" -ge "4" ] && now_reboot "too many Tunneldigger watchdogs"
-[ "$(ps |grep -c -e "/usr/bin/[t]unneldigger")" -ge "7" ] && now_reboot "too many Tunneldigger instances"
+check_disabled tunneldigger || {
+[ "$(ps |grep -c -e tunneldigger\ restart -e tunneldigger-watchdog)" -ge "4" ] && now_reboot "[tunneldigger] too many Tunneldigger watchdogs"
+[ "$(ps |grep -c -e "/usr/bin/[t]unneldigger")" -ge "7" ] && now_reboot "[tunneldigger] too many Tunneldigger instances"
+true; }
 
 # br-client without ipv6 in prefix-range
-if [ "$(ip -6 addr show to "$(jsonfilter -i /lib/gluon/site.json -e '$.prefix6')" dev br-client | grep -c inet6)" == "0" ]; then
-  now_reboot "br-client without ipv6 in prefix-range (probably none)"
+if ! check_disabled br_client_ipv6 && [ "$(ip -6 addr show to "$(jsonfilter -i /lib/gluon/site.json -e '$.prefix6')" dev br-client | grep -c inet6)" == "0" ]; then
+  now_reboot "[br_client_ipv6] br-client without ipv6 in prefix-range (probably none)"
 fi
 
 # An eth or wifi-mesh interface can silently drop out of its bridge after an
@@ -116,7 +122,7 @@ check_bridge_ports() {
         *" $port "*) continue ;;
       esac
       if [ -f "/tmp/brport.$bridge.$port.gone.2" ] ; then
-        now_reboot "interface $port dropped out of bridge $bridge"
+        now_reboot "[bridge_ports] interface $port dropped out of bridge $bridge"
       elif [ -f "/tmp/brport.$bridge.$port.gone.1" ] ; then
         touch "/tmp/brport.$bridge.$port.gone.2"
       else
@@ -126,18 +132,18 @@ check_bridge_ports() {
     done
   done
 }
-check_bridge_ports
+check_disabled bridge_ports || check_bridge_ports
 
 reboot_when_not_running() {
-  (pgrep $1 || sleep 20 ; pgrep $1 || now_reboot "$1 not running") &> /dev/null
+  (pgrep $1 || sleep 20 ; pgrep $1 || now_reboot "[$1] $1 not running") &> /dev/null
 }
 
 # check if 5min load >2 (panic reboot)
-[ "$(cat /proc/loadavg|cut -d" " -f3|tr -d .)" -ge "201" ] && now_reboot "Load 5minute-avg exceeds 2!"
+check_disabled load || { [ "$(cat /proc/loadavg|cut -d" " -f3|tr -d .)" -ge "201" ] && now_reboot "[load] Load 5minute-avg exceeds 2!" ; true ; }
 
 # respondd or dropbear not running
-reboot_when_not_running respondd
-reboot_when_not_running dropbear
+check_disabled respondd || reboot_when_not_running respondd
+check_disabled dropbear || reboot_when_not_running dropbear
 
 iw_dev_reboot_freeze() {
   # first parameter defines the time to wait
@@ -148,7 +154,7 @@ iw_dev_reboot_freeze() {
   local p=$!
   sleep $t
   # kill -0 does nothing, but returns true if the process exists
-  kill -0 $p 2>/dev/null && now_reboot "'iw dev $@ freezes for more than $t s'"
+  kill -0 $p 2>/dev/null && now_reboot "[mesh_neighbours] 'iw dev $@ freezes for more than $t s'"
 }
 
 scan() {
@@ -172,6 +178,7 @@ scan() {
 # with an iw scan. Worse, N_LOG is rewritten every run, so once *all* neighbours
 # were gone the comparison list was empty too and the check went silent exactly
 # when the node was islanded.
+if ! check_disabled mesh_neighbours ; then
 for mesh_radio in `uci show wireless 2>/dev/null| grep -E -o '(ibss|mesh)_radio[0-9]+' | awk '!seen[$0]++'`; do
   radio="$(uci get wireless.$mesh_radio.device)"
   if [[ "$(uci -q get wireless.$radio.disabled)" != "1" && "$(uci -q get wireless.$mesh_radio.disabled)" != "1" ]]; then
@@ -190,7 +197,7 @@ for mesh_radio in `uci show wireless 2>/dev/null| grep -E -o '(ibss|mesh)_radio[
     if [ -f "$INHOOD" ] && [ "$NEIGHBOURS" -eq 0 ] ; then
       # had >=2, now none at all: try the cheap remedies first, then reboot
       if [ -f "$GONE.3" ] ; then
-        now_reboot "no mesh neighbours on $DEV for 4 checks (had >=2 before)"
+        now_reboot "[mesh_neighbours] no mesh neighbours on $DEV for 4 checks (had >=2 before)"
       elif [ -f "$GONE.2" ] ; then
         logger -s -t "neanderfunk-healthcheck" -p 5 "still no mesh neighbours on $DEV, restarting wifi"
         touch "$GONE.3"
@@ -217,3 +224,4 @@ for mesh_radio in `uci show wireless 2>/dev/null| grep -E -o '(ibss|mesh)_radio[
     fi
   fi
 done
+fi

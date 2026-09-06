@@ -1,7 +1,11 @@
 #!/bin/sh
+# check_disabled() - see common.sh (uci key hotfix.no_wifi_clients.disabled)
+. /lib/gluon/neanderfunk-hotfix/common.sh
+
 upgrade_started='/tmp/autoupdate.lock'
 
 [ -f $upgrade_started ] && exit
+check_disabled no_wifi_clients && exit 0
 
 cliifs=$(/usr/sbin/brctl show | sed -n -e '/^br-client[[:space:]]/,/^\S/ { /^\(br-client[[:space:]]\|\t\)/s/^.*\t//p }' | grep -v "bat0\|eth\|local-port" | tr '\n' ' ')
 
@@ -32,7 +36,7 @@ if [ -z "$C_MACS" ] ; then
   if [ -f /tmp/WifiClients ] ; then
     if [ -f /tmp/NoWiCli.3 ] ; then
       [ -f $upgrade_started ] && exit
-      logger -s -t "hotfix-IfNoWificlient" -p 5 "wireless stations disappeared for long, restarting Wifi"
+      logger -s -t "hotfix-IfNoWificlient" -p 5 "[no_wifi_clients] wireless stations disappeared for long, restarting Wifi"
       rm -f /tmp/WifiClients 2>/dev/null
       rm -f /tmp/NoWiCli.* 2>/dev/null
       wifi down

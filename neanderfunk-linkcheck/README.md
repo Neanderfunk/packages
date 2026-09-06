@@ -38,3 +38,69 @@ PACKAGES_EULENFUNK_BRANCH=chaos-calmer<br>
 
 With this done you can add the package *neanderfunk-linkcheck* to your site.mk/image-customization.lua
 
+
+Configuration
+=============
+
+Every single check can be switched off per node, and the reboot hold-off after
+a boot is adjustable. Both are UCI settings, and both can be preset for the
+whole community from the `site.conf`.
+
+Switching a check off on one node:
+
+```
+uci set linkcheck.<check>.disabled='1'
+uci commit linkcheck
+```
+
+`uci show linkcheck` lists the available check names. The name is also part of the
+reason logged before a wifi restart or a reboot, e.g.
+
+```
+neanderfunk-linkcheck: [bsses] ...
+```
+
+so if you watch a node over SSH with `logread -f` and see it reboot, the syslog
+line tells you directly which key to set if you consider that check a false
+positive on your node.
+
+Reboot hold-off after a boot (minutes, default 60 when unset). No check may
+reboot the node before this:
+
+```
+uci set linkcheck.settings.reboot_uptime_min='90'
+uci commit linkcheck
+```
+
+site.conf
+---------
+
+Both can be preset community-wide. `/lib/gluon/upgrade/500-neanderfunk-linkcheck`
+seeds them on every `gluon-reconfigure`, but never overwrites a value already
+set on the node - so a local `uci set` always wins over the site default:
+
+```lua
+  linkcheck = {
+    reboot_uptime_min = 60,                 -- optional, minutes, default 60
+    disabled_checks = { 'bsses' },  -- optional
+  },
+```
+
+Checks
+------
+
+| check | what it does | reaction |
+| --- | --- | --- |
+| `batadv_neighbours` | direct batman neighbours per batman interface | wifi restart, reboot |
+| `bsses` | networks visible in an `iw scan` per radio (a radio seeing none at all is a strong "radio is dead" signal) | wifi restart, reboot |
+| `batinterfaces` | a batman interface that was present has disappeared | wifi restart, reboot |
+| `batman_originators` | originators reachable via a batman interface (wifi mesh links are excluded on purpose) | wifi restart, reboot |
+| `bridges` | a bridge that was present has disappeared | wifi restart, reboot |
+| `bridge_ports` | a port that was part of a bridge dropped out of it | wifi restart, reboot |
+
+All of these follow the same rule: a check only arms once it has seen at least
+2 of whatever it counts during this runtime, and only then does losing all of
+them escalate. A node that is legitimately alone therefore never escalates, and
+because the markers live in `/tmp`, an outage costs at most one reboot - after
+it the node is not armed again until it has really seen neighbours again.
+

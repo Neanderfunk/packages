@@ -21,6 +21,12 @@ define Package/$(PKG_NAME)/description
 	many stray tunneldigger instances, a hung `iw` call, or hostapd processes
 	with stale pid files (restart wifi/hostapd). See README.md for details on
 	each check.
+	Each check can be switched off per node (uci set hotfix.<check>.disabled=1)
+	and the reboot hold-off after a boot is adjustable
+	(hotfix.settings.reboot_uptime_min, default 60 minutes); both can be
+	preset from the site.conf. The check name is part of the logged reboot
+	reason, so it can be read off `logread -f`. See README.md.
+
 endef
 
 define Build/Prepare

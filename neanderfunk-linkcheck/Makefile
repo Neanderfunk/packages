@@ -20,6 +20,12 @@ define Package/$(PKG_NAME)/description
 	"island" for three checks in a row (5 minutes apart) triggers a reboot,
 	which recovers crashed or wedged drivers that a plain wifi restart
 	wouldn't fix. See README.md for the exact trigger logic and a sample log.
+	Each check can be switched off per node (uci set linkcheck.<check>.disabled=1)
+	and the reboot hold-off after a boot is adjustable
+	(linkcheck.settings.reboot_uptime_min, default 60 minutes); both can be
+	preset from the site.conf. The check name is part of the logged reboot
+	reason, so it can be read off `logread -f`. See README.md.
+
 endef
 
 define Build/Prepare

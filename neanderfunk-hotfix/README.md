@@ -37,3 +37,74 @@ cd neanderfunk-hotfix/
 scp -r files/* $LOGIN:/
 ssh $ROUTER_IP "/etc/init.d/micrond reload;"
 ```
+
+
+Configuration
+=============
+
+Every single check can be switched off per node, and the reboot hold-off after
+a boot is adjustable. Both are UCI settings, and both can be preset for the
+whole community from the `site.conf`.
+
+Switching a check off on one node:
+
+```
+uci set hotfix.<check>.disabled='1'
+uci commit hotfix
+```
+
+`uci show hotfix` lists the available check names. The name is also part of the
+reason logged before a wifi restart or a reboot, e.g.
+
+```
+neanderfunk-healthcheck: [load] ...
+```
+
+so if you watch a node over SSH with `logread -f` and see it reboot, the syslog
+line tells you directly which key to set if you consider that check a false
+positive on your node.
+
+Reboot hold-off after a boot (minutes, default 60 when unset). No check may
+reboot the node before this:
+
+```
+uci set hotfix.settings.reboot_uptime_min='90'
+uci commit hotfix
+```
+
+site.conf
+---------
+
+Both can be preset community-wide. `/lib/gluon/upgrade/500-neanderfunk-hotfix`
+seeds them on every `gluon-reconfigure`, but never overwrites a value already
+set on the node - so a local `uci set` always wins over the site default:
+
+```lua
+  hotfix = {
+    reboot_uptime_min = 60,                 -- optional, minutes, default 60
+    disabled_checks = { 'load', 'ipv6_anycast' },  -- optional
+  },
+```
+
+Checks
+------
+
+| check | what it does | reaction |
+| --- | --- | --- |
+| `stale_lock` | autoupdate.lock older than 60 min | reboot |
+| `kernel_bug` | "Kernel bug" in dmesg (gluon issue #680) | reboot |
+| `ath_malloc` | ath driver allocation failures in dmesg | reboot |
+| `ksoftirqd_malloc` | kernel page allocation failures in dmesg | reboot |
+| `hostapd_pids` | hostapd pid files not matching the running processes | wifi restart |
+| `dfs_failcheck` | hostapd failing its DFS check | wifi restart |
+| `tunneldigger` | too many tunneldigger watchdogs/instances | reboot |
+| `br_client_ipv6` | br-client without an address from the site prefix | reboot |
+| `load` | 5 minute load average above 2 | reboot |
+| `respondd` | respondd not running | reboot |
+| `dropbear` | dropbear not running | reboot |
+| `bridge_ports` | a port that was part of a bridge dropped out of it | reboot |
+| `mesh_neighbours` | a mesh radio that had >=2 neighbours now has none | scan, wifi restart, reboot |
+| `no_gateway` | no batman gateway in range | reboot |
+| `ipv6_anycast` | the IPv6 anycast address is unreachable | reboot |
+| `no_wifi_clients` | clients were seen and then all disappeared | wifi restart |
+

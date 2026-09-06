@@ -1,0 +1,20 @@
+# neanderfunk-linkcheck
+#
+# Switch a single check off on this node:
+#   uci set linkcheck.<check>.disabled='1' ; uci commit linkcheck
+# The <check> name is part of the reason logged before a wifi restart or a
+# reboot, so it can be read straight off `logread -f` while watching a node.
+
+config settings 'settings'
+	# No check may reboot the node within the first N minutes of uptime.
+	# Deliberately not preset here: unset means the built-in default of 60,
+	# and it lets the community preset a value from the site.conf (see
+	# /lib/gluon/upgrade/500-neanderfunk-linkcheck).
+	#option reboot_uptime_min '60'
+
+config check 'batadv_neighbours'
+config check 'bsses'
+config check 'batinterfaces'
+config check 'batman_originators'
+config check 'bridges'
+config check 'bridge_ports'

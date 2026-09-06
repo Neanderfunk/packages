@@ -1,26 +1,25 @@
 #!/bin/sh
+# check_disabled(), uptime_ok() - see common.sh for the uci keys
+# (hotfix.<check>.disabled, hotfix.settings.reboot_uptime_min). uptime_ok keeps
+# a node that cannot reach a gateway at all from ending up in a tight reboot
+# loop; the escalation below keeps counting either way, so the reboot happens
+# as soon as the node is old enough.
+. /lib/gluon/neanderfunk-hotfix/common.sh
+
 upgrade_started='/tmp/autoupdate.lock'
 
 [ -f $upgrade_started ] && exit
-
-# No reboot within the first hour of uptime - same policy as healthcheck.sh, so
-# a node that cannot reach a gateway at all does not end up in a tight reboot
-# loop. The escalation below keeps counting either way, so the reboot happens as
-# soon as the node is old enough.
-uptime_ok() {
-  [ "$(sed 's/\..*//g' /proc/uptime)" -gt "3600" ]
-}
 
 # `batctl gwl -H` lists the gateways without the header lines, so empty output
 # means no gateway is in range. This used to grep batctl's output for
 # "No gateways in range" - a message current batctl does not contain at all
 # (checked with strings on batctl 2023.1), so the match never succeeded, the
 # else branch always ran, and this script never rebooted for a missing gateway.
-if [ -z "$(batctl gwl -H 2>/dev/null)" ] ; then
+if ! check_disabled no_gateway && [ -z "$(batctl gwl -H 2>/dev/null)" ] ; then
   if [ -f /tmp/gw ] ; then
     if [ -f /tmp/gwgone.3 ] ; then
       [ -f $upgrade_started ] && exit
-      logger -s -t "neanderfunk-hotfix" -p 5 "no batman gateway for 4 checks, rebooting"
+      logger -s -t "neanderfunk-hotfix" -p 5 "[no_gateway] no batman gateway for 4 checks, rebooting"
       uptime_ok && securereboot
     elif [ -f /tmp/gwgone.2 ] ; then
       touch /tmp/gwgone.3
@@ -42,9 +41,9 @@ if [ ! -z "$ipv6_subnet" ]; then
   ping6 "$ipv6_anycast" -c 10 >/dev/null 2>&1
   returnval="$?"
 fi
-if [ "$returnval" -ne 0 ] || [ -z "$ipv6_subnet" ]; then
+if ! check_disabled ipv6_anycast && { [ "$returnval" -ne 0 ] || [ -z "$ipv6_subnet" ]; }; then
   if [ -f /tmp/ip6anycast ] ; then
-    logger "IPv6 Anycast-IP NOT reachable."
+    logger "[ipv6_anycast] IPv6 Anycast-IP NOT reachable."
     if [ -f /tmp/ip6anycastgone.3 ] ; then
       [ -f $upgrade_started ] && exit
       uptime_ok && securereboot

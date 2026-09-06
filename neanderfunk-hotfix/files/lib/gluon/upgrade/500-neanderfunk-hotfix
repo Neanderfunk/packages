@@ -1,0 +1,29 @@
+#!/bin/sh
+# Seeds the hotfix UCI defaults from the site.conf. Runs on every
+# gluon-reconfigure, but never overwrites what an operator has set on the node,
+# so a local `uci set hotfix...` always wins over the community default.
+#
+# site.conf:
+#   hotfix = {
+#     reboot_uptime_min = 60,                        -- optional, minutes
+#     disabled_checks = { 'load', 'ipv6_anycast' },  -- optional
+#   },
+
+sitefile=/lib/gluon/site.json
+
+uci -q get hotfix.settings >/dev/null || uci -q set hotfix.settings=settings
+
+# only when the node has no value of its own; unset means the built-in 60
+if [ -z "$(uci -q get hotfix.settings.reboot_uptime_min)" ] ; then
+	v="$(jsonfilter -i "$sitefile" -e '@.hotfix.reboot_uptime_min' 2>/dev/null)"
+	[ -n "$v" ] && uci -q set hotfix.settings.reboot_uptime_min="$v"
+fi
+
+# checks the community wants switched off by default
+for c in $(jsonfilter -i "$sitefile" -e '@.hotfix.disabled_checks[*]' 2>/dev/null) ; do
+	uci -q get hotfix."$c" >/dev/null || uci -q set hotfix."$c"=check
+	[ -z "$(uci -q get hotfix."$c".disabled)" ] && uci -q set hotfix."$c".disabled=1
+done
+
+uci -q commit hotfix
+exit 0
