@@ -24,6 +24,13 @@ if uci:get('ssid-changer', 'settings', 'enabled') == '0' then
 end
 
 -- Check for autoupdater running
+--
+-- Das Kommando muss ein einzelnes einfaches Kommando bleiben. busybox' "sh -c"
+-- exec't so eines, statt zu forken: der Shell-Prozess wird durch pgrep ersetzt,
+-- und pgrep schliesst sich selbst aus. Steht hier je etwas Zusammengesetztes
+-- (Pipe, Schleife, mehrere Kommandos), bleibt die Shell mit der vollen
+-- Kommandozeile stehen, "pgrep -f autoupdater" findet sich darin selbst, und
+-- der Check meldet dauerhaft "laeuft". Am Knoten mit beiden Varianten geprueft.
 local function is_autoupdater_running()
 	local handle = io.popen('pgrep -f autoupdater')
 	local result = handle:read("*a")
@@ -46,6 +53,13 @@ end
 local uptime = get_uptime()
 local uptime_minutes = math.floor(uptime / 60)
 local monitor_duration = tonumber(uci:get('ssid-changer', 'settings', 'switch_timeframe') or 30)
+-- Das "or 30" oben faengt nur einen FEHLENDEN Wert. Steht dort etwas
+-- Unnumerisches, ist monitor_duration nil und das Modulo unten wirft; eine 0
+-- ergibt in Lua 5.1 ein nan, mit dem alle folgenden Vergleiche still
+-- fehlschlagen.
+if not monitor_duration or monitor_duration < 1 then
+	monitor_duration = 30
+end
 local is_switch_time = uptime_minutes % monitor_duration
 
 if uptime < 60 then
@@ -134,7 +148,17 @@ local function calculate_tq_limit()
 	local tq_limit_min = tonumber(uci:get('ssid-changer', 'settings', 'tq_limit_min') or 35)
 	local gateway_tq
 
-	local handle = io.popen('batctl gwl -H | grep -e "^\\*" | awk -F"[()]" "{print $2}" | tr -d " "')
+	-- Das awk-Programm MUSS einfach gequotet sein. Vorher stand es in doppelten
+	-- Anführungszeichen, also expandierte die Shell das $2 zu leer, awk bekam
+	-- "{print }" und gab damit die ganze Zeile aus statt des TQ-Werts:
+	--
+	--   [*02:ca:ff:ee:21:03(255)02:ca:ff:ee:21:03[mesh-vpn]:1024.0/1024.0MBit]
+	--
+	-- tonumber() darauf ist nil, calculate_tq_limit() lief also bei jedem Aufruf
+	-- in den Rückfall unten und lieferte immer 'online'. Die TQ-Schwelle war
+	-- damit wirkungslos, obwohl tq_limit_enabled=1 auf den Knoten gesetzt ist.
+	-- An zwei Geräten gemessen; mit einfachen Anführungszeichen kommt 255.
+	local handle = io.popen([[batctl gwl -H | grep -e "^ *\*" | awk -F'[()]' '{print $2}' | tr -d " "]])
 	gateway_tq = tonumber(handle:read("*a"))
 	handle:close()
 

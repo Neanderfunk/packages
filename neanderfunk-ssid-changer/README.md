@@ -123,3 +123,26 @@ variant this feed used to carry (removed here, still present upstream).
 
 `ffac-eol-ssid` is *not* a conflict: different purpose, different files, and it
 can be used alongside this one.
+
+Stand 2026-09-06: TQ-Schwelle war wirkungslos
+---------------------------------------------
+
+`calculate_tq_limit()` las den TQ des gewaehlten Gateways so:
+
+```
+batctl gwl -H | grep -e "^\*" | awk -F"[()]" "{print $2}" | tr -d " "
+```
+
+Das awk-Programm steht in **doppelten** Anfuehrungszeichen, also expandierte die
+Shell das `$2` zu leer, awk bekam `{print }` und gab damit die ganze Zeile aus:
+
+```
+*02:ca:ff:ee:21:03(255)02:ca:ff:ee:21:03[mesh-vpn]:1024.0/1024.0MBit
+```
+
+`tonumber()` darauf ist `nil`, `calculate_tq_limit()` lief also bei jedem Aufruf
+in den Rueckfall und lieferte immer `online`. Die TQ-Schwelle hat damit nie
+gegriffen, obwohl `tq_limit_enabled=1` auf den Knoten gesetzt ist - ein Knoten
+mit schlechtem, aber vorhandenem Gateway wechselte nie auf die Offline-SSID.
+An zwei Geraeten gemessen. Mit einfachen Anfuehrungszeichen kommt der Wert
+korrekt heraus (255 bzw. 254).
