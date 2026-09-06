@@ -2,9 +2,16 @@
 
 This branch works for gluon 2023.2.x.
 
-### neanderfunk-ath9kblackout ###
+### neanderfunk-wifi-blackout ###
 
-looks for dying ath9-wifichips and reintializes wifi (in a reliable way even for DFS-aware gluon)
+detects a wifi blackout - the radios are up, but not a single station is
+associated anywhere on the node, neither client nor mesh peer, and none has been
+for hours - and restarts the wifi, rebooting if that does not help. It is the
+only check here without the "arm once the healthy state was seen" rule, which is
+what makes it the one that catches a radio broken from the moment it came up.
+Not restricted to any chipset. Was `neanderfunk-ath9kblackout`; see
+[](neanderfunk-wifi-blackout/README.md) for why the name and three defects had
+to go.
 
 ### neanderfunk-button-bind
 
@@ -67,11 +74,6 @@ configured german code allows. See [](neanderfunk-txpowerfix/README.md)
 ### neanderfunk-weeklyreboot
 
 weekly reboot sheduled on thursday morning. See [](neanderfunk-weeklyreboot/README.md)
-
-### neanderfunk-wificheck
-
-WIFI-Neighborcheck. restarts wifi no wifi mesh neighbours are seen after
-initially there were at lease two neighbours. See [](neanderfunk-wificheck/README.md)
 
 ### neanderfunk-mt7915-backlog ###
 
