@@ -1,5 +1,7 @@
 #!/bin/sh
 # check_hostapd for matching pids
+# strike()/unstrike() count consecutive failures, see common.sh
+. /lib/gluon/neanderfunk-hotfix/common.sh
 restart_wifi() {
   logger -s -t "neanderfunk-checkhostapd" "wifi hard restart"
   wifi down
@@ -37,19 +39,14 @@ if [ "${phy:0:3}" = "phy" ] ; then
   sema="/tmp/wifipending"
   if [ $(echo $wifistatus|grep -A 6 $radio|cut -d":" -f1-10|grep -c "up: false") -eq 1 ] ; then
     if [ $(echo $wifistatus|grep -A 6 $radio|cut -d":" -f1-10|grep -c "pending: true") -eq 1 ] ; then
-      if [ -f $sema.fail.$radio.2 ] ; then
-        logger -s -t "neanderfunk-healthcheck" "hostapd down and pending on $radio"
+      rm -f $sema.ok.$radio.* 2>/dev/null
+      if [ "$(strike $sema.fail.$radio)" -ge 3 ] ; then
+        logger -s -t "neanderfunk-healthcheck" "[hostapd_pids] hostapd down and pending on $radio"
         restart_wifi
-        rm -f $sema.fail.$radio.* 2>/dev/null
-        rm -f $sema.ok.$radio.* 2>/dev/null
-      elif [ -f $sema.fail.$radio.1 ] ; then
-        touch $sema.fail.$radio.2
-      else
-        touch $sema.fail.$radio.1
-        rm -f $sema.ok.$radio.* 2>/dev/null
+        unstrike $sema.fail.$radio
       fi
     else
-      rm -f $sema.fail.$radio.* 2>/dev/null
+      unstrike $sema.fail.$radio
       touch $sema.ok.$radio
     fi
   fi
@@ -58,19 +55,14 @@ if [ "${phy:0:3}" = "phy" ] ; then
   iwstat=$(iwinfo $client info)
   if [ $(echo $iwstat|grep -i "Mode: Master"|wc -l) -eq 1 ] ; then
     if [ $(echo $iwstat|grep -i "Channel: unknown"|wc -l) -eq 1 ] ; then
-      if [ -f $sema.fail.$client.2 ] ; then
-        logger -s -t "neanderfunk-healthcheck" "channel $client unknown"
+      rm -f $sema.ok.$client.* 2>/dev/null
+      if [ "$(strike $sema.fail.$client)" -ge 3 ] ; then
+        logger -s -t "neanderfunk-healthcheck" "[hostapd_pids] channel $client unknown"
         restart_wifi
-        rm -f $sema.fail.$client.* 2>/dev/null
-        rm -f $sema.ok.$client.* 2>/dev/null
-      elif [ -f $sema.fail.$client.1 ] ; then
-        touch $sema.fail.$client.2
-      else
-        touch $sema.fail.$client.1
-        rm -f $sema.ok.$client.* 2>/dev/null
+        unstrike $sema.fail.$client
       fi
     else
-      rm -f $sema.fail.$client.* 2>/dev/null
+      unstrike $sema.fail.$client
       touch $sema.ok.$client
     fi
   fi

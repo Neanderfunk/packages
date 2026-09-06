@@ -67,18 +67,14 @@ check_disabled ksoftirqd_malloc || { dmesg | grep "ksoftirqd" | grep -q "page al
 check_disabled hostapd_pids || ps|grep hostapd|grep .pid|xargs -r -n 10 /lib/gluon/neanderfunk-hotfix/check_hostapd.sh
 #check if hostapd-DFS scanning is broken according to sylogs
 if ! check_disabled dfs_failcheck && [ $(logread -l 5|grep -c  "daemon.warn hostapd: Failed to check if DFS is required") -gt 0 ] ; then
-  if [ -f /tmp/dfscheckfail.2 ] ; then
+  if [ "$(strike /tmp/dfscheckfail)" -ge 3 ] ; then
     logger -s -t "neanderfunk-healthcheck" "[dfs_failcheck] hostapd DFS failcheck, restarting wifi"
     restart_wifi
-    rm -f /tmp/dfscheckfail.* 2>/dev/null
+    unstrike /tmp/dfscheckfail
     sleep 10
-   elif [ -f /tmp/dfscheckfail.1 ] ; then
-    touch /tmp/dfscheckfail.2
-   else
-    touch /tmp/dfscheckfail.1
    fi
  else
-  rm -f /tmp/dfscheckfail.* 2>/dev/null
+  unstrike /tmp/dfscheckfail
  fi
 
 
@@ -112,7 +108,7 @@ check_bridge_ports() {
     current=" $(ls "$brif" 2>/dev/null | tr '\n' ' ')"
     for port in $(ls "$brif" 2>/dev/null) ; do
       touch "/tmp/brport.$bridge.$port.seen"
-      rm -f "/tmp/brport.$bridge.$port.gone."* 2>/dev/null
+      unstrike "/tmp/brport.$bridge.$port.gone"
     done
     for seen in /tmp/brport."$bridge".*.seen ; do
       [ -e "$seen" ] || continue
@@ -121,14 +117,11 @@ check_bridge_ports() {
       case "$current" in
         *" $port "*) continue ;;
       esac
-      if [ -f "/tmp/brport.$bridge.$port.gone.2" ] ; then
-        now_reboot "[bridge_ports] interface $port dropped out of bridge $bridge"
-      elif [ -f "/tmp/brport.$bridge.$port.gone.1" ] ; then
-        touch "/tmp/brport.$bridge.$port.gone.2"
-      else
-        logger -s -t "neanderfunk-healthcheck" -p 5 "interface $port missing from bridge $bridge"
-        touch "/tmp/brport.$bridge.$port.gone.1"
-      fi
+      case "$(strike "/tmp/brport.$bridge.$port.gone")" in
+        1) logger -s -t "neanderfunk-healthcheck" -p 5 "interface $port missing from bridge $bridge" ;;
+        2) ;;
+        *) now_reboot "[bridge_ports] interface $port dropped out of bridge $bridge" ;;
+      esac
     done
   done
 }
@@ -196,21 +189,16 @@ for mesh_radio in `uci show wireless 2>/dev/null| grep -E -o '(ibss|mesh)_radio[
 
     if [ -f "$INHOOD" ] && [ "$NEIGHBOURS" -eq 0 ] ; then
       # had >=2, now none at all: try the cheap remedies first, then reboot
-      if [ -f "$GONE.3" ] ; then
-        now_reboot "[mesh_neighbours] no mesh neighbours on $DEV for 4 checks (had >=2 before)"
-      elif [ -f "$GONE.2" ] ; then
-        logger -s -t "neanderfunk-healthcheck" -p 5 "still no mesh neighbours on $DEV, restarting wifi"
-        touch "$GONE.3"
-        restart_wifi
-      elif [ -f "$GONE.1" ] ; then
-        touch "$GONE.2"
-      else
-        logger -s -t "neanderfunk-healthcheck" -p 5 "lost all mesh neighbours on $DEV (had >=2 before)"
-        touch "$GONE.1"
-        scan "$DEV"
-      fi
+      case "$(strike "$GONE")" in
+        1) logger -s -t "neanderfunk-healthcheck" -p 5 "lost all mesh neighbours on $DEV (had >=2 before)"
+           scan "$DEV" ;;
+        2) ;;
+        3) logger -s -t "neanderfunk-healthcheck" -p 5 "still no mesh neighbours on $DEV, restarting wifi"
+           restart_wifi ;;
+        *) now_reboot "[mesh_neighbours] no mesh neighbours on $DEV for 4 checks (had >=2 before)" ;;
+      esac
     else
-      rm -f "$GONE".* 2>/dev/null
+      unstrike "$GONE"
       # only some neighbours vanished: cheap remedy, scan once and stop.
       # The break used to sit inside a ( ) subshell, where it cannot break the
       # enclosing loop, so every lost neighbour triggered another scan - each

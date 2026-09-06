@@ -34,62 +34,72 @@ uptime_ok() {
 	[ "$(sed 's/\..*//g' /proc/uptime)" -gt "$((m * 60))" ]
 }
 
+# Count consecutive failures: strike <prefix> records one more and prints how
+# many there are now. One marker file per strike rather than a single counter
+# file on purpose - a counter file is truncated on every write, so being killed
+# in that window resets the count to zero.
+strike() {
+	local n=1
+	while [ -e "$1.$n" ] ; do n=$((n + 1)) ; done
+	touch "$1.$n"
+	echo "$n"
+}
+
+unstrike() {
+	rm -f "$1".* 2>/dev/null
+}
+
 valuecheck ()
 # this checks for multiple problems on the same IF, tries to resolve, or reboots as last resort
 {
   logstring=${logstring}" "${linkname}"."${check}":"${wert}
-  if [ ! -f /tmp/linkcheck.${linkname}.${check}.inhood ] ; then
-    if [ "${wert}" -gt "1" ] ; then #minimum 2 neighbors
-      echo $(date)>/tmp/linkcheck.${linkname}.${check}.inhood
-     fi
-   else # .inhood file present
-    if [ "${wert}" -lt "1" ] ; then # link disappeared!
-      if [ -f /tmp/linkcheck.${linkname}.${check}.linkpb1 ] ; then
-        if [ -f /tmp/linkcheck.${linkname}.${check}.linkpb2 ] ; then
-          if [ -f /tmp/linkcheck.${linkname}.${check}.linkpb3 ] ; then
-            logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbors 4th: ${linkname}.${check}, rebooting!"
-            sleep 10
-            upgrade_started='/tmp/autoupdate.lock'
-            [ -f ${upgrade_started} ] && exit
-            # not within the first linkcheck.settings.reboot_uptime_min
-            # minutes of uptime. The .inhood arming already bounds an outage to
-            # one reboot (the markers live in /tmp), this keeps the rate down on
-            # top while something is badly wrong.
-            uptime_ok || exit
-            reboot -f
-            # reboot -f does not necessarily return immediately; without this
-            # the code below runs on into the "3rd time" branch and restarts
-            # wifi while the reboot is already in flight
-            exit
-           fi
-          # 3nd time failure
-          logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbors 3rd: ${linkname}.${check}, wifi restart"
-          echo $(date)>/tmp/linkcheck.${linkname}.${check}.linkpb3
-          wifi down
-          killall hostapd >/dev/null 2>&1
-          rm -f /var/run/wifi-*.pid  >/dev/null 2>&1
-          wifi config
-          wifi up
-          sleep 15
-         fi
-        logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 2nd:${linkname}.${check}"
-        echo $(date)>/tmp/linkcheck.${linkname}.${check}.linkpb2
-       else #linkpb1 existiert noch nicht, anlegen!
-        logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 1st:${linkname}.${check}"
-        echo $(date)>/tmp/linkcheck.${linkname}.${check}.linkpb1
-      fi
-    else #links reappeard, cleaning all pb-files
-      if [ -f /tmp/linkcheck.${linkname}.${check}.linkpb1 ] ; then
-        rm /tmp/linkcheck.${linkname}.${check}.linkpb1
-      fi
-      if [ -f /tmp/linkcheck.${linkname}.${check}.linkpb2 ] ; then
-        rm /tmp/linkcheck.${linkname}.${check}.linkpb2
-      fi
-      if [ -f /tmp/linkcheck.${linkname}.${check}.linkpb3 ] ; then
-        rm /tmp/linkcheck.${linkname}.${check}.linkpb3
-      fi
-    fi
+  pb="/tmp/linkcheck.${linkname}.${check}"
+
+  if [ ! -f "${pb}.inhood" ] ; then
+    # arm only once a real neighbourhood has been seen (>=2) during this runtime
+    [ "${wert}" -gt "1" ] && echo $(date) > "${pb}.inhood"
+    return
   fi
+
+  if [ "${wert}" -ge "1" ] ; then
+    # links are back, forget the strikes
+    unstrike "${pb}.linkpb"
+    return
+  fi
+
+  # armed and now down to nothing: escalate. This used to be a nested if/elif
+  # cascade that also fell through into the levels below it, so the 3rd failure
+  # additionally logged the 2nd one and rewrote its marker.
+  case "$(strike "${pb}.linkpb")" in
+    1)
+      logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 1st: ${linkname}.${check}"
+      ;;
+    2)
+      logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 2nd: ${linkname}.${check}"
+      ;;
+    3)
+      logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 3rd: ${linkname}.${check}, wifi restart"
+      wifi down
+      killall hostapd >/dev/null 2>&1
+      rm -f /var/run/wifi-*.pid >/dev/null 2>&1
+      wifi config
+      wifi up
+      sleep 15
+      ;;
+    *)
+      logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 4th: ${linkname}.${check}, rebooting!"
+      sleep 10
+      upgrade_started='/tmp/autoupdate.lock'
+      [ -f ${upgrade_started} ] && exit
+      # not within the first linkcheck.settings.reboot_uptime_min minutes of
+      # uptime. The .inhood arming already bounds an outage to one reboot (the
+      # markers live in /tmp), this keeps the rate down on top.
+      uptime_ok || exit
+      reboot -f
+      # reboot -f does not necessarily return immediately
+      exit
+      ;;
+  esac
 }
 ## script start
 

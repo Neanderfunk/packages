@@ -33,27 +33,20 @@ for if in $cliifs; do
  done
 
 if [ -z "$C_MACS" ] ; then
-  if [ -f /tmp/WifiClients ] ; then
-    if [ -f /tmp/NoWiCli.3 ] ; then
-      [ -f $upgrade_started ] && exit
-      logger -s -t "hotfix-IfNoWificlient" -p 5 "[no_wifi_clients] wireless stations disappeared for long, restarting Wifi"
-      rm -f /tmp/WifiClients 2>/dev/null
-      rm -f /tmp/NoWiCli.* 2>/dev/null
-      wifi down
-      killall hostapd >/dev/null 2>&1
-      rm -f /var/run/wifi-*.pid >/dev/null 2>&1
-      wifi config
-      wifi up
-    elif [ -f /tmp/NoWiCli.2 ] ; then
-      touch /tmp/NoWiCli.3
-    elif [ -f /tmp/NoWiCli.1 ] ; then
-      touch /tmp/NoWiCli.2
-    else
-      touch /tmp/NoWiCli.1
-    fi
+  # only escalate on a node that has seen clients at least once since boot
+  if [ -f /tmp/WifiClients ] && [ "$(strike /tmp/NoWiCli)" -ge 4 ] ; then
+    [ -f $upgrade_started ] && exit
+    logger -s -t "hotfix-IfNoWificlient" -p 5 "[no_wifi_clients] wireless stations disappeared for long, restarting Wifi"
+    rm -f /tmp/WifiClients 2>/dev/null
+    unstrike /tmp/NoWiCli
+    wifi down
+    killall hostapd >/dev/null 2>&1
+    rm -f /var/run/wifi-*.pid >/dev/null 2>&1
+    wifi config
+    wifi up
   fi
 else
   touch /tmp/WifiClients
-  rm -f /tmp/NoWiCli.* 2>/dev/null
+  unstrike /tmp/NoWiCli
 fi
 
