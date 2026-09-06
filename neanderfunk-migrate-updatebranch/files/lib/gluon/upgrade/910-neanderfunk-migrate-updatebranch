@@ -1,6 +1,8 @@
 #!/bin/sh
 
-UPDATE_BRANCH=$(uci get autoupdater.settings.branch)
+# -q: ohne den schreibt uci bei fehlendem Key eine Fehlermeldung nach stderr,
+# die im gluon-reconfigure-Log als vermeintlicher Fehler auftaucht
+UPDATE_BRANCH=$(uci -q get autoupdater.settings.branch)
 
 # shifting from beta/experimental/broken back to stable systematically
 
@@ -9,10 +11,14 @@ if [ "$UPDATE_BRANCH" = "experimental" ] || [ "$UPDATE_BRANCH" = "broken" ] || [
  fi
 
 # drop outdated update branches
+# (autoupdater.experimental stand hier zweimal)
 uci -q delete autoupdater.experimental || true
 uci -q delete autoupdater.stablel2tp || true
 uci -q delete autoupdater.experimentall2tp || true
-uci -q delete autoupdater.experimental || true
 uci -q delete autoupdater.beta || true
 
-uci commit
+# Nur das eigene Paket committen. Ein blankes "uci commit" schreibt ALLE
+# Pakete mit ausstehenden Aenderungen fest - dieses Skript laeuft als 910er
+# spaet in gluon-reconfigure, also nach allen anderen Upgrade-Skripten, und
+# wuerde deren noch nicht committete Zwischenstaende mit festschreiben.
+uci commit autoupdater
