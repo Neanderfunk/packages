@@ -1,0 +1,30 @@
+#!/bin/sh
+
+BIND=$(uci -q get button-bind.wifi.function)
+
+case "$BIND" in
+1) # no function
+;;
+
+2) # WLAN Reset 
+if [ "$ACTION" = "pressed" ]; then
+	wifi
+fi
+;;
+
+3) # LEDs on/off		
+if [ "$ACTION" = "pressed" ]; then
+	/etc/init.d/led start
+else
+	for i in /sys/class/leds/*; do
+		echo 0 > "$i"/brightness
+	done
+	/etc/init.d/led stop
+fi
+;;
+
+*) # Default, WLAN on/off
+/etc/rc.button/rfkill.owrt 
+;;
+esac
+exit 0

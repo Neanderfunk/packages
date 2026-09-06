@@ -6,6 +6,12 @@ This branch works for gluon 2023.2.x.
 
 looks for dying ath9-wifichips and reintializes wifi (in a reliable way even for DFS-aware gluon)
 
+### neanderfunk-button-bind
+
+lets the node owner bind the router's wifi button to a function (wifi on/off,
+nothing, wifi reset, or a night mode that keeps the LEDs dark) from config mode.
+Ported from ffffm-button-bind, see [](neanderfunk-button-bind/README.md)
+
 ### neanderfunk-ch13to9 ###
 
 moves radios from ch13 to 9 during firmwareupdate, even if "keep-wifichannels" is set. 

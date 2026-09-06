@@ -1,0 +1,22 @@
+#!/bin/sh
+
+cd /etc/rc.button || exit 0
+
+# Save OpenWrt's own rfkill handler exactly once, then put ours in its place.
+#
+# Both guards matter. This runs on every gluon-reconfigure - so on every
+# firmware upgrade, but also on setup-mode completion and on a domain switch,
+# without a sysupgrade in between. Upstream did an unguarded
+#     mv rfkill rfkill.owrt
+# which on the second such run moves *our own symlink* over the saved original.
+# rfkill.btnb's default case calls rfkill.owrt, so from then on rfkill.owrt
+# points back at rfkill.btnb and a button press in the default mode recurses
+# endlessly. Verified on a node before fixing it.
+if [ ! -e rfkill.owrt ] && [ -f rfkill ] && [ ! -h rfkill ] ; then
+	mv rfkill rfkill.owrt
+fi
+ln -sf rfkill.btnb rfkill
+
+touch /etc/config/button-bind
+
+exit 0
