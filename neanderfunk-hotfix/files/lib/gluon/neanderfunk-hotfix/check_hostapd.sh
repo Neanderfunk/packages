@@ -13,7 +13,7 @@ restart_wifi() {
 
 pspid="$1"
 phy=$(echo $@|sed 's/.*-B\ //g'|cut -d" " -f1|sed 's/.*hostapd-//g'|cut -d"." -f1)
-if [ ${phy:0:3} = "phy" ] ; then
+if [ "${phy:0:3}" = "phy" ] ; then
   pidfile=$(echo $@|sed 's/.*-P\ //g'|cut -d" " -f1)
   pid=$(cat $pidfile 2>/dev/null)
   sema="/tmp/hostapdpid"

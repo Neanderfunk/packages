@@ -151,7 +151,7 @@ if [ "$gluontarget" != "mediatek" ]; then
   for batups in ${batupfiles}; do
     batifupf=$(echo ${batups}|cut -d. -f3)
     if [[ ! "$wifibatlinks" =~ "${batifupf}" ]]; then    # do not check for wifimesh links as check/reboot condition!
-      echo check if by file: ${batifupf} # individually previsously seen file
+#      echo check if by file: ${batifupf} # individually previsously seen file
       bators=$(cat ${batmanoriginatorsfile}|grep ${batifupf}|wc -l)
       logger -s -t "neanderfunk-linkcheck" -p 5 on bat if ${batifupf} : ${bators} originators
       wert=${bators}
@@ -183,7 +183,7 @@ if [ "$gluontarget" != "mediatek" ]; then
   # check if all prviously seen are in current list
   for upbridgef in ${upbridgesf}; do
     upbridge=$(echo ${upbridgef}|cut -d${ifnameseparator} -f2)
-    echo check if by file: ${upbridge} # individually previsously seen file
+#    echo check if by file: ${upbridge} # individually previsously seen file
     if [[ "${bridgeslist}" =~ "${upbridge}"   ]]; then
        wert='2'
 #       echo ${upbridge} is golden

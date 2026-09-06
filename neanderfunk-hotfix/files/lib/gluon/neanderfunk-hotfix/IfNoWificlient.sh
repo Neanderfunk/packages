@@ -21,7 +21,11 @@ for r in 0 1 2; do
 [ "$APoff" -eq "1" ] && exit 0
 C_MACS=""
 for if in $cliifs; do
-  C_MACS=${C_MACs}$(iw dev $if station dump | grep ^Station | cut -d ' ' -f 2)
+  # NB: ${C_MACS}, not ${C_MACs} - with the typo this overwrote instead of
+  # appending, so only the last interface counted. A node with clients on
+  # 2.4GHz but none on 5GHz then looked client-less and got its wifi
+  # restarted (kicking the clients it did have) after 4 rounds.
+  C_MACS=${C_MACS}$(iw dev $if station dump | grep ^Station | cut -d ' ' -f 2)
  done
 
 if [ -z "$C_MACS" ] ; then

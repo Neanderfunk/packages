@@ -18,7 +18,9 @@ now_reboot() {
     [ ! -d $LOG ] && mkdir $LOG
     LOG="$LOG/reboot.log"
     # the first 5 times log the reason for a reboot in a file that is rebootsave
-    [ "$(wc -l < $LOG)" -gt 5 ] || echo "$(date) $1" >> $LOG
+    # (|| echo 0: on the very first reboot the file does not exist yet, and an
+    # empty $() would make the -gt comparison bail out with a shell error)
+    [ "$(wc -l < "$LOG" 2>/dev/null || echo 0)" -gt 5 ] || echo "$(date) $1" >> "$LOG"
     if [ "$2" != "-f" ] && [ -f /tmp/autoupdate.lock ] ; then
       safety_exit "autoupdate running"
     fi
@@ -56,13 +58,13 @@ fi
 dmesg | grep -q "Kernel bug" && now_reboot "gluon issue #680"
 # ath/ksoftirq-malloc-errors (upcoming oom scenario)
 dmesg | grep "ath" | grep "alloc of size" | grep -q "failed" && now_reboot "ath0 malloc fail"
-dmesg | grep "ksoftirqd" | grep -q "page allcocation failure" && now_reboot "kernel malloc fail"
+dmesg | grep "ksoftirqd" | grep -q "page allocation failure" && now_reboot "kernel malloc fail"
 # interate over hostapd threads running 
 ps|grep hostapd|grep .pid|xargs -r -n 10 /lib/gluon/neanderfunk-hotfix/check_hostapd.sh
 #check if hostapd-DFS scanning is broken according to sylogs
 if [ $(logread -l 5|grep -c  "daemon.warn hostapd: Failed to check if DFS is required") -gt 0 ] ; then
   if [ -f /tmp/dfscheckfail.2 ] ; then
-    logger -s t "neanderfunk-healthcheck" "hostapd DFS failcheck, restarting wifi"
+    logger -s -t "neanderfunk-healthcheck" "hostapd DFS failcheck, restarting wifi"
     restart_wifi
     rm -f /tmp/dfscheckfail.* 2>/dev/null
     sleep 10
@@ -78,7 +80,7 @@ if [ $(logread -l 5|grep -c  "daemon.warn hostapd: Failed to check if DFS is req
 
 # too many tunneldigger restarts
 [ "$(ps |grep -c -e tunneldigger\ restart -e tunneldigger-watchdog)" -ge "4" ] && now_reboot "too many Tunneldigger watchdogs"
-[ "$(ps |ps |grep -c -e "/usr/bin/[t]unneldigger")" -ge "7" ] && now_reboot "too many Tunneldigger instances"
+[ "$(ps |grep -c -e "/usr/bin/[t]unneldigger")" -ge "7" ] && now_reboot "too many Tunneldigger instances"
 
 # br-client without ipv6 in prefix-range
 if [ "$(ip -6 addr show to "$(jsonfilter -i /lib/gluon/site.json -e '$.prefix6')" dev br-client | grep -c inet6)" == "0" ]; then
@@ -124,7 +126,13 @@ for mesh_radio in `uci show wireless 2>/dev/null| grep -E -o '(ibss|mesh)_radio[
     # fill log with new neighbours
     iw_dev_reboot_freeze 20 $DEV station dump | grep -e "^Station " | cut -f 2 -d ' ' > $N_LOG
     for NEIGHBOUR in $OLD_NEIGHBOURS; do
-       grep -q $NEIGHBOUR "$N_LOG" || (scan $DEV; break)
+       # scan once and stop. The break used to sit inside a ( ) subshell, where
+       # it cannot break the enclosing loop, so every lost neighbour triggered
+       # another scan - each blocking for up to 30s in iw_dev_reboot_freeze.
+       if ! grep -q "$NEIGHBOUR" "$N_LOG" ; then
+         scan "$DEV"
+         break
+       fi
     done
   fi
 done
