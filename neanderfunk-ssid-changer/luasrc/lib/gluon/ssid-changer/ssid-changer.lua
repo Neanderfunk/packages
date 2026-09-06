@@ -109,6 +109,15 @@ local tmp_state = '/tmp/ssid-changer-offline'
 local tmp_gwoffstate = '/tmp/ssid-changer-gwofflinecount'
 local gwoffmaxcount = tonumber(uci:get('ssid-changer', 'settings', 'gwofflinemaxcount') or 3)
 local off_count = 0
+-- Muss hier stehen, nicht erst in der Zuweisung unten. gwoffcount war eine
+-- implizite globale Variable und wurde nur im if-Zweig gesetzt - beim ersten
+-- Lauf nach einem Boot existiert /tmp/ssid-changer-gwofflinecount aber noch
+-- nicht, der else-Zweig legt sie an und laesst gwoffcount auf nil. Kommt dann
+-- noch dazu, dass has_default_gw4() falsch ist (also genau die Lage, fuer die
+-- dieses Skript da ist), stirbt es an
+--   ssid-changer.lua:NNN: attempt to compare number with nil
+-- und schaltet gar nichts. Am Knoten im Feld beobachtet, 2026-09-06.
+local gwoffcount = 0
 local file = io.open(tmp, 'r')
 
 -- tmp_state is only a diagnostic now ("was the node considered offline at the
