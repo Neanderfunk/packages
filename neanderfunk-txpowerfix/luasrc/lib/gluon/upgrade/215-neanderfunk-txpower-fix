@@ -9,7 +9,7 @@ local function log(message)
 end
 
 --- wrapper for calling systemcommands
-function cmd(_command)
+local function cmd(_command)
 	local f = io.popen(_command)
 	local l = f:read("*a")
 	f:close()
@@ -27,7 +27,7 @@ end
 --- fine, there's just no matching line" (e.g. no txpower list for this
 --- combination) rather than a hang - those two cases need different
 --- handling by the caller.
-function cmd_safe(_command, timeout_secs)
+local function cmd_safe(_command, timeout_secs)
 	local tmp = "/tmp/txpowerfix.out"
 	local wrapped = string.format(
 		'(%s) >%s 2>/dev/null & p=$!; sleep %d; ' ..
@@ -127,6 +127,11 @@ end
 log("detected interface24=" .. tostring(interface24) .. " interface50=" .. tostring(interface50))
 
 --- determine country according to 5G
+--- Vor den if-Bloecken deklariert, nicht darin: sonst waeren sie auf den Block
+--- beschraenkt. Sie waren bisher implizite globale Variablen - hier folgenlos,
+--- weil gluon-reconfigure jedes Skript als eigenen Prozess startet, aber es
+--- verdeckt bei einer luac-Pruefung die echten Funde.
+local channel24, channel50, country
 
 if interface24 then
 	channel24 = uci:get('wireless', interface24, 'channel')
