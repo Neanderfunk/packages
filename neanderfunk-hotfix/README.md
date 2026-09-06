@@ -139,8 +139,8 @@ package leave markers behind:
 
 | hook | marker | meaning |
 | --- | --- | --- |
-| `download.d/20neanderfunk-hotfix` | `/tmp/autoupdater-running` (uptime at start) | an update is running |
-| `upgrade.d/20neanderfunk-hotfix` | `/tmp/autoupdater-flashing` | sysupgrade is about to write the flash |
+| `download.d/20neanderfunk-hotfix` | `/tmp/hotfix.autoupdater-running` (uptime at start) | an update is running |
+| `upgrade.d/20neanderfunk-hotfix` | `/tmp/hotfix.autoupdater-flashing` | sysupgrade is about to write the flash |
 | `abort.d/20neanderfunk-hotfix` | removes both | the update was aborted |
 
 While `autoupdater-flashing` exists the watchdog **never** reboots - interrupting

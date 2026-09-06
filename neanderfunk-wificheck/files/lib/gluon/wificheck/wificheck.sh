@@ -11,32 +11,32 @@ if [ -z "$mname" ] || [ -z "$bssid" ]; then
   sleep 4 
   mesh=$(batctl o|grep $mname|cut -d")"  -f 2|cut -d" " -f 2|grep [.?.?:.?.?:.*]|sort|uniq|wc -l)
   logger -s -t "neanderfunk-wificheck" -p 5 "ibss-bat-neighbours: $mesh wifiadhocs-neighbours: $wmesh wifimesh-neighbours: $neighbours"
-  if [ ! -f /tmp/noisland ] ; then
+  if [ ! -f /tmp/wificheck.noisland ] ; then
     if [ "$mesh" -gt 1 ] ; then #minimum 2 neighbors
-      echo 1>/tmp/noisland
+      echo 1>/tmp/wificheck.noisland
     fi
    else
     if [ "$mesh" -lt 1 ] ; then # alone?
-      if [ -f /tmp/wifipbflag ] ; then
-        if [ -f /tmp/wifipbflag2 ] ; then
+      if [ -f /tmp/wificheck.pbflag ] ; then
+        if [ -f /tmp/wificheck.pbflag2 ] ; then
           logger -s -t "neanderfunk-wificheck" -p 5 "2nd time no wifi neighbours, rebooting!"
           sleep 3
           # don't reboot during the first hour
           [ $(cat /proc/uptime | sed 's/\..*//g') -gt 3600 ] || reboot -f
          else
           logger -s -t "neanderfunk-wificheck" -p 5 "still no wifi neighbours."
-          echo 1>/tmp/wifipbflag2
+          echo 1>/tmp/wificheck.pbflag2
          fi
        else
         logger -s -t "neanderfunk-wificheck" -p 5 "lost wifi neighbours."
-        echo 1>/tmp/wifipbflag
+        echo 1>/tmp/wificheck.pbflag
        fi
     else
-     if [ -f /tmp/wifipbflag ] ; then
-       rm /tmp/wifipbflag
+     if [ -f /tmp/wificheck.pbflag ] ; then
+       rm /tmp/wificheck.pbflag
       fi
-     if [ -f /tmp/wifipbflag2 ] ; then
-       rm /tmp/wifipbflag2
+     if [ -f /tmp/wificheck.pbflag2 ] ; then
+       rm /tmp/wificheck.pbflag2
       fi
     fi
    fi

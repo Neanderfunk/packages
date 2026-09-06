@@ -3,4 +3,4 @@
 # must not be rebooted by anything of ours - an interrupted flash write bricks
 # it. The marker is never removed: either the upgrade reboots the node (and
 # /tmp is gone), or it aborted, and then abort.d cleans up.
-touch /tmp/autoupdater-flashing
+touch /tmp/hotfix.autoupdater-flashing

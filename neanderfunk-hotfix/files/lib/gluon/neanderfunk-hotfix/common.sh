@@ -39,7 +39,7 @@ uptime_ok() {
 
 # Count consecutive failures. strike <prefix> records one more and prints how
 # many there are now, so a check reads as
-#     [ "$(strike /tmp/gwgone)" -ge 4 ] && reboot
+#     [ "$(strike /tmp/hotfix.gw-gone)" -ge 4 ] && reboot
 # instead of a hand-written if/elif ladder over .1/.2/.3 marker files.
 #
 # One marker file per strike rather than a single counter file, on purpose: a

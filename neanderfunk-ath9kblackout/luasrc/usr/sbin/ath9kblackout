@@ -4,8 +4,8 @@ local util = require 'gluon.util'
 local uci = require('simple-uci').cursor()
 local iwinfo = require 'iwinfo'
 
-local fileOk = '/tmp/ath9k-ok'
-local fileReset = '/tmp/ath9k-reset'
+local fileOk = '/tmp/ath9kblackout.ok'
+local fileReset = '/tmp/ath9kblackout.reset'
 local fileWificonfig = '/etc/config/wireles'
 
 function time2file (file)

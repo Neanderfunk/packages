@@ -67,14 +67,14 @@ check_disabled ksoftirqd_malloc || { dmesg | grep "ksoftirqd" | grep -q "page al
 check_disabled hostapd_pids || ps|grep hostapd|grep .pid|xargs -r -n 10 /lib/gluon/neanderfunk-hotfix/check_hostapd.sh
 #check if hostapd-DFS scanning is broken according to sylogs
 if ! check_disabled dfs_failcheck && [ $(logread -l 5|grep -c  "daemon.warn hostapd: Failed to check if DFS is required") -gt 0 ] ; then
-  if [ "$(strike /tmp/dfscheckfail)" -ge 3 ] ; then
+  if [ "$(strike /tmp/hotfix.dfscheckfail)" -ge 3 ] ; then
     logger -s -t "neanderfunk-healthcheck" "[dfs_failcheck] hostapd DFS failcheck, restarting wifi"
     restart_wifi
-    unstrike /tmp/dfscheckfail
+    unstrike /tmp/hotfix.dfscheckfail
     sleep 10
    fi
  else
-  unstrike /tmp/dfscheckfail
+  unstrike /tmp/hotfix.dfscheckfail
  fi
 
 
@@ -107,17 +107,17 @@ check_bridge_ports() {
     # strikes below keep a transient from rebooting the node.
     current=" $(ls "$brif" 2>/dev/null | tr '\n' ' ')"
     for port in $(ls "$brif" 2>/dev/null) ; do
-      touch "/tmp/brport.$bridge.$port.seen"
-      unstrike "/tmp/brport.$bridge.$port.gone"
+      touch "/tmp/hotfix.brport.$bridge.$port.seen"
+      unstrike "/tmp/hotfix.brport.$bridge.$port.gone"
     done
-    for seen in /tmp/brport."$bridge".*.seen ; do
+    for seen in /tmp/hotfix.brport."$bridge".*.seen ; do
       [ -e "$seen" ] || continue
-      port="${seen#/tmp/brport.$bridge.}"
+      port="${seen#/tmp/hotfix.brport.$bridge.}"
       port="${port%.seen}"
       case "$current" in
         *" $port "*) continue ;;
       esac
-      case "$(strike "/tmp/brport.$bridge.$port.gone")" in
+      case "$(strike "/tmp/hotfix.brport.$bridge.$port.gone")" in
         1) logger -s -t "neanderfunk-healthcheck" -p 5 "interface $port missing from bridge $bridge" ;;
         2) ;;
         *) now_reboot "[bridge_ports] interface $port dropped out of bridge $bridge" ;;
@@ -176,9 +176,9 @@ for mesh_radio in `uci show wireless 2>/dev/null| grep -E -o '(ibss|mesh)_radio[
   radio="$(uci get wireless.$mesh_radio.device)"
   if [[ "$(uci -q get wireless.$radio.disabled)" != "1" && "$(uci -q get wireless.$mesh_radio.disabled)" != "1" ]]; then
     DEV="$(uci get wireless.$mesh_radio.ifname)"
-    N_LOG="/tmp/mesh_neighbours_$mesh_radio"
-    INHOOD="/tmp/mesh_inhood_$mesh_radio"
-    GONE="/tmp/mesh_gone_$mesh_radio"
+    N_LOG="/tmp/hotfix.mesh-neighbours.$mesh_radio"
+    INHOOD="/tmp/hotfix.mesh-inhood.$mesh_radio"
+    GONE="/tmp/hotfix.mesh-gone.$mesh_radio"
     OLD_NEIGHBOURS=$(cat $N_LOG 2>/dev/null)
     # fill log with new neighbours
     iw_dev_reboot_freeze 20 $DEV station dump | grep -e "^Station " | cut -f 2 -d ' ' > $N_LOG

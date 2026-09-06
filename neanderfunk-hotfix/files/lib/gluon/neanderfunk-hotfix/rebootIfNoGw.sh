@@ -17,14 +17,14 @@ upgrade_started='/tmp/autoupdate.lock'
 # else branch always ran, and this script never rebooted for a missing gateway.
 if ! check_disabled no_gateway && [ -z "$(batctl gwl -H 2>/dev/null)" ] ; then
   # only escalate on a node that has seen a gateway at least once since boot
-  if [ -f /tmp/gw ] && [ "$(strike /tmp/gwgone)" -ge 4 ] ; then
+  if [ -f /tmp/hotfix.gw-seen ] && [ "$(strike /tmp/hotfix.gw-gone)" -ge 4 ] ; then
     [ -f $upgrade_started ] && exit
     logger -s -t "neanderfunk-hotfix" -p 5 "[no_gateway] no batman gateway for 4 checks, rebooting"
     uptime_ok && securereboot
   fi
 else
-  touch /tmp/gw
-  unstrike /tmp/gwgone
+  touch /tmp/hotfix.gw-seen
+  unstrike /tmp/hotfix.gw-gone
 fi
 
 returnval=0
@@ -35,9 +35,9 @@ if [ ! -z "$ipv6_subnet" ]; then
   returnval="$?"
 fi
 if ! check_disabled ipv6_anycast && { [ "$returnval" -ne 0 ] || [ -z "$ipv6_subnet" ]; }; then
-  if [ -f /tmp/ip6anycast ] ; then
+  if [ -f /tmp/hotfix.ip6anycast-seen ] ; then
     logger "[ipv6_anycast] IPv6 Anycast-IP NOT reachable."
-    if [ "$(strike /tmp/ip6anycastgone)" -ge 4 ] ; then
+    if [ "$(strike /tmp/hotfix.ip6anycast-gone)" -ge 4 ] ; then
       [ -f $upgrade_started ] && exit
       uptime_ok && securereboot
       exit 0
@@ -45,6 +45,6 @@ if ! check_disabled ipv6_anycast && { [ "$returnval" -ne 0 ] || [ -z "$ipv6_subn
   fi
 else
   logger "IPv6 Anycast-IP reachable."
-  touch /tmp/ip6anycast
-  unstrike /tmp/ip6anycastgone
+  touch /tmp/hotfix.ip6anycast-seen
+  unstrike /tmp/hotfix.ip6anycast-gone
 fi

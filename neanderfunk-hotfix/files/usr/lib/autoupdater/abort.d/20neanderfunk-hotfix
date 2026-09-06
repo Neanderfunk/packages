@@ -1,4 +1,4 @@
 #!/bin/sh
 # Update was aborted, micrond is being started again - drop both markers so the
 # watchdog goes back to its normal deadline.
-rm -f /tmp/autoupdater-running /tmp/autoupdater-flashing
+rm -f /tmp/hotfix.autoupdater-running /tmp/hotfix.autoupdater-flashing

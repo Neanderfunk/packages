@@ -18,7 +18,7 @@ phy=$(echo $@|sed 's/.*-B\ //g'|cut -d" " -f1|sed 's/.*hostapd-//g'|cut -d"." -f
 if [ "${phy:0:3}" = "phy" ] ; then
   pidfile=$(echo $@|sed 's/.*-P\ //g'|cut -d" " -f1)
   pid=$(cat $pidfile 2>/dev/null)
-  sema="/tmp/hostapdpid"
+  sema="/tmp/hotfix.hostapdpid"
   if [ "$pid" = "${pspid%% *}" ] ; then
     rm -f $sema.fail.$phy 2>/dev/null
     touch $sema.ok.$phy
@@ -36,7 +36,7 @@ if [ "${phy:0:3}" = "phy" ] ; then
   fi
   wifistatus=$(wifi status)
   radio="radio"${phy:3:1}
-  sema="/tmp/wifipending"
+  sema="/tmp/hotfix.wifipending"
   if [ $(echo $wifistatus|grep -A 6 $radio|cut -d":" -f1-10|grep -c "up: false") -eq 1 ] ; then
     if [ $(echo $wifistatus|grep -A 6 $radio|cut -d":" -f1-10|grep -c "pending: true") -eq 1 ] ; then
       rm -f $sema.ok.$radio.* 2>/dev/null
@@ -51,7 +51,7 @@ if [ "${phy:0:3}" = "phy" ] ; then
     fi
   fi
   client="client"${phy:3:1}
-  sema="/tmp/channelunknown"
+  sema="/tmp/hotfix.channelunknown"
   iwstat=$(iwinfo $client info)
   if [ $(echo $iwstat|grep -i "Mode: Master"|wc -l) -eq 1 ] ; then
     if [ $(echo $iwstat|grep -i "Channel: unknown"|wc -l) -eq 1 ] ; then

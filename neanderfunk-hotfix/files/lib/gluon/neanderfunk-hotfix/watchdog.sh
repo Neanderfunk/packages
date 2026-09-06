@@ -20,8 +20,8 @@
 # (see /usr/lib/autoupdater/download.d/10gluon-autoupdater). That must never be
 # mistaken for a dead micrond, so the hooks in download.d/upgrade.d/abort.d of
 # this package leave markers behind and this watchdog reads them:
-#   /tmp/autoupdater-running   uptime (s) at which the download started
-#   /tmp/autoupdater-flashing  set right before sysupgrade writes the flash
+#   /tmp/hotfix.autoupdater-running   uptime (s) at which the download started
+#   /tmp/hotfix.autoupdater-flashing  set right before sysupgrade writes the flash
 # While flashing, this never reboots - interrupting a flash write bricks the
 # node. While downloading, it reboots only once the run has exceeded
 # hotfix.settings.autoupdater_stale_min minutes, because then the updater is
@@ -31,9 +31,9 @@
 
 check_disabled watchdog && exit 0
 
-PIDFILE=/tmp/hotfix-watchdog.pid
-RUNMARK=/tmp/autoupdater-running
-FLASHMARK=/tmp/autoupdater-flashing
+PIDFILE=/tmp/hotfix.watchdog.pid
+RUNMARK=/tmp/hotfix.autoupdater-running
+FLASHMARK=/tmp/hotfix.autoupdater-flashing
 
 # config is read once, up front, where forking is still fine
 interval="$(uci -q get hotfix.settings.watchdog_interval_min)"

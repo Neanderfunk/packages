@@ -34,11 +34,11 @@ for if in $cliifs; do
 
 if [ -z "$C_MACS" ] ; then
   # only escalate on a node that has seen clients at least once since boot
-  if [ -f /tmp/WifiClients ] && [ "$(strike /tmp/NoWiCli)" -ge 4 ] ; then
+  if [ -f /tmp/hotfix.wificlients-seen ] && [ "$(strike /tmp/hotfix.wificlients-gone)" -ge 4 ] ; then
     [ -f $upgrade_started ] && exit
     logger -s -t "hotfix-IfNoWificlient" -p 5 "[no_wifi_clients] wireless stations disappeared for long, restarting Wifi"
-    rm -f /tmp/WifiClients 2>/dev/null
-    unstrike /tmp/NoWiCli
+    rm -f /tmp/hotfix.wificlients-seen 2>/dev/null
+    unstrike /tmp/hotfix.wificlients-gone
     wifi down
     killall hostapd >/dev/null 2>&1
     rm -f /var/run/wifi-*.pid >/dev/null 2>&1
@@ -46,7 +46,7 @@ if [ -z "$C_MACS" ] ; then
     wifi up
   fi
 else
-  touch /tmp/WifiClients
-  unstrike /tmp/NoWiCli
+  touch /tmp/hotfix.wificlients-seen
+  unstrike /tmp/hotfix.wificlients-gone
 fi
 
