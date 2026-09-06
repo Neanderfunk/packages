@@ -28,3 +28,4 @@ config check 'mesh_neighbours'
 # --- gateway.sh (*/8) ---
 config check 'no_gateway'
 config check 'ipv6_anycast'
+config check 'public_prefix'

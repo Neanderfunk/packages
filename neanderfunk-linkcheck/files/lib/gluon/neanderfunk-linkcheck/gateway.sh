@@ -52,12 +52,57 @@ else
 fi
 
 # --- IPv6 anycast -----------------------------------------------------------
-returnval=0
-ipv6_subnet="$(ip -6 -o addr show dev br-client | head -1 | awk -v N=4 '{print $N}' | sed -e 's/\/64//' | cut -d":" -f1-4)"
-if [ ! -z "$ipv6_subnet" ]; then
-	ping6 "${ipv6_subnet}::ac1" -c 10 >/dev/null 2>&1
-	returnval="$?"
+#
+# Das Prefix kam frueher aus der ERSTEN Adresse, die "ip" auf br-client ausgibt.
+# Dort stehen aber mehrere: die oeffentliche aus dem RA, die ULA aus der
+# site.conf und die Link-Local-Adresse. Auf vier Knoten gemessen antwortet nur
+# das oeffentliche Prefix auf ::ac1 - die ULA nicht, und auf einem Knoten mit
+# zwei oeffentlichen Prefixen auch das zweite nicht. Welche Adresse zuerst
+# kommt, ist eine Zufaelligkeit der Kernel-Reihenfolge; kippt sie, pingt ein
+# bereits scharfer Knoten ins Leere und rebootet nach vier Laeufen.
+#
+# Also: nur oeffentliche Prefixe (ULA ist fc00::/7, also ^fc/^fd; Link-Local
+# faellt schon durch "scope global" weg), und wenn es mehrere gibt, reicht es,
+# wenn eines antwortet.
+anycast_prefixes() {
+	ip -6 -o addr show dev br-client scope global 2>/dev/null \
+		| awk '{print $4}' | sed 's#/.*##' \
+		| grep -v -i '^f[cd]' \
+		| cut -d: -f1-4 \
+		| awk '!seen[$0]++'
+}
+
+# --- oeffentliches Prefix ueberhaupt vorhanden? ---------------------------
+#
+# Ansage adorfer: faellt das oeffentliche Prefix weg, nachdem es einmal da war,
+# ist das ebenfalls ein Reboot-Grund. Eigener Check, damit im Log steht, welche
+# der beiden Bedingungen gegriffen hat - ohne oeffentliches Prefix schlaegt
+# naemlich auch der Anycast unten fehl.
+#
+# Scharf erst, wenn es einmal eines gab: ein Knoten, der noch nie ein RA gesehen
+# hat, rebootet dadurch nicht.
+if ! check_disabled public_prefix ; then
+	if [ -n "$(anycast_prefixes)" ] ; then
+		touch /tmp/linkcheck.pubprefix-seen
+		unstrike /tmp/linkcheck.pubprefix-gone
+	elif [ -f /tmp/linkcheck.pubprefix-seen ] ; then
+		logger -s -t "neanderfunk-linkcheck" -p 5 "[public_prefix] no public IPv6 prefix on br-client any more"
+		if [ "$(strike /tmp/linkcheck.pubprefix-gone)" -ge 4 ] ; then
+			reboot_if_old public_prefix "no public IPv6 prefix for 4 checks"
+		fi
+	fi
 fi
+
+ipv6_subnet=""
+returnval=1
+for pfx in $(anycast_prefixes) ; do
+	[ -z "$ipv6_subnet" ] && ipv6_subnet="$pfx"   # nur fuer die Logmeldung
+	if ping6 "${pfx}::ac1" -c 10 -w 15 >/dev/null 2>&1 ; then
+		ipv6_subnet="$pfx"
+		returnval=0
+		break
+	fi
+done
 
 if ! check_disabled ipv6_anycast && { [ "$returnval" -ne 0 ] || [ -z "$ipv6_subnet" ]; } ; then
 	if [ -f /tmp/linkcheck.ip6anycast-seen ] ; then

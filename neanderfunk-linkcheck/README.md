@@ -116,6 +116,7 @@ Checks
 | `mesh_neighbours` | a wifi mesh radio that had >=2 neighbours now has none | wifi restart, reboot |
 | `no_gateway` | no batman gateway in range for 4 runs (`gateway.sh`) | reboot |
 | `ipv6_anycast` | the IPv6 anycast address unreachable for 4 runs (`gateway.sh`) | reboot |
+| `public_prefix` | br-client has lost its public IPv6 prefix, having had one (`gateway.sh`) | reboot |
 
 A wifi restart happens at most once per run, no matter how many checks reach
 their third strike in it. A real outage takes every check down at the same
