@@ -38,6 +38,15 @@ FLASHMARK=/tmp/autoupdater-flashing
 # config is read once, up front, where forking is still fine
 interval="$(uci -q get hotfix.settings.watchdog_interval_min)"
 case "$interval" in ''|*[!0-9]*) interval=5 ;; esac
+
+# The deadline must never be shorter than the period micrond actually starts
+# this script with - otherwise no relief can possibly arrive in time and the
+# watchdog would reboot a perfectly healthy node, over and over. Read that
+# period out of the cron entry instead of trusting the two to be kept in sync
+# by hand, and never go below it.
+cron_min="$(sed -n 's#^\*/\([0-9][0-9]*\) .*watchdog\.sh.*#\1#p' /usr/lib/micron.d/hotfix 2>/dev/null | head -1)"
+case "$cron_min" in ''|*[!0-9]*) cron_min=5 ;; esac
+[ "$interval" -lt "$cron_min" ] && interval="$cron_min"
 stale="$(uci -q get hotfix.settings.autoupdater_stale_min)"
 case "$stale" in ''|*[!0-9]*) stale=300 ;; esac
 

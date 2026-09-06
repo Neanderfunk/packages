@@ -121,6 +121,11 @@ instance relieves its predecessor by killing it. An instance that is *not*
 relieved within 3x that interval concludes there is no micrond starting jobs any
 more, and reboots.
 
+The value is clamped to the period micrond actually uses, which the script reads
+out of its own cron entry in `/usr/lib/micron.d/hotfix`. Setting it *lower* than
+that would create a deadline no relief could ever meet, and the watchdog would
+reboot a perfectly healthy node every few minutes; raising it is honoured.
+
 Everything after its sleep is deliberately fork-free, because the situation it
 exists for includes running out of memory, where starting `logger`, `date` or
 `/sbin/reboot` may simply fail: `echo`, `read` and `kill` are ash builtins, the

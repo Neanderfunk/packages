@@ -14,7 +14,10 @@ config settings 'settings'
 	#option reboot_uptime_min '60'
 
 	# deadman watchdog for micrond itself: micrond starts watchdog.sh every
-	# N minutes, an instance not relieved within 3*N minutes reboots the node
+	# N minutes, an instance not relieved within 3*N minutes reboots the node.
+	# Values below the period in /usr/lib/micron.d/hotfix (*/5) are raised to
+	# it - a shorter deadline than the relief interval could never be met and
+	# would reboot a healthy node.
 	#option watchdog_interval_min '5'
 	# how long a running autoupdater may go without relieving the watchdog
 	# before it is considered stuck and the node is rebooted anyway
