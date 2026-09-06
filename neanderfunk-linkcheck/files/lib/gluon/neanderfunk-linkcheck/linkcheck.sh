@@ -16,7 +16,16 @@ valuecheck ()
             sleep 10
             upgrade_started='/tmp/autoupdate.lock'
             [ -f ${upgrade_started} ] && exit
+            # not within the first hour of uptime, same rule as hotfix's
+            # healthcheck.sh and rebootIfNoGw.sh. The .inhood arming already
+            # bounds an outage to one reboot (the markers live in /tmp), this
+            # additionally keeps the rate down while something is badly wrong.
+            [ "$(sed 's/\..*//g' /proc/uptime)" -gt "3600" ] || exit
             reboot -f
+            # reboot -f does not necessarily return immediately; without this
+            # the code below runs on into the "3rd time" branch and restarts
+            # wifi while the reboot is already in flight
+            exit
            fi
           # 3nd time failure
           logger -s -t "neanderfunk-linkcheck" -p 5 "lost neighbors 3rd: ${linkname}.${check}, wifi restart"
@@ -105,7 +114,13 @@ if [ "$gluontarget" != "mediatek" ]; then
 #     fi
 #    wifimeshneighbors=$(cat $iwfile|grep $bssid|wc -l)
 #    checks="wifimeshneighbors bsses"
-    for check in ${check}s; do
+    # ${checks}, not ${check}s: the latter appended a literal "s" to whatever
+    # $check happened to hold from the previous section (e.g. "primary0s"), so
+    # $wert came out empty and this whole BSS check silently did nothing - while
+    # the expensive part above (two sleeps plus an iw scan per radio) still ran
+    # every 5 minutes. It also clobbered $check, growing it by one "s" per
+    # iteration.
+    for check in ${checks}; do
       wert=$(eval echo \$${check})
       valuecheck ${check}
      done
@@ -133,6 +148,7 @@ if [ "$gluontarget" != "mediatek" ]; then
    done
   # check if all prviously seen are in current list
   for batups in ${batupfiles}; do
+    [ -e "${batups}" ] || continue
     batifupf=$(echo ${batups}|cut -d${ifnameseparator} -f2)
     if [[ "$batinterfaces" =~ "${batifupf}" ]]; then
       wert='2'
@@ -149,7 +165,13 @@ if [ "$gluontarget" != "mediatek" ]; then
   batmanoriginatorsfile="/tmp/linkcheck.batmanoriginators.list"
   batctl o|tail -n +3>${batmanoriginatorsfile}
   for batups in ${batupfiles}; do
-    batifupf=$(echo ${batups}|cut -d. -f3)
+    [ -e "${batups}" ] || continue
+    # cut on ${ifnameseparator}, field 2 - same as the loop above. This still
+    # cut on "." from back when the separator was a dot (changed in 4942b30),
+    # so with the comma separator there is no third dot-field at all:
+    # batifupf came out empty, [[ ! "$x" =~ "" ]] is false because an empty
+    # regex matches anything, and this whole originator check never ran.
+    batifupf=$(echo ${batups}|cut -d${ifnameseparator} -f2)
     if [[ ! "$wifibatlinks" =~ "${batifupf}" ]]; then    # do not check for wifimesh links as check/reboot condition!
 #      echo check if by file: ${batifupf} # individually previsously seen file
       bators=$(cat ${batmanoriginatorsfile}|grep ${batifupf}|wc -l)
@@ -182,6 +204,7 @@ if [ "$gluontarget" != "mediatek" ]; then
 #  echo upbridgesf ${upbridgesf}
   # check if all prviously seen are in current list
   for upbridgef in ${upbridgesf}; do
+    [ -e "${upbridgef}" ] || continue
     upbridge=$(echo ${upbridgef}|cut -d${ifnameseparator} -f2)
 #    echo check if by file: ${upbridge} # individually previsously seen file
     if [[ "${bridgeslist}" =~ "${upbridge}"   ]]; then
@@ -199,6 +222,7 @@ if [ "$gluontarget" != "mediatek" ]; then
       done
 #     echo file  ${interfacesf}
      for interfacef in ${interfacesf}; do
+       [ -e "${interfacef}" ] || continue
        interfaced=$(echo ${interfacef}|cut -d${ifnameseparator} -f4)
 #       echo testing ${upbridge}:${interfaced}
        interfaces=$(brctl show ${upbridge}|sed -e 's/\t/                     /g'|cut -c 100-|sed -e 's/ //g'|tail -n +2)
