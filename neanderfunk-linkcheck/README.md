@@ -92,7 +92,7 @@ Checks
 | check | what it does | reaction |
 | --- | --- | --- |
 | `batadv_neighbours` | direct batman neighbours per batman interface | wifi restart, reboot |
-| `bsses` | networks visible in an `iw scan` per radio (a radio seeing none at all is a strong "radio is dead" signal) | wifi restart, reboot |
+| `bsses` | networks visible in an `iw scan` per radio (a radio seeing none at all is a strong "radio is dead" signal). wifi6/mt7915 radios are skipped - the scan breaks their mesh links | wifi restart, reboot |
 | `batinterfaces` | a batman interface that was present has disappeared | wifi restart, reboot |
 | `batman_originators` | originators reachable via a batman interface (wifi mesh links are excluded on purpose) | wifi restart, reboot |
 | `bridges` | a bridge that was present has disappeared | wifi restart, reboot |

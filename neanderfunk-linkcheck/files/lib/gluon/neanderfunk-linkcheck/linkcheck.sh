@@ -97,10 +97,24 @@ fi
 
 # 2) running over wifimesh-interfaces, looking for other SSIDs on the same wifi via iwscan lowpri
 
-# do not run on mediatek (filogic...) devices, since it seems to break meshlinks.
+# The scan breaks mesh links on wifi6 / filogic hardware (mt7915). It does not
+# on the older mt76 chips: a Xiaomi 4A Gigabit (ramips/mt7621, mt7603e plus
+# mt76x2e) scans without trouble. Testing the OpenWrt target caught filogic
+# only by accident - an mt7621 board carrying an mt7915 PCIe card reports
+# "ramips" and would have been scanned anyway - so ask the driver, per radio,
+# and keep the target test as a fallback for when the driver link is not
+# readable (interface down, no sysfs entry).
 gluontarget=$(cat /etc/openwrt_release|grep DISTRIB_TARGET|cut -d"=" -f2|tr -d \'|cut -d/ -f1)
+radio_is_wifi6() {
+  # $1: ifname
+  drv="$(readlink -f "/sys/class/net/$1/device/driver" 2>/dev/null)"
+  case "${drv##*/}" in
+    mt7915*) return 0 ;;
+  esac
+  [ "$gluontarget" = "mediatek" ]
+}
 checkgroup='bsses'
-if [ "$gluontarget" != "mediatek" ] && ! check_disabled "$checkgroup" ; then
+if ! check_disabled "$checkgroup" ; then
   checks=''
   linksexist=''
   links='wireless.mesh_radio0 wireless.batmesh_radio0 wireless.mesh_radio1 wireless.batmesh_radio1 wireless.mesh_radio2 wireless.batmesh_radio2 wireless.client_radio0 wireless.client_radio1 wireless.client_radio2'
@@ -114,6 +128,10 @@ if [ "$gluontarget" != "mediatek" ] && ! check_disabled "$checkgroup" ; then
   rm /tmp/linkcheck.iwscan.* 2>/dev/null
   for linkexist in $linksexist; do
     linkname=$(uci get $linkexist.ifname)
+    if radio_is_wifi6 "${linkname}" ; then
+      logger -s -t "neanderfunk-linkcheck" -p 5 "[bsses] ${linkname} is wifi6/mt7915, not scanning it"
+      continue
+     fi
     iwfile=/tmp/linkcheck.iwscan.$(uci get $linkexist.device)
     if [ ! -f $iwfile ] ; then
       sleep 4
