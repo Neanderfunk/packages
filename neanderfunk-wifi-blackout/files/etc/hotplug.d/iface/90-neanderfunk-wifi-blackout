@@ -1,0 +1,24 @@
+#!/bin/sh
+# Reset the blackout clock whenever a radio comes up: right after a
+# (re)configuration there are legitimately no associated stations yet, and
+# counting that as a blackout would restart the wifi that has just come up.
+#
+# The previous version of this file never ran. It declared "local RADIO" at file
+# scope, and busybox ash rejects that outright ("local: not in a function").
+# hotplug-call sources these scripts, so the error aborted the whole file before
+# it got to writing the marker - verified on three nodes, where neither marker
+# file existed, on one of them after 22 hours of uptime. Together with a typo in
+# the main script ('/etc/config/wireles') that meant the workaround did nothing
+# at all, on any node, for years.
+#
+# It also went through uci to find the radio behind $INTERFACE, which in an
+# iface hotplug is the *network* name, not a wifi-iface section. $DEVICE is the
+# netdev and is what is actually needed.
+
+[ "$ACTION" = "ifup" ] || exit 0
+[ -n "$DEVICE" ] || exit 0
+
+# a wireless netdev has a phy80211 link, ethernet does not
+[ -e "/sys/class/net/$DEVICE/phy80211" ] || exit 0
+
+date +%s > /tmp/wifiblackout.reset

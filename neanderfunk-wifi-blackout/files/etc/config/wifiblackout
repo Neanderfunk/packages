@@ -1,0 +1,13 @@
+# neanderfunk-wifi-blackout
+#
+# Switch the check off on this node:
+#   uci set wifiblackout.settings.disabled='1' ; uci commit wifiblackout
+#
+# The timings (blackoutwait, resetwait, stepsize) come from the site.conf.
+
+config settings 'settings'
+	# Minutes after a boot before anything is looked at. Default 5.
+	#option check_uptime_min '5'
+	# How many wifi restarts to try before rebooting instead. Default 1.
+	#option restarts_before_reboot '1'
+	#option disabled '0'

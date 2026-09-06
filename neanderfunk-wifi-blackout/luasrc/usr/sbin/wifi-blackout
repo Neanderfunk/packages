@@ -1,0 +1,221 @@
+#!/usr/bin/lua
+-- Wifi blackout: the radios are up, but not a single station is associated
+-- anywhere on this node - no client, no mesh peer - and none has been for
+-- hours. From the driver's side everything looks fine, so nothing recovers by
+-- itself. Restart the wifi, and if that does not help, reboot.
+--
+-- WHY THIS EXISTS NEXT TO THE OTHER CHECKS
+--
+-- Every other check in this feed arms only once it has seen the healthy state
+-- at least once since boot: no_wifi_clients after the first client,
+-- mesh_neighbours and bsses after two neighbours or networks. That "no island"
+-- rule is deliberate and keeps a legitimately lonely node from escalating - but
+-- it makes all of them blind to a radio that is broken from the moment it comes
+-- up, because the healthy state never happens and they never arm.
+--
+-- That case is real: adorfer reports nodes that had no clients at all since
+-- booting, inexplicably, where only a reboot helped. One of them was an Aruba
+-- AP-303 (ipq40xx), so this is not an ath9k matter and the check is not gated
+-- on any driver - the previous version was called ath9kblackout and restricted
+-- itself to ath9k, which would have missed exactly that node.
+--
+-- Deliberately NO arming rule here, therefore. The price is that a node which
+-- genuinely has no users and no neighbours is restarted every few hours; the
+-- long blackoutwait from the site.conf is what keeps that tolerable.
+--
+-- The node is judged as a whole, not per radio: any interface with a station
+-- makes the node healthy. Per radio, a 5 GHz radio without clients - entirely
+-- normal, plenty of clients are 2.4 GHz only - would be a permanent false
+-- positive.
+--
+-- Forked from FreifunkHochstift's ffho-ath9k-blackout-workaround, see README.
+
+local site = require 'gluon.site'
+local util = require 'gluon.util'
+local uci = require('simple-uci').cursor()
+local iwinfo = require 'iwinfo'
+
+local fileOk = '/tmp/wifiblackout.ok'
+local fileReset = '/tmp/wifiblackout.reset'
+local fileStrike = '/tmp/wifiblackout.acted'
+local fileWificonfig = '/etc/config/wireless'
+
+local function writefile(file, content)
+	local f = io.open(file, 'w')
+	if not f then return end
+	f:write(content)
+	f:close()
+end
+
+local function time2file(file)
+	writefile(file, string.format('%i', os.time()))
+end
+
+-- One marker file per strike, as in the shell checks: a single counter file is
+-- truncated on every write, and being killed in that window resets the count.
+local function strike(prefix)
+	local n = 1
+	while util.readfile(prefix .. '.' .. n) do
+		n = n + 1
+	end
+	writefile(prefix .. '.' .. n, tostring(os.time()))
+	return n
+end
+
+local function unstrike(prefix)
+	local n = 1
+	while util.readfile(prefix .. '.' .. n) do
+		os.remove(prefix .. '.' .. n)
+		n = n + 1
+	end
+end
+
+local function setting(name, default)
+	local v = tonumber(uci:get('wifiblackout', 'settings', name))
+	return v or default
+end
+
+-- site.conf: wifi_blackout is the current spelling, ath9kblackout the one this
+-- package used to have. Both are accepted so a site.conf does not have to be
+-- changed in the same step as the firmware. gluon.site yields nil for a missing
+-- key rather than raising, verified on a node, so this needs no guarding.
+local function site_setting(name, default)
+	local v = site.wifi_blackout[name]()
+	if v == nil then
+		v = site.ath9kblackout[name]()
+	end
+	return tonumber(v) or default
+end
+
+local function uptime()
+	local f = io.open('/proc/uptime')
+	if not f then return 0 end
+	local line = f:read('*l')
+	f:close()
+	return tonumber((line or ''):match('^(%d+)')) or 0
+end
+
+-- Is this interface one the node is supposed to be serving on? Answered from
+-- the configuration alone, on purpose: if it were answered by asking iwinfo,
+-- a radio broken badly enough that iwinfo no longer replies would count as
+-- "this node has no wifi" and the check would fall silent in exactly the worst
+-- case. The node must have SOME wifi configured for any of this to apply - on
+-- an x86 node without radios there is nothing to black out.
+local function is_candidate(iface)
+	local radio = uci:get('wireless', iface, 'device')
+	if not radio then
+		return false
+	end
+	if uci:get_bool('wireless', iface, 'disabled') or uci:get_bool('wireless', radio, 'disabled') then
+		return false
+	end
+	return uci:get('wireless', iface, 'ifname') ~= nil
+end
+
+-- true when a station is associated on this interface. A radio that cannot be
+-- queried at all certainly has none, so that counts as "no station" rather
+-- than as "not applicable".
+local function has_station(iface)
+	local radio = uci:get('wireless', iface, 'device')
+	local ifname = uci:get('wireless', iface, 'ifname')
+	local wifitype = iwinfo.type(radio)
+	if not wifitype then
+		return false
+	end
+	local ok, assoclist = pcall(iwinfo[wifitype].assoclist, ifname)
+	if not ok or not assoclist then
+		return false
+	end
+	return next(assoclist) ~= nil
+end
+
+-- how many interfaces the node is supposed to serve on, and whether any of
+-- them has a station
+local function check_wifi()
+	local candidates = 0
+	local ok = false
+	uci:foreach('wireless', 'wifi-iface',
+		function(s)
+			if is_candidate(s['.name']) then
+				candidates = candidates + 1
+				ok = ok or has_station(s['.name'])
+			end
+		end
+	)
+	return candidates, ok
+end
+
+local function log(msg)
+	os.execute('logger -s -t neanderfunk-wifi-blackout -p local0.info "[wifi_blackout] ' .. msg .. '"')
+end
+
+if uci:get_bool('wifiblackout', 'settings', 'disabled') then
+	os.exit(0)
+end
+
+-- Below check_uptime_min nothing runs; the radios are still coming up and
+-- having no stations yet says nothing. The action threshold is not applied
+-- separately: blackoutwait is far longer than it anyway.
+local up = uptime()
+if up <= setting('check_uptime_min', 5) * 60 then
+	os.exit(0)
+end
+
+local candidates, wifi_ok = check_wifi()
+if candidates == 0 then
+	-- a node without usable wifi (x86 for instance) has nothing to blackout
+	os.exit(0)
+end
+
+if not util.readfile(fileReset) then
+	-- normally written by the ifup hotplug handler; this is the fallback for a
+	-- node where no ifup has happened since the package was installed
+	if not util.readfile(fileWificonfig) then
+		os.exit(0)
+	end
+	time2file(fileReset)
+end
+
+if wifi_ok or not util.readfile(fileOk) then
+	time2file(fileOk)
+	unstrike(fileStrike)
+	os.exit(0)
+end
+
+local blackout_wait_secs = site_setting('blackoutwait', 171) * 60
+local reset_wait_secs = site_setting('resetwait', 281) * 60
+
+if os.difftime(os.time(), tonumber(util.readfile(fileReset))) <= reset_wait_secs then
+	os.exit(0)
+end
+
+if os.difftime(os.time(), tonumber(util.readfile(fileOk))) <= blackout_wait_secs then
+	os.exit(0)
+end
+
+-- Escalate. A wifi restart is the cheap remedy and fixes some cases; where it
+-- does not, only a reboot has helped in the field, so the second time round
+-- this reboots rather than restarting the wifi again for hours on end.
+time2file(fileReset)
+local n = strike(fileStrike)
+
+if n <= setting('restarts_before_reboot', 1) then
+	log(string.format('no associated station on any radio for %i min (attempt %i) - restarting wifi',
+		blackout_wait_secs / 60, n))
+	os.execute('wifi down')
+	os.execute('killall hostapd >/dev/null 2>&1')
+	os.execute('rm -f /var/run/wifi-*.pid >/dev/null 2>&1')
+	os.execute('wifi config')
+	os.execute('wifi up')
+	os.exit(0)
+end
+
+if util.readfile('/tmp/autoupdate.lock') then
+	log('reboot wanted, but an autoupdate is in flight')
+	os.exit(0)
+end
+
+log(string.format('no associated station on any radio for %i min and the wifi restart did not help - rebooting',
+	blackout_wait_secs / 60))
+os.execute('sync')
+os.execute('reboot -f')
