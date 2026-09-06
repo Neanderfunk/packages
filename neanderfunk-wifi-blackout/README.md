@@ -68,10 +68,10 @@ Per node
 --------
 
 ```
-uci set wifiblackout.settings.disabled='1'             # off
-uci set wifiblackout.settings.restarts_before_reboot='2'  # default 1
-uci set wifiblackout.settings.check_uptime_min='10'    # default 5
-uci commit wifiblackout
+uci set wifi_blackout.settings.disabled='1'             # off
+uci set wifi_blackout.settings.restarts_before_reboot='2'  # default 1
+uci set wifi_blackout.settings.check_uptime_min='10'    # default 5
+uci commit wifi_blackout
 ```
 
 The log tag is `neanderfunk-wifi-blackout` and every action names the reason, so

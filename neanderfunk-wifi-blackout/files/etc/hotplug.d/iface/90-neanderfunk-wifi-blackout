@@ -21,4 +21,4 @@
 # a wireless netdev has a phy80211 link, ethernet does not
 [ -e "/sys/class/net/$DEVICE/phy80211" ] || exit 0
 
-date +%s > /tmp/wifiblackout.reset
+date +%s > /tmp/wifi-blackout.reset

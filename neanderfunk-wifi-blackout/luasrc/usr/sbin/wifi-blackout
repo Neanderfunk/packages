@@ -35,9 +35,9 @@ local util = require 'gluon.util'
 local uci = require('simple-uci').cursor()
 local iwinfo = require 'iwinfo'
 
-local fileOk = '/tmp/wifiblackout.ok'
-local fileReset = '/tmp/wifiblackout.reset'
-local fileStrike = '/tmp/wifiblackout.acted'
+local fileOk = '/tmp/wifi-blackout.ok'
+local fileReset = '/tmp/wifi-blackout.reset'
+local fileStrike = '/tmp/wifi-blackout.acted'
 local fileWificonfig = '/etc/config/wireless'
 
 local function writefile(file, content)
@@ -70,8 +70,15 @@ local function unstrike(prefix)
 	end
 end
 
+-- NB the extra parentheses. simple-uci's get() returns TWO values when the key
+-- is missing (nil plus an error string) and one when it is set, and an
+-- unparenthesised call expands to all of them - so tonumber() got the error
+-- string as its base argument and raised "bad argument #2 to 'tonumber'".
+-- It therefore worked whenever a value was configured and crashed in exactly
+-- the default case. Caught by a dry run on a real node; the test harness stubs
+-- simple-uci with a single-return function and could never reproduce it.
 local function setting(name, default)
-	local v = tonumber(uci:get('wifiblackout', 'settings', name))
+	local v = tonumber((uci:get('wifi_blackout', 'settings', name)))
 	return v or default
 end
 
@@ -95,12 +102,21 @@ local function uptime()
 	return tonumber((line or ''):match('^(%d+)')) or 0
 end
 
--- Is this interface one the node is supposed to be serving on? Answered from
--- the configuration alone, on purpose: if it were answered by asking iwinfo,
--- a radio broken badly enough that iwinfo no longer replies would count as
--- "this node has no wifi" and the check would fall silent in exactly the worst
--- case. The node must have SOME wifi configured for any of this to apply - on
--- an x86 node without radios there is nothing to black out.
+-- Is this interface actually serving, so that a lack of stations on it means
+-- something? Three conditions, and the uci flags alone are not enough:
+--
+--   * uci must not have the interface or its radio disabled. Gluon has separate
+--     switches for client and mesh per radio, and a node with both off would
+--     never see an association - restarting its wifi every few hours forever.
+--   * the netdev must exist and be operationally up. Measured on a COVR-X1860:
+--     mesh_radio1 has disabled='0' and its netdev exists, but operstate is
+--     "down" because radio1 is on channel "auto" and a mesh interface needs a
+--     fixed channel. uci calls it enabled; it never comes up.
+--
+-- A blackout is by definition a radio that is UP and deaf, so requiring
+-- operstate up does not hide the case this check is for. A radio whose netdev
+-- is down or gone is a different fault and belongs to bsses / mesh_neighbours /
+-- the hostapd checks.
 local function is_candidate(iface)
 	local radio = uci:get('wireless', iface, 'device')
 	if not radio then
@@ -109,7 +125,16 @@ local function is_candidate(iface)
 	if uci:get_bool('wireless', iface, 'disabled') or uci:get_bool('wireless', radio, 'disabled') then
 		return false
 	end
-	return uci:get('wireless', iface, 'ifname') ~= nil
+
+	local ifname = uci:get('wireless', iface, 'ifname')
+	if not ifname then
+		return false
+	end
+	local oper = util.readfile('/sys/class/net/' .. ifname .. '/operstate')
+	if not oper then
+		return false
+	end
+	return oper:match('^%s*(%S+)') == 'up'
 end
 
 -- true when a station is associated on this interface. A radio that cannot be
@@ -149,7 +174,7 @@ local function log(msg)
 	os.execute('logger -s -t neanderfunk-wifi-blackout -p local0.info "[wifi_blackout] ' .. msg .. '"')
 end
 
-if uci:get_bool('wifiblackout', 'settings', 'disabled') then
+if uci:get_bool('wifi_blackout', 'settings', 'disabled') then
 	os.exit(0)
 end
 
@@ -163,7 +188,9 @@ end
 
 local candidates, wifi_ok = check_wifi()
 if candidates == 0 then
-	-- a node without usable wifi (x86 for instance) has nothing to blackout
+	-- No interface that is up and serving: an x86 node without radios, a node
+	-- with client and mesh switched off, or one whose wifi is down altogether.
+	-- Nothing here can be judged as a blackout.
 	os.exit(0)
 end
 
@@ -185,11 +212,11 @@ end
 local blackout_wait_secs = site_setting('blackoutwait', 171) * 60
 local reset_wait_secs = site_setting('resetwait', 281) * 60
 
-if os.difftime(os.time(), tonumber(util.readfile(fileReset))) <= reset_wait_secs then
+if os.difftime(os.time(), tonumber((util.readfile(fileReset)))) <= reset_wait_secs then
 	os.exit(0)
 end
 
-if os.difftime(os.time(), tonumber(util.readfile(fileOk))) <= blackout_wait_secs then
+if os.difftime(os.time(), tonumber((util.readfile(fileOk)))) <= blackout_wait_secs then
 	os.exit(0)
 end
 

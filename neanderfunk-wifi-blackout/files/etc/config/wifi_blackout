@@ -1,7 +1,7 @@
 # neanderfunk-wifi-blackout
 #
 # Switch the check off on this node:
-#   uci set wifiblackout.settings.disabled='1' ; uci commit wifiblackout
+#   uci set wifi_blackout.settings.disabled='1' ; uci commit wifi_blackout
 #
 # The timings (blackoutwait, resetwait, stepsize) come from the site.conf.
 

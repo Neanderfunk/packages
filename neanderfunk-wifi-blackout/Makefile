@@ -24,7 +24,7 @@ define Package/$(PKG_NAME)/description
 	"arm once the healthy state was seen" rule, which is what makes it the
 	only one that catches a radio broken from the moment it came up. Not
 	restricted to any chipset. Can be switched off per node
-	(uci set wifiblackout.settings.disabled=1). See README.md.
+	(uci set wifi_blackout.settings.disabled=1). See README.md.
 endef
 
 define Build/Prepare
