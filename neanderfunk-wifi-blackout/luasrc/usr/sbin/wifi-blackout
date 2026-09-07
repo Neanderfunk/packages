@@ -237,7 +237,24 @@ if n <= setting('restarts_before_reboot', 1) then
 	os.exit(0)
 end
 
-if util.readfile('/tmp/autoupdate.lock') then
+-- Bis hierher wurde allein /tmp/autoupdate.lock geprueft - die Datei, die
+-- niemand anlegt (kein Gluon-Paket, kein Patch unseres Firmware-Trees), der
+-- Schutz war also wirkungslos. Das faellt gerade hier ins Gewicht:
+-- ffac-autoupdater-wifi-fallback holt einen gestrandeten Knoten zurueck, indem
+-- es sich als Client in ein fremdes Freifunk-Netz haengt und darueber eine
+-- ganze Firmware laedt. Ein Reboot mittendrin macht die Rettung zunichte.
+-- Dieselbe Erkennung wie in neanderfunk-weeklyreboot und -linkcheck: die
+-- Sperrdatei, die der Autoupdater tatsaechlich haelt, plus die Prozessnamen.
+local function autoupdater_running()
+	if os.execute('flock -n /var/lock/autoupdater.lock true 2>/dev/null') ~= 0 then
+		return true
+	end
+	if os.execute('pgrep autoupdater >/dev/null 2>&1') == 0 then return true end
+	if os.execute('pgrep sysupgrade  >/dev/null 2>&1') == 0 then return true end
+	return util.readfile('/tmp/autoupdate.lock') ~= nil
+end
+
+if autoupdater_running() then
 	log('reboot wanted, but an autoupdate is in flight')
 	os.exit(0)
 end

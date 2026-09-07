@@ -66,8 +66,7 @@ valuecheck ()
       fi
       logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 4th: ${linkname}.${check}, rebooting!"
       sleep 10
-      upgrade_started='/tmp/autoupdate.lock'
-      [ -f ${upgrade_started} ] && exit
+      autoupdater_running && exit
       reboot -f
       # reboot -f does not necessarily return immediately
       exit
@@ -76,9 +75,8 @@ valuecheck ()
 }
 ## script start
 
-#do not run run while node is firmware flashing
-upgrade_started='/tmp/autoupdate.lock'
-[ -f ${upgrade_started} ] && exit
+# nicht laufen, waehrend der Knoten Firmware laedt oder flasht
+autoupdater_running && exit 0
 
 # Einzelinstanz-Lock. Dieses Skript kann laenger laufen als sein Cron-Intervall:
 # je Radio zwei "sleep 4" um den Scan, ein 20-Sekunden-Waechter um "iw station

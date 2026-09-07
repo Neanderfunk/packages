@@ -14,8 +14,7 @@
 
 . /lib/gluon/neanderfunk-linkcheck/common.sh
 
-upgrade_started='/tmp/autoupdate.lock'
-[ -f $upgrade_started ] && exit
+autoupdater_running && exit 0
 
 # Einzelinstanz-Lock. Dieses Skript kann laenger laufen als sein Cron-Intervall:
 # bis zu zehn Pings je oeffentlichem Prefix, und davon kann es mehrere geben. Ohne Lock

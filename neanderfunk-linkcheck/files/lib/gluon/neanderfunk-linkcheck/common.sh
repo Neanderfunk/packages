@@ -87,3 +87,29 @@ strike() {
 unstrike() {
 	rm -f "$1".* 2>/dev/null
 }
+
+# true while the autoupdater is downloading or flashing.
+#
+# Beide Skripte dieses Pakets haben sich bisher allein mit /tmp/autoupdate.lock
+# geschuetzt - der Datei, die niemand anlegt (kein Gluon-Paket, kein Patch
+# unseres Firmware-Trees; auf Knoten mit Wochen Laufzeit existiert sie nicht).
+# Der Schutz war damit wirkungslos.
+#
+# Das ist hier kein Schoenheitsfehler: ffac-autoupdater-wifi-fallback holt einen
+# gestrandeten Knoten zurueck, indem es das WLAN herunterfaehrt, sich als Client
+# in ein fremdes Freifunk-Netz haengt und darueber eine ganze Firmware laedt.
+# Ueber eine solche Strecke dauert das lange, und ein Reboot mittendrin macht
+# die Rettung zunichte - beim naechsten Versuch faengt sie wieder von vorn an.
+#
+# Dieselbe Erkennung wie in neanderfunk-weeklyreboot, bewusst ohne Rueckgriff
+# auf Marker eines anderen Pakets: die Sperrdatei, die der Autoupdater
+# tatsaechlich haelt, plus die beiden Prozessnamen.
+autoupdater_running() {
+	if command -v flock >/dev/null 2>&1 ; then
+		# exit 0 heisst, der Lock war frei - dann laeuft kein Autoupdater
+		flock -n /var/lock/autoupdater.lock true 2>/dev/null || return 0
+	fi
+	pgrep autoupdater >/dev/null 2>&1 && return 0
+	pgrep sysupgrade  >/dev/null 2>&1 && return 0
+	return 1
+}
