@@ -113,3 +113,38 @@ autoupdater_running() {
 	pgrep sysupgrade  >/dev/null 2>&1 && return 0
 	return 1
 }
+
+# --- gemeinsame Sperre fuer WLAN-Eingriffe ----------------------------------
+#
+# Auf einem Knoten koennen sieben Stellen das WLAN neu starten: ssid-changer
+# (jede Minute), ap-timer (jede Minute), mt7915-backlog (*/2), linkcheck (*/5),
+# healthcheck samt check_hostapd (*/7), wifi-blackout (*/10), IfNoWificlient
+# (*/15) und stuendlich ffac-autoupdater-wifi-fallback. Die Einzelinstanz-Locks
+# der einzelnen Skripte (fd 200) verhindern nur, dass ein Skript sich selbst
+# ueberholt - nicht, dass linkcheck ein "wifi down" absetzt, waehrend
+# IfNoWificlient zwischen "wifi config" und "wifi up" steht.
+#
+# Im Normalbetrieb faellt das nicht auf, weil jede Aktion hinter Arming-Markern
+# und Strikes sitzt. Aber eine echte Stoerung trifft alle Checks gleichzeitig,
+# und genau dann laufen die Neustarts ineinander - dasselbe Muster, das der
+# Grund war, die tecff-Pakete auszubauen.
+#
+# Die Sperre ist nicht-blockierend: wer sie nicht bekommt, laesst seinen
+# Neustart aus und versucht es in der naechsten Runde. Wichtig ist, dass der
+# Aufrufer dann seinen Zustand NICHT aufraeumt (keine Strikes loeschen, keinen
+# Cooldown-Marker setzen) - sonst faellt die Stoerung unter den Tisch.
+#
+# Gibt es kein flock, wird wie bisher ohne Sperre gearbeitet: eine fehlende
+# Sperre darf einen noetigen Neustart nicht verhindern.
+WIFI_LOCK=/var/lock/neanderfunk-wifi.lock
+
+wifi_lock() {
+	command -v flock >/dev/null 2>&1 || return 0
+	exec 201>>"$WIFI_LOCK" 2>/dev/null || return 0
+	flock -n 201 2>/dev/null
+}
+
+wifi_unlock() {
+	exec 201>&- 2>/dev/null
+	return 0
+}

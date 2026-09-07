@@ -13,11 +13,21 @@ HOTFIX_TAG='neanderfunk-healthcheck'
 # wait 60 minutes if autoupdater is running
 UPDATEWAIT='60'
 
+# Rueckgabe: 0 nur, wenn wirklich neu gestartet wurde. Der Aufrufer darf
+# seinen Zustand (Strikes) nur dann aufraeumen - sonst faellt die Stoerung
+# unter den Tisch, weil sie als erledigt gilt, ohne dass etwas geschah.
 restart_wifi() {
   # same rule as now_reboot: report below the action threshold, do not act
   if ! uptime_ok ; then
     no_action_yet "[wifi] wifi restart wanted"
-    return 0
+    return 1
+  fi
+  # gemeinsame Sperre, siehe common.sh: sieben Stellen koennen das WLAN
+  # anfassen, und ineinanderlaufende Neustarts sind schlimmer als ein
+  # ausgelassener - der naechste Lauf holt ihn nach.
+  if ! wifi_lock ; then
+    logger -s -t "neanderfunk-healthcheck" -p 5 "wifi restart skipped, another check is already restarting wifi"
+    return 1
   fi
   logger -s -t "neanderfunk-healthcheck" "wifi hard restart"
   wifi down
@@ -26,6 +36,8 @@ restart_wifi() {
   rm -f /var/run/wifi-*.pid 2>/dev/null
   wifi config
   wifi up
+  wifi_unlock
+  return 0
 }
 
 
@@ -80,9 +92,11 @@ check_disabled hostapd_pids || ps|grep hostapd|grep .pid|xargs -r -n 10 /lib/glu
 if ! check_disabled dfs_failcheck && [ "$(logread -l 200|grep -c "daemon.warn hostapd: Failed to check if DFS is required")" -gt 0 ] ; then
   if [ "$(strike /tmp/hotfix.dfscheckfail)" -ge 3 ] ; then
     logger -s -t "neanderfunk-healthcheck" "[dfs_failcheck] hostapd DFS failcheck, restarting wifi"
-    restart_wifi
-    unstrike /tmp/hotfix.dfscheckfail
-    sleep 10
+    # Strikes nur vergessen, wenn der Neustart auch stattgefunden hat
+    if restart_wifi ; then
+      unstrike /tmp/hotfix.dfscheckfail
+      sleep 10
+    fi
    fi
  else
   unstrike /tmp/hotfix.dfscheckfail

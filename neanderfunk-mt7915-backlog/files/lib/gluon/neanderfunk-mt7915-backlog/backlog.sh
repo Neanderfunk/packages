@@ -101,6 +101,20 @@ for phy in /sys/class/ieee80211/phy* ; do
 		continue
 	fi
 
+	# Gemeinsame Sperre. Dieses Paket hat kein common.sh, deshalb hier inline -
+	# dieselbe Datei wie in neanderfunk-hotfix und -linkcheck. Wird sie nicht
+	# frei, laeuft gerade schon ein Neustart; dann wird auch der
+	# Cooldown-Marker NICHT gesetzt, sonst wartet dieser Check 30 Minuten auf
+	# etwas, das er nie getan hat.
+	if command -v flock >/dev/null 2>&1 ; then
+		if exec 201>>/var/lock/neanderfunk-wifi.lock 2>/dev/null ; then
+			if ! flock -n 201 2>/dev/null ; then
+				logger -s -t "$TAG" -p 5 "$phy_name: backlog $backlog over $threshold, but another check is already restarting wifi - retrying next run"
+				break
+			fi
+		fi
+	fi
+
 	logger -s -t "$TAG" -p 5 "$phy_name: backlog $backlog over $threshold - restarting wifi"
 	touch "$MARKER"
 	# Twice, as in the original. Kept deliberately: the failure mode it works
@@ -108,6 +122,7 @@ for phy in /sys/class/ieee80211/phy* ; do
 	# authors found it to work.
 	wifi
 	wifi
+	exec 201>&- 2>/dev/null
 	# One restart per run - it takes down every radio anyway, so looking at the
 	# remaining phys afterwards would only measure the restart.
 	break

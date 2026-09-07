@@ -62,6 +62,18 @@ local function strike(prefix)
 	return n
 end
 
+-- Wie viele Strikes stehen an, ohne einen zu setzen. Gebraucht, damit die
+-- Entscheidung "Neustart oder Reboot" getroffen werden kann, BEVOR gezaehlt
+-- wird - ein Neustart, der wegen der gemeinsamen Sperre ausfaellt, darf den
+-- Zaehler nicht Richtung Reboot treiben.
+local function peek_strikes(prefix)
+	local n = 0
+	while util.readfile(prefix .. '.' .. (n + 1)) do
+		n = n + 1
+	end
+	return n
+end
+
 local function unstrike(prefix)
 	local n = 1
 	while util.readfile(prefix .. '.' .. n) do
@@ -223,19 +235,36 @@ end
 -- Escalate. A wifi restart is the cheap remedy and fixes some cases; where it
 -- does not, only a reboot has helped in the field, so the second time round
 -- this reboots rather than restarting the wifi again for hours on end.
-time2file(fileReset)
-local n = strike(fileStrike)
+local n = peek_strikes(fileStrike) + 1
 
 if n <= setting('restarts_before_reboot', 1) then
 	log(string.format('no associated station on any radio for %i min (attempt %i) - restarting wifi',
 		blackout_wait_secs / 60, n))
-	os.execute('wifi down')
-	os.execute('killall hostapd >/dev/null 2>&1')
-	os.execute('rm -f /var/run/wifi-*.pid >/dev/null 2>&1')
-	os.execute('wifi config')
-	os.execute('wifi up')
+	-- Gemeinsame Sperre, dieselbe Datei wie in neanderfunk-hotfix, -linkcheck,
+	-- -mt7915-backlog und -ssid-changer. Die ganze Sequenz laeuft unter EINER
+	-- flock-Instanz, die Sperre wird also durchgehend gehalten und nicht
+	-- zwischen den Einzelkommandos freigegeben.
+	--
+	-- Gezaehlt und der reset-Marker gesetzt wird erst danach und nur bei
+	-- Erfolg: faellt der Neustart wegen der Sperre aus, waere sonst ein
+	-- Versuch verbucht, den es nie gab - und beim naechsten Mal ginge es
+	-- gleich zum Reboot.
+	local rc = os.execute("flock -n /var/lock/neanderfunk-wifi.lock -c '" ..
+		"wifi down; killall hostapd >/dev/null 2>&1; " ..
+		"rm -f /var/run/wifi-*.pid >/dev/null 2>&1; wifi config; wifi up'")
+	if type(rc) == 'number' and rc ~= 0 then
+		log('wifi restart skipped, another check is already restarting wifi - retrying next run')
+		os.exit(0)
+	end
+	time2file(fileReset)
+	strike(fileStrike)
 	os.exit(0)
 end
+
+-- Ab hier geht es zum Reboot. Der Zaehler wird jetzt fortgeschrieben, damit
+-- der Zustand stimmt, falls der Reboot unterbleibt (Autoupdater laeuft).
+time2file(fileReset)
+strike(fileStrike)
 
 -- Bis hierher wurde allein /tmp/autoupdate.lock geprueft - die Datei, die
 -- niemand anlegt (kein Gluon-Paket, kein Patch unseres Firmware-Trees), der

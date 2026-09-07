@@ -44,6 +44,11 @@ valuecheck ()
         no_action_yet "[${checkgroup}] lost neighbours 3rd: ${linkname}.${check}"
       elif [ -n "${wifi_restarted}" ] ; then
         logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 3rd: ${linkname}.${check}, wifi already restarted this run"
+      elif ! wifi_lock ; then
+        # gemeinsame Sperre, siehe common.sh. wifi_restarted bleibt ungesetzt:
+        # der Neustart ist nicht passiert, also darf ihn der naechste Lauf
+        # nachholen.
+        logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 3rd: ${linkname}.${check}, but another check is already restarting wifi"
       else
         logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 3rd: ${linkname}.${check}, wifi restart"
         wifi_restarted=1
@@ -52,6 +57,7 @@ valuecheck ()
         rm -f /var/run/wifi-*.pid >/dev/null 2>&1
         wifi config
         wifi up
+        wifi_unlock
         sleep 15
       fi
       ;;

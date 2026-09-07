@@ -46,6 +46,13 @@ if [ -z "$C_MACS" ] ; then
       no_action_yet "[no_wifi_clients] wireless stations disappeared for long"
       exit 0
     fi
+    # Gemeinsame Sperre, siehe common.sh. Wird sie nicht frei, bleibt alles
+    # stehen wie es ist - besonders der seen-Marker und die Strikes, sonst
+    # waere der Check entwaffnet, ohne dass etwas geschehen ist.
+    if ! wifi_lock ; then
+      logger -s -t "hotfix-IfNoWificlient" -p 5 "[no_wifi_clients] wireless stations disappeared for long, but another check is already restarting wifi - retrying next run"
+      exit 0
+    fi
     logger -s -t "hotfix-IfNoWificlient" -p 5 "[no_wifi_clients] wireless stations disappeared for long, restarting Wifi"
     rm -f /tmp/hotfix.wificlients-seen 2>/dev/null
     unstrike /tmp/hotfix.wificlients-gone
@@ -54,6 +61,7 @@ if [ -z "$C_MACS" ] ; then
     rm -f /var/run/wifi-*.pid >/dev/null 2>&1
     wifi config
     wifi up
+    wifi_unlock
   fi
 else
   touch /tmp/hotfix.wificlients-seen

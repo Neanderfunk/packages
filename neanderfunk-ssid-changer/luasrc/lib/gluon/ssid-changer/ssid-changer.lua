@@ -152,6 +152,21 @@ else
 	gwoffstate_file:close()
 end
 
+-- Gemeinsame Sperre fuer WLAN-Eingriffe, dieselbe Datei wie in
+-- neanderfunk-hotfix, -linkcheck und -mt7915-backlog. Auf einem Knoten koennen
+-- sieben Stellen das WLAN anfassen, dieses Skript als einziges jede Minute.
+-- Laeuft gerade ein Neustart, wird nicht dazwischengefunkt.
+--
+-- os.execute liefert unter Lua 5.1 den rohen wait-Status; 0 heisst Erfolg.
+-- flock gibt 1 zurueck, wenn die Sperre belegt ist.
+local function wifi_reconf()
+	local rc = os.execute("flock -n /var/lock/neanderfunk-wifi.lock -c 'wifi reconf'")
+	if type(rc) == 'number' and rc ~= 0 then
+		return false
+	end
+	return rc ~= false
+end
+
 local function calculate_tq_limit()
 	local tq_limit_max = tonumber(uci:get('ssid-changer', 'settings', 'tq_limit_max') or 45)
 	local tq_limit_min = tonumber(uci:get('ssid-changer', 'settings', 'tq_limit_min') or 35)
@@ -257,7 +272,17 @@ if status == 'online' then
 	if off_count > 0 or offline_ssid_is_configured() then
 		log("reverting offline ssid back to default wireless config")
 		uci:revert('wireless')
-		os.execute('wifi reconf')
+		if not wifi_reconf() then
+			-- Hier NICHT aufraeumen. Der revert hat den uci-Delta bereits
+			-- verworfen, offline_ssid_is_configured() sieht die Offline-SSID
+			-- also nicht mehr - wuerde jetzt auch off_count auf 0 fallen,
+			-- gaebe es keinen Ausloeser mehr und der Knoten bliebe auf der
+			-- Offline-SSID haengen. Genau der Fehler, den dieses Paket schon
+			-- einmal hatte. off_count bleibt stehen, der naechste Lauf in
+			-- einer Minute versucht es erneut.
+			log("wifi reconf skipped, another check is restarting wifi - retrying next run")
+			os.exit(0)
+		end
 
 		-- Clear the offline bookkeeping right away. Without this, off_count
 		-- keeps its old value until the next switch_timeframe boundary, so
@@ -303,7 +328,13 @@ elseif status == 'offline' then
 				uci:save('wireless')
 			end
 			log("reconfiguring wifi to offline ssid")
-			os.execute('wifi reconf')
+			if not wifi_reconf() then
+				-- Der uci-Delta traegt die Offline-SSID schon, angewendet ist
+				-- sie nicht. Das ist unkritisch: kommt der Knoten zurueck,
+				-- sieht offline_ssid_is_configured() den Delta und raeumt auf;
+				-- bleibt er offline, versucht es der naechste Schaltzeitpunkt.
+				log("wifi reconf skipped, another check is restarting wifi")
+			end
 		end
 	end
 	off_count = off_count + 1

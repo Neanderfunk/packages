@@ -2,7 +2,14 @@
 # check_hostapd for matching pids
 # strike()/unstrike() count consecutive failures, see common.sh
 . /lib/gluon/neanderfunk-hotfix/common.sh
+# Rueckgabe 0 nur bei tatsaechlichem Neustart - der Aufrufer setzt danach
+# Semaphor-Dateien, und die duerfen nicht behaupten, es sei etwas geschehen.
 restart_wifi() {
+  # gemeinsame Sperre, siehe common.sh
+  if ! wifi_lock ; then
+    logger -s -t "neanderfunk-checkhostapd" -p 5 "wifi restart skipped, another check is already restarting wifi"
+    return 1
+  fi
   logger -s -t "neanderfunk-checkhostapd" "wifi hard restart"
   wifi down
   killall hostapd 2>/dev/null
@@ -10,7 +17,9 @@ restart_wifi() {
   rm -f /var/run/wifi-*.pid 2>/dev/null
   wifi config
   wifi up
+  wifi_unlock
   sleep 60
+  return 0
 }
 
 pspid="$1"
@@ -29,9 +38,10 @@ if [ "${phy:0:3}" = "phy" ] ; then
     pid=$(cat $pidfile 2>/dev/null)
     if [ "$pid" = "${pspid%% *}" ] ; then
       logger -s -t "neanderfunk-healthcheck" "hostapd restart due to nonmatchings pids on $phy"
-      restart_wifi
-      rm -f $sema.fail.$phy 2>/dev/null
-      sleep 10
+      if restart_wifi ; then
+        rm -f $sema.fail.$phy 2>/dev/null
+        sleep 10
+      fi
     fi
   fi
   # printf statt echo $var: "wifi status" liefert JSON ueber viele Zeilen (auf
@@ -49,8 +59,8 @@ if [ "${phy:0:3}" = "phy" ] ; then
       rm -f $sema.ok.$radio.* 2>/dev/null
       if [ "$(strike $sema.fail.$radio)" -ge 3 ] ; then
         logger -s -t "neanderfunk-healthcheck" "[hostapd_pids] hostapd down and pending on $radio"
-        restart_wifi
-        unstrike $sema.fail.$radio
+        # nur aufraeumen, wenn wirklich neu gestartet wurde
+        restart_wifi && unstrike $sema.fail.$radio
       fi
     else
       unstrike $sema.fail.$radio
@@ -65,8 +75,7 @@ if [ "${phy:0:3}" = "phy" ] ; then
       rm -f $sema.ok.$client.* 2>/dev/null
       if [ "$(strike $sema.fail.$client)" -ge 3 ] ; then
         logger -s -t "neanderfunk-healthcheck" "[hostapd_pids] channel $client unknown"
-        restart_wifi
-        unstrike $sema.fail.$client
+        restart_wifi && unstrike $sema.fail.$client
       fi
     else
       unstrike $sema.fail.$client
