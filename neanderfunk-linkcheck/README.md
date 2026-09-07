@@ -138,3 +138,40 @@ Four consecutive failures - roughly half an hour - are needed. Both used to live
 in neanderfunk-hotfix; they ask whether the network still works, not whether
 this node is healthy, so they belong here.
 
+
+What it logs, and how often
+---------------------------
+
+Findings - lost neighbours, a bridge or port gone, a wifi restart, a reboot -
+are logged every single time they happen. That is not negotiable and nothing
+below touches it.
+
+The status summary at the end of a run (`batadv.mesh0:1 bridges.br-client:2
+...`) is different: it is the same information over and over on a node where
+nothing is wrong, about 500 bytes of it, every 5 minutes. Measured on a
+TL-WR1043ND v2 on 2026-09-07, this package was the largest ongoing producer in
+the log buffer - 20956 of 68826 bytes, 30%, more than any other sender except
+the one-off kernel boot. The buffer is sized in bytes
+(`system.@system[0].log_size`, 64 KiB here) and reached back barely two hours,
+so those repeats were pushing out exactly the lines you go looking for after an
+incident.
+
+The summary is therefore only written when the state has *changed* since the
+last run. "Changed" means a check went from having something to having nothing,
+or back - not that a number moved. The raw counts drift every run (scan results
+and originator counters go up and down by a few) and comparing them would never
+match, so the comparison uses a reduced signature of zero versus non-zero. When
+the summary is written, it is written in full, with the real numbers.
+
+So a node stays quiet while it is fine, and speaks up the moment something
+actually changes. To keep a stable node from going completely silent, an
+unchanged state is repeated once an hour anyway:
+
+```
+uci set linkcheck.settings.log_heartbeat_min='30'
+uci commit linkcheck
+```
+
+A second line, `on bat if <if> : <n> originators`, was dropped outright: the
+same number already appears in the summary as `batman.originators.<if>:<n>`.
+It was two lines per run per interface for nothing.

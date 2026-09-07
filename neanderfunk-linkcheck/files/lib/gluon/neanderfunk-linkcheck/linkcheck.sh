@@ -8,6 +8,16 @@ valuecheck ()
 # this checks for multiple problems on the same IF, tries to resolve, or reboots as last resort
 {
   logstring=${logstring}" "${linkname}"."${check}":"${wert}
+  # Signatur fuer log_status: nur "hat welche" gegen "hat keine". Die Rohzahlen
+  # in logstring schwanken bei jedem Lauf - Scan-Ergebnisse und
+  # Originator-Zaehler gehen staendig um ein paar hoch und runter -, als
+  # Vergleichsgrundlage waeren sie also wertlos. Fuer die Frage, ob sich am
+  # Zustand etwas geaendert hat, zaehlt allein die Null.
+  if [ "${wert}" -ge 1 ] 2>/dev/null ; then
+    sigstring=${sigstring}" "${linkname}"."${check}":+"
+  else
+    sigstring=${sigstring}" "${linkname}"."${check}":0"
+  fi
   pb="/tmp/linkcheck.${linkname}.${check}"
 
   if [ ! -f "${pb}.inhood" ] ; then
@@ -303,7 +313,12 @@ if ! check_disabled "$checkgroup" ; then
     if [[ ! "$wifibatlinks" =~ "${batifupf}" ]]; then    # do not check for wifimesh links as check/reboot condition!
 #      echo check if by file: ${batifupf} # individually previsously seen file
       bators=$(cat ${batmanoriginatorsfile}|grep ${batifupf}|wc -l)
-      logger -s -t "neanderfunk-linkcheck" -p 5 on bat if ${batifupf} : ${bators} originators
+      # Hier stand eine eigene Zeile "on bat if <if> : <n> originators", bei
+      # jedem Lauf und je Interface. Sie ist ersatzlos entfallen: dieselbe Zahl
+      # landet zwei Zeilen weiter ueber valuecheck als
+      # "batman.originators.<if>:<n>" in der Zusammenfassung. Zwei Zeilen je
+      # Lauf fuer nichts, in einem Puffer, der nur gut zwei Stunden zurueck
+      # reicht.
       wert=${bators}
       linkname='batman.originators'
       check=${batifupf}
@@ -403,4 +418,9 @@ if ! check_disabled "$checkgroup" ; then
   done
 fi
 
-logger -s -t "neanderfunk-linkcheck" -p 5 ${logstring}
+# Nur noch loggen, wenn sich der Zustand geaendert hat - sonst hoechstens
+# stuendlich als Lebenszeichen. Siehe log_status() in common.sh: diese eine
+# Zeile war mit rund 500 Bytes je Lauf der groesste laufende Posten im
+# Logpuffer und hat damit genau die Meldungen verdraengt, die man nach einer
+# Stoerung sucht.
+log_status summary "${sigstring}" "${logstring}"

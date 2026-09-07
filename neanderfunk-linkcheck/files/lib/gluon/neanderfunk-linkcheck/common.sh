@@ -136,6 +136,63 @@ autoupdater_running() {
 #
 # Gibt es kein flock, wird wie bisher ohne Sperre gearbeitet: eine fehlende
 # Sperre darf einen noetigen Neustart nicht verhindern.
+# --- Statusmeldungen entrauschen -------------------------------------------
+#
+# Die Zusammenfassung am Ende von linkcheck.sh ist reiner Zustand und wurde bei
+# jedem Lauf (*/5) geschrieben, rund 500 Bytes. Am 2026-09-07 auf einem
+# TL-WR1043ND v2 gemessen war neanderfunk-linkcheck damit der groesste
+# laufende Posten im Logpuffer: 20956 von 68826 Bytes, also 30%, mehr als
+# jeder andere Absender ausser dem einmaligen Kernel-Boot.
+#
+# Der Puffer ist byte-basiert (system.@system[0].log_size, hier 64 KiB) und
+# reicht damit nur gut zwei Stunden zurueck. Jede wiederholte Statuszeile
+# verdraengt aeltere Meldungen - also genau das, was man nach einer Stoerung
+# sucht.
+#
+# log_status <schluessel> <signatur> <meldung> schreibt die Meldung nur, wenn
+# sich die Signatur seit dem letzten Lauf geaendert hat. Damit ein stabiler
+# Knoten nicht voellig verstummt, wird eine unveraenderte Signatur trotzdem
+# alle linkcheck.settings.log_heartbeat_min Minuten wiederholt (Vorgabe 60):
+#     uci set linkcheck.settings.log_heartbeat_min='30' ; uci commit linkcheck
+#
+# Ereignismeldungen - verlorene Nachbarn, fehlende Bridges, WLAN-Neustarts,
+# Reboots - laufen NICHT hierueber. Die muessen jedes Mal ins Log.
+log_heartbeat_limit() {
+	local m
+	m="$(uci -q get linkcheck.settings.log_heartbeat_min)"
+	case "$m" in
+		''|*[!0-9]*) m=60 ;;
+	esac
+	echo $((m * 60))
+}
+
+log_status() {
+	local key="$1" sig="$2" msg="$3"
+	local f="/tmp/linkcheck.laststatus.$key"
+	local now old_t old_sig
+
+	# Uptime statt date: fork-frei, und /tmp ist nach einem Reboot ohnehin
+	# leer, also kann die Zeitbasis nicht ueber einen Neustart hinweg gelten.
+	read -r now _ < /proc/uptime
+	now="${now%.*}"
+
+	old_t=''
+	old_sig=''
+	if [ -f "$f" ] ; then
+		{ read -r old_t ; read -r old_sig ; } < "$f"
+	fi
+
+	if [ "$sig" = "$old_sig" ] ; then
+		case "$old_t" in
+			''|*[!0-9]*) old_t=0 ;;
+		esac
+		[ $((now - old_t)) -lt "$(log_heartbeat_limit)" ] && return 0
+	fi
+
+	printf '%s\n%s\n' "$now" "$sig" > "$f"
+	logger -s -t "neanderfunk-linkcheck" -p 5 "$msg"
+}
+
 WIFI_LOCK=/var/lock/neanderfunk-wifi.lock
 
 wifi_lock() {
