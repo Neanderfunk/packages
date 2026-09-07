@@ -10,9 +10,12 @@ neanderfunk-linkcheck and are deliberately not duplicated here.
 
 Before any check may act:
 
-- an autoupdater run in progress (`/tmp/autoupdate.lock`): exit. A lock older
-  than 60 minutes is a hung autoupdater and gets a reboot of its own
-  (`stale_lock`).
+- an autoupdater run in progress: exit. Detected from the markers this package's
+  own `/usr/lib/autoupdater/*.d` hooks leave behind, plus the lock the
+  autoupdater really holds (`/var/lock/autoupdater.lock`, kept across the
+  sysupgrade) and the `autoupdater`/`sysupgrade` processes. A hung run is
+  handled by the watchdog's `autoupdater_stale_min`, not by a check of its own.
+
 - uptime below `hotfix.settings.reboot_uptime_min` (default 60 minutes): exit.
   A node must have a chance to come up and find its neighbours before anything
   reboots it again.
@@ -153,7 +156,6 @@ Checks
 
 | check | what it does | reaction |
 | --- | --- | --- |
-| `stale_lock` | autoupdate.lock older than 60 min | reboot |
 | `kernel_bug` | "Kernel bug" in dmesg (gluon issue #680) | reboot |
 | `ath_malloc` | ath driver allocation failures in dmesg | reboot |
 | `ksoftirqd_malloc` | kernel page allocation failures in dmesg | reboot |
@@ -167,9 +169,6 @@ Checks
 | `no_wifi_clients` | clients were seen and then all disappeared | wifi restart |
 | `wifi_firmware` | mt76 wifi firmware crashed, see below | reboot |
 | `watchdog` | deadman switch for micrond itself, see below | reboot |
-
-`stale_lock` is listed for completeness but cannot currently fire: nothing
-writes `/tmp/autoupdate.lock` any more (see below).
 
 Crashed wifi firmware (`wifi_firmware`)
 ---------------------------------------
@@ -249,13 +248,20 @@ These markers are what `now_reboot()` in `common.sh` consults, so **every** chec
 of this package is held off while an update runs, and none of them can reboot
 during a flash write - not even one called with `-f`.
 
+On top of the markers, `autoupdater_busy()` also takes the lock the autoupdater
+really uses (`/var/lock/autoupdater.lock`, `flock(LOCK_EX|LOCK_NB)`, held across
+the sysupgrade) and looks for the `autoupdater` and `sysupgrade` processes, so
+the guard still holds if the hooks ever fail to run.
+
 The file this used to check instead, `/tmp/autoupdate.lock`, is written by
-nobody: it appears in no Gluon package and in no patch of our firmware tree, and
-on nodes running for weeks it does not exist. It is a leftover from a local
-autoupdater patch of the 2021.1.x days. Several community packages
-(`ffac-mt7915-hotfix`, `tecff-broken-wlan-workaround`) still guard themselves
-with it alone, which means they are not guarded at all. It is still consulted
-here, in case the convention is ever revived, but never on its own.
+nobody - and never was. It appears in the entire Gluon history (5187 commits,
+tags back to v2014.1) and in the package feed (892 commits) exactly zero times.
+It originates in `eulenfunk/packages` commit `e783d3a` of 2016-05-06, four
+months *before* Gluon gained an autoupdater lock at all (`1acb4b1`,
+2016-09-08), and was copied onwards through several community feeds without
+anyone ever writing the file. Every reference to it has been removed here,
+including the `stale_lock` check that existed solely to notice a leftover copy
+of it.
 
 While `autoupdater-flashing` exists the watchdog **never** reboots - interrupting
 a flash write bricks the node. While an update is merely running it reboots only

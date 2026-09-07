@@ -34,7 +34,6 @@ config settings 'settings'
 	#option autoupdater_stale_min '300'
 
 # --- healthcheck.sh (*/7) ---
-config check 'stale_lock'
 config check 'kernel_bug'
 config check 'ath_malloc'
 config check 'ksoftirqd_malloc'

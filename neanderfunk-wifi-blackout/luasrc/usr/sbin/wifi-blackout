@@ -280,7 +280,7 @@ local function autoupdater_running()
 	end
 	if os.execute('pgrep autoupdater >/dev/null 2>&1') == 0 then return true end
 	if os.execute('pgrep sysupgrade  >/dev/null 2>&1') == 0 then return true end
-	return util.readfile('/tmp/autoupdate.lock') ~= nil
+	return false
 end
 
 if autoupdater_running() then

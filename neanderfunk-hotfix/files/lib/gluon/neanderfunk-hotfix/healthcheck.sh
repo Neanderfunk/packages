@@ -10,9 +10,6 @@
 HOTFIX_TAG='neanderfunk-healthcheck'
 . /lib/gluon/neanderfunk-hotfix/common.sh
 
-# wait 60 minutes if autoupdater is running
-UPDATEWAIT='60'
-
 # Rueckgabe: 0 nur, wenn wirklich neu gestartet wurde. Der Aufrufer darf
 # seinen Zustand (Strikes) nur dann aufraeumen - sonst faellt die Stoerung
 # unter den Tisch, weil sie als erledigt gilt, ohne dass etwas geschah.
@@ -66,13 +63,11 @@ if command -v flock >/dev/null 2>&1 ; then
 	fi
 fi
 
-# check for stale autoupdater
-if [ -f /tmp/autoupdate.lock ] ; then
-  MAXAGE=$(($(date +%s)-60*${UPDATEWAIT}))
-  LOCKAGE=$(date -r /tmp/autoupdate.lock +%s)
-  if [ "$MAXAGE" -gt "$LOCKAGE" ] && ! check_disabled stale_lock ; then
-    now_reboot "[stale_lock] stale autoupdate.lock file" -f
-  fi
+# Laeuft gerade ein Autoupdater, wird hier nichts angefasst. Der Check
+# "stale_lock", der frueher an dieser Stelle stand, ist entfallen: er suchte
+# eine liegengebliebene /tmp/autoupdate.lock, und diese Datei legt seit ihrer
+# Einfuehrung 2016 niemand an - siehe common.sh.
+if autoupdater_busy ; then
   safety_exit "autoupdate running"
 fi
 

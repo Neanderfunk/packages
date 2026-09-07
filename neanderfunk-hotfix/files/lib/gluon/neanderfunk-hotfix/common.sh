@@ -145,17 +145,27 @@ safety_exit() {
 # The markers come from our own hooks in /usr/lib/autoupdater/*.d - see
 # 20neanderfunk-hotfix there.
 #
-# /tmp/autoupdate.lock, which this and several community packages used to check
-# on its own, is written by nobody today: it appears in no Gluon package and in
-# no patch of our firmware tree, and on nodes running for weeks it does not
-# exist. It is a leftover from a local autoupdater patch of the 2021.1.x days
-# that created it. Still looked at here in case the convention is revived
-# somewhere, but it must not be the only guard - as a sole guard it protects
-# nothing.
+# Zusaetzlich der Lock und die Prozessnamen, damit der Schutz auch dann traegt,
+# wenn die Hooks einmal nicht greifen: der Autoupdater nimmt
+# /var/lock/autoupdater.lock mit flock(LOCK_EX|LOCK_NB) und haelt ihn
+# ausdruecklich ueber den sysupgrade hinweg (autoupdater.c: "Unset FD_CLOEXEC
+# so the lockfile stays locked during sysupgrade").
+#
+# Frueher stand hier /tmp/autoupdate.lock. Diese Datei legt niemand an - nicht
+# heute und nie: sie kommt in der gesamten Gluon-Historie (5187 Commits, Tags
+# ab v2014.1) und im Paket-Feed (892 Commits) kein einziges Mal vor. Sie stammt
+# aus eulenfunk/packages e783d3a vom 2016-05-06, vier Monate BEVOR Gluon mit
+# 1acb4b1 ueberhaupt einen Autoupdater-Lock bekam, und wurde seither durch
+# mehrere Community-Feeds weitergereicht, ohne dass je jemand sie geschrieben
+# haette. Sie ist ersatzlos entfallen.
 autoupdater_busy() {
 	[ -f /tmp/hotfix.autoupdater-flashing ] && return 0
 	[ -f /tmp/hotfix.autoupdater-running ] && return 0
-	[ -f /tmp/autoupdate.lock ] && return 0
+	if command -v flock >/dev/null 2>&1 ; then
+		flock -n /var/lock/autoupdater.lock true 2>/dev/null || return 0
+	fi
+	pgrep autoupdater >/dev/null 2>&1 && return 0
+	pgrep sysupgrade  >/dev/null 2>&1 && return 0
 	return 1
 }
 
