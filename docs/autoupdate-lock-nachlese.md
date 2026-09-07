@@ -117,3 +117,103 @@ Ein Wermutstropfen bleibt: weder die Hook-Verzeichnisse noch der Lock stehen in
 `docs/features/autoupdater.rst`. Beides ist gelebte, aber ungeschriebene
 Schnittstelle — genau die Sorte, um die es in dieser Nachlese geht. Deshalb
 prüfen unsere Skripte drei Wege statt einem.
+
+## Anhang: Text für die Issues in den fremden Feeds
+
+Zum Kopieren, ein Issue je Repo. Die Dateiliste weiter unten austauschen. Der
+Absatz zur Herkunft ist die korrigierte Fassung — die erste Version behauptete,
+die Datei sei nie von irgendwem geschrieben worden; richtig ist, dass es einen
+Schreiber gab und er 2017 verlorenging.
+
+````markdown
+## Autoupdater-Guard prüft `/tmp/autoupdate.lock`, die Datei gibt es aber nicht
+
+Mir ist beim Durchsehen unserer eigenen Pakete aufgefallen, dass an mehreren Stellen
+vor einem laufenden Autoupdater geschützt wird, indem auf `/tmp/autoupdate.lock`
+geprüft wird. Diese Datei legt aber niemand mehr an, der Schutz läuft also ins Leere.
+
+Ich hab das mal nachgesehen, weil ich erst dachte es wäre ein Überbleibsel aus einer
+älteren Gluon-Version:
+
+* in der kompletten Gluon-Historie (5187 Commits, Tags zurück bis v2014.1) kommt
+  `autoupdate.lock` kein einziges mal vor
+* im Paket-Feed (892 Commits) auch nicht
+* auf Knoten mit Wochen Laufzeit existiert die Datei schlicht nicht
+
+Der Autoupdater benutzt `/var/lock/autoupdater.lock`, und zwar seit 2016
+(`1acb4b1`, "autoupdater: add lockfile to prevent concurrent runs"):
+
+https://github.com/freifunk-gluon/packages/blob/master/admin/autoupdater/src/autoupdater.c
+
+```c
+static const char *const lockfile = "/var/lock/autoupdater.lock";
+...
+if (flock(fd, LOCK_EX|LOCK_NB)) { ... }
+...
+/* Unset FD_CLOEXEC so the lockfile stays locked during sysupgrade */
+fcntl(lock_fd, F_SETFD, 0);
+```
+
+Die letzten beiden Zeilen finde ich wichtig: der Lock wird über den sysupgrade
+hinweg gehalten, deckt also auch das Flashen mit ab und nicht nur den Download.
+
+Aus einem Shell-Skript heraus geht das so:
+
+```sh
+autoupdater_running() {
+    flock -n /var/lock/autoupdater.lock true 2>/dev/null || return 0
+    pgrep autoupdater >/dev/null 2>&1 && return 0
+    pgrep sysupgrade  >/dev/null 2>&1 && return 0
+    return 1
+}
+```
+
+Dazu kommen noch die Hook-Verzeichnisse `/usr/lib/autoupdater/download.d`,
+`upgrade.d` und `abort.d`, die der Autoupdater abarbeitet (stehen in derselben
+Datei). `download.d` stoppt micrond, ein Cronjob kann also während eines Updates
+gar nicht erst starten. Weder die Hooks noch der Lock stehen in
+`docs/features/autoupdater.rst`, das ist alles nur im Quelltext.
+
+Betroffen sind hier:
+
+* PFAD/ZU/DATEI1
+* PFAD/ZU/DATEI2
+
+Zur Herkunft, weil das sonst niemand nachvollziehen kann: die Prüfung stammt aus
+eulenfunk/packages (`e783d3a`, 2016-05-06). Einen Tag später kam dort auch ein
+Hook dazu, der die Datei tatsächlich angelegt hat (`19d53ae`,
+`files/usr/lib/autoupdater/upgrade.d/00lockfile`, ein simples `touch` mit dem
+Kommentar "for 3rd-party scripts"). Gluon selbst hatte zu dem Zeitpunkt noch gar
+keinen eigenen Lock, der kam erst vier Monate später — insofern war das damals
+eine vernünftige Lösung. Nur ist der Hook 2017 beim Zusammenlegen zweier Pakete
+verlorengegangen (`535b9e3`, endgültig `52685ec`), die Prüfungen sind geblieben,
+und mit dem Kopieren des Pakets sind sie in weitere Feeds gewandert. Seitdem
+prüfen sie auf eine Datei, die niemand mehr schreibt.
+````
+
+Dateilisten je Repo:
+
+**community-packages**
+
+```
+* ffac-mt7915-hotfix/files/lib/gluon/mt7915/reboot-on-error.sh
+* ffac-weeklyreboot/files/lib/gluon/weeklyreboot/weeklyreboot.sh
+```
+
+**ffac/gluon-packages**
+
+```
+* ffac-threetime-reboot/files/lib/gluon/threetime-reboot/threetime-reboot.sh
+* tecff-broken-wlan-workaround/files/lib/gluon/broken-wlan-workaround/broken-wlan-workaround.sh
+```
+
+**eulenfunk/packages**
+
+```
+* eulenfunk-hotfix/files/lib/gluon/eulenfunk-hotfix/healthcheck.sh
+* eulenfunk-hotfix/files/lib/gluon/eulenfunk-hotfix/IfNoWificlient.sh
+* eulenfunk-hotfix/files/lib/gluon/eulenfunk-hotfix/rebootIfNoGw.sh
+* eulenfunk-hotfix/files/usr/sbin/securereboot
+* gluon-linkcheck/files/lib/gluon/linkcheck/linkcheck.sh
+* gluon-weeklyreboot/files/lib/gluon/weeklyreboot/weeklyreboot.sh
+```
