@@ -16,7 +16,7 @@ UPDATEWAIT='60'
 restart_wifi() {
   # same rule as now_reboot: report below the action threshold, do not act
   if ! uptime_ok ; then
-    no_action_yet "wifi" "wifi restart wanted"
+    no_action_yet "[wifi] wifi restart wanted"
     return 0
   fi
   logger -s -t "neanderfunk-healthcheck" "wifi hard restart"

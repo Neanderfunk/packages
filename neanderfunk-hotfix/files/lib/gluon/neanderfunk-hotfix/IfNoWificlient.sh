@@ -2,9 +2,11 @@
 # check_disabled() - see common.sh (uci key hotfix.no_wifi_clients.disabled)
 . /lib/gluon/neanderfunk-hotfix/common.sh
 
-upgrade_started='/tmp/autoupdate.lock'
-
-[ -f $upgrade_started ] && exit
+# autoupdater_busy() statt der alten /tmp/autoupdate.lock: die Datei legt
+# niemand an (siehe common.sh), der Schutz war also wirkungslos. Praktisch
+# fiel das nicht auf, weil der Autoupdater micrond ohnehin stoppt - aber ein
+# Guard, der nichts tut, soll hier nicht stehenbleiben.
+autoupdater_busy && exit 0
 check_disabled no_wifi_clients && exit 0
 # nothing at all within the first hotfix.settings.check_uptime_min minutes
 checks_ok || exit 0
@@ -37,11 +39,11 @@ for if in $cliifs; do
 if [ -z "$C_MACS" ] ; then
   # only escalate on a node that has seen clients at least once since boot
   if [ -f /tmp/hotfix.wificlients-seen ] && [ "$(strike /tmp/hotfix.wificlients-gone)" -ge 4 ] ; then
-    [ -f $upgrade_started ] && exit
+    autoupdater_busy && exit 0
     if ! uptime_ok ; then
       # report it, but do not touch wifi yet - the strikes stay, so the restart
       # happens on the first run past hotfix.settings.reboot_uptime_min
-      no_action_yet no_wifi_clients "wireless stations disappeared for long"
+      no_action_yet "[no_wifi_clients] wireless stations disappeared for long"
       exit 0
     fi
     logger -s -t "hotfix-IfNoWificlient" -p 5 "[no_wifi_clients] wireless stations disappeared for long, restarting Wifi"
