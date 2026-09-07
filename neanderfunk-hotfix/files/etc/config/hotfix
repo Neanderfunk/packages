@@ -33,22 +33,9 @@ config settings 'settings'
 	# before it is considered stuck and the node is rebooted anyway
 	#option autoupdater_stale_min '300'
 
-# --- healthcheck.sh (*/7) ---
-config check 'kernel_bug'
-config check 'ath_malloc'
-config check 'ksoftirqd_malloc'
-config check 'hostapd_pids'
-config check 'dfs_failcheck'
-config check 'tunneldigger'
-config check 'load'
-config check 'respondd'
-config check 'dropbear'
-config check 'watchdog'
-
-# --- IfNoWificlient.sh (*/15) ---
-config check 'no_wifi_clients'
-
-config check 'br_client_ipv6'
-
-# --- check_wifi_firmware.sh (*/3) ---
-config check 'wifi_firmware'
+# Die Check-Sektionen stehen bewusst NICHT hier, sondern werden von
+# /lib/gluon/upgrade/500-neanderfunk-hotfix angelegt. Grund: diese Datei ist
+# ein conffile und ueberlebt den sysupgrade - das ausgelieferte Exemplar wird
+# verworfen. Eine Sektion, die hier neu dazukaeme, erreichte einen bestehenden
+# Knoten nie; eine hier geloeschte verschwaende dort nie. Die Liste an zwei
+# Orten zu fuehren waere genau der Fehler aus docs/autoupdate-lock-nachlese.md.

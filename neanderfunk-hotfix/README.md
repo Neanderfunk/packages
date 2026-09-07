@@ -64,8 +64,19 @@ uci set hotfix.<check>.disabled='1'
 uci commit hotfix
 ```
 
-`uci show hotfix` lists the available check names. The name is also part of the
-reason logged before a wifi restart or a reboot, e.g.
+`uci show hotfix` lists the available check names. They are created by
+`/lib/gluon/upgrade/500-neanderfunk-hotfix`, not shipped in
+`/etc/config/hotfix`: that file is a conffile and survives the sysupgrade, so a
+section added to it would never reach a node that already exists, and one
+removed from it would never disappear there. Measured in the field on
+`26090710bro`: nodes still carried `stale_lock` and had no `wifi_firmware`, and
+`uci set hotfix.wifi_firmware.disabled='1'` failed with rc=1 because uci will
+not set an option in a section that is not there - the documented off switch for
+the newest check did not work. The list of checks therefore lives in the upgrade
+script and nowhere else.
+
+The name is also part of the reason logged before a wifi restart or a reboot,
+e.g.
 
 ```
 neanderfunk-healthcheck: [load] ...

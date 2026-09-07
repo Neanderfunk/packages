@@ -17,15 +17,8 @@ config settings 'settings'
 	# but never reboot or restart wifi.
 	#option check_uptime_min '5'
 
-config check 'batadv_neighbours'
-config check 'bsses'
-config check 'batinterfaces'
-config check 'batman_originators'
-config check 'bridges'
-config check 'bridge_ports'
-config check 'mesh_neighbours'
-
-# --- gateway.sh (*/8) ---
-config check 'no_gateway'
-config check 'ipv6_anycast'
-config check 'public_prefix'
+# Die Check-Sektionen stehen bewusst NICHT hier, sondern werden von
+# /lib/gluon/upgrade/500-neanderfunk-linkcheck angelegt. Diese Datei ist ein
+# conffile und ueberlebt den sysupgrade - was hier neu dazukaeme, erreichte
+# einen bestehenden Knoten nie. Begruendung ausfuehrlich in
+# /lib/gluon/upgrade/500-neanderfunk-hotfix.
