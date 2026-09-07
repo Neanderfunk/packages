@@ -41,10 +41,12 @@ endef
 define Build/Compile
 endef
 
+# Glob statt Dateiliste: die common.sh fehlte in der Liste und ging mit 5,9 KB
+# reinem Kommentar ungestrippt ins Image.
 define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
-	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-linkcheck/linkcheck.sh
-	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-linkcheck/gateway.sh
+	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-linkcheck/*.sh \
+	                    $(1)/lib/gluon/upgrade/500-neanderfunk-linkcheck
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))

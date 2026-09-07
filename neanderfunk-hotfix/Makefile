@@ -41,11 +41,15 @@ endef
 define Build/Compile
 endef
 
+# Ueber Globs statt ueber eine Dateiliste: die Liste war zuletzt unvollstaendig
+# (common.sh, IfNoWificlient.sh und watchdog.sh gingen ungestrippt ins Image,
+# allein die common.sh mit 7 KB reinem Kommentar), und eine Liste, die man beim
+# Anlegen einer Datei von Hand nachziehen muss, wird wieder unvollstaendig.
 define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
-	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-hotfix/healthcheck.sh
-	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-hotfix/check_hostapd.sh
-	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-hotfix/check_wifi_firmware.sh
+	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-hotfix/*.sh \
+	                    $(1)/lib/gluon/upgrade/500-neanderfunk-hotfix \
+	                    $(1)/usr/lib/autoupdater/*/20neanderfunk-hotfix
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
