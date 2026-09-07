@@ -254,14 +254,18 @@ the sysupgrade) and looks for the `autoupdater` and `sysupgrade` processes, so
 the guard still holds if the hooks ever fail to run.
 
 The file this used to check instead, `/tmp/autoupdate.lock`, is written by
-nobody - and never was. It appears in the entire Gluon history (5187 commits,
-tags back to v2014.1) and in the package feed (892 commits) exactly zero times.
-It originates in `eulenfunk/packages` commit `e783d3a` of 2016-05-06, four
-months *before* Gluon gained an autoupdater lock at all (`1acb4b1`,
-2016-09-08), and was copied onwards through several community feeds without
-anyone ever writing the file. Every reference to it has been removed here,
-including the `stale_lock` check that existed solely to notice a leftover copy
-of it.
+nobody. It appears in the entire Gluon history (5187 commits, tags back to
+v2014.1) and in the package feed (892 commits) exactly zero times: it was never
+a Gluon mechanism. It originates in `eulenfunk/packages` commit `e783d3a` of
+2016-05-06, four months *before* Gluon gained an autoupdater lock at all
+(`1acb4b1`, 2016-09-08). A day after the check, that feed also gained a hook
+that really did write the file (`19d53ae`,
+`files/usr/lib/autoupdater/upgrade.d/00lockfile`) - but the hook was lost when
+two packages were merged in 2017 (`535b9e3`, finally `52685ec`) while the checks
+stayed, and was copied onwards into several community feeds in that state. Every
+reference to it has been removed here, including the `stale_lock` check that
+existed solely to notice a leftover copy of it. The whole story is in
+`docs/autoupdate-lock-nachlese.md`.
 
 While `autoupdater-flashing` exists the watchdog **never** reboots - interrupting
 a flash write bricks the node. While an update is merely running it reboots only

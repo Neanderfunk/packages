@@ -151,13 +151,17 @@ safety_exit() {
 # ausdruecklich ueber den sysupgrade hinweg (autoupdater.c: "Unset FD_CLOEXEC
 # so the lockfile stays locked during sysupgrade").
 #
-# Frueher stand hier /tmp/autoupdate.lock. Diese Datei legt niemand an - nicht
-# heute und nie: sie kommt in der gesamten Gluon-Historie (5187 Commits, Tags
-# ab v2014.1) und im Paket-Feed (892 Commits) kein einziges Mal vor. Sie stammt
-# aus eulenfunk/packages e783d3a vom 2016-05-06, vier Monate BEVOR Gluon mit
-# 1acb4b1 ueberhaupt einen Autoupdater-Lock bekam, und wurde seither durch
-# mehrere Community-Feeds weitergereicht, ohne dass je jemand sie geschrieben
-# haette. Sie ist ersatzlos entfallen.
+# Frueher stand hier /tmp/autoupdate.lock. Diese Datei legt heute niemand mehr
+# an. Ein Gluon-Mechanismus war sie nie: sie kommt in der gesamten
+# Gluon-Historie (5187 Commits, Tags ab v2014.1) und im Paket-Feed (892
+# Commits) kein einziges Mal vor. Sie stammt aus eulenfunk/packages e783d3a vom
+# 2016-05-06, vier Monate BEVOR Gluon mit 1acb4b1 ueberhaupt einen
+# Autoupdater-Lock bekam. Einen Tag nach der Pruefung kam dort auch ein Hook
+# dazu, der sie tatsaechlich geschrieben hat (19d53ae,
+# upgrade.d/00lockfile) - der ging 2017 beim Zusammenlegen zweier Pakete
+# verloren (535b9e3, endgueltig 52685ec), die Pruefungen blieben und wurden in
+# diesem Zustand weiterkopiert. Sie ist ersatzlos entfallen; die ganze
+# Geschichte steht in docs/autoupdate-lock-nachlese.md.
 autoupdater_busy() {
 	[ -f /tmp/hotfix.autoupdater-flashing ] && return 0
 	[ -f /tmp/hotfix.autoupdater-running ] && return 0
