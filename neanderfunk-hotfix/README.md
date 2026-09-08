@@ -26,7 +26,7 @@ Before any check may act:
 - atheros driver deadly-wounded situations (memory allocation errors)
 - too many l2tp tunneldigger instances (restarting without reaping the old
   ones, otherwise hours of slow death)
-- hostapd processes whose pid files no longer match, rendering them useless
+- AP interfaces the running hostapd does not actually serve
 - hostapd failing its DFS check
 - an AP that had wifi clients and then lost all of them for a long time
 - br-client without an address from the site's own (ULA) `prefix6` - the node
@@ -170,7 +170,7 @@ Checks
 | `kernel_bug` | "Kernel bug" in dmesg (gluon issue #680) | reboot |
 | `ath_malloc` | ath driver allocation failures in dmesg | reboot |
 | `ksoftirqd_malloc` | kernel page allocation failures in dmesg | reboot |
-| `hostapd_pids` | hostapd pid files not matching the running processes | wifi restart |
+| `hostapd_pids` | AP interfaces the running hostapd does not serve, see below | wifi restart |
 | `dfs_failcheck` | hostapd failing its DFS check | wifi restart |
 | `tunneldigger` | too many tunneldigger watchdogs/instances | reboot |
 | `br_client_ipv6` | br-client without an address from the site prefix | reboot |
@@ -180,6 +180,53 @@ Checks
 | `no_wifi_clients` | clients were seen and then all disappeared | wifi restart |
 | `wifi_firmware` | mt76 wifi firmware crashed, see below | reboot |
 | `watchdog` | deadman switch for micrond itself, see below | reboot |
+
+hostapd not serving an AP interface (`hostapd_pids`)
+----------------------------------------------------
+
+`check_hostapd.sh` takes every `wifi-iface` section with `mode='ap'` that is not
+disabled, and asks three questions per interface:
+
+1. does the running hostapd know this BSS at all - `ubus call hostapd.<ifname>
+   get_status` must answer, and answer `ENABLED`;
+2. is its radio stuck in "down and pending" (`wifi status`);
+3. is the interface in Master mode but without a channel (`iwinfo`).
+
+Three consecutive failures of any of them restart wifi. `ACS`, `HT_SCAN`, `DFS`
+and `COUNTRY_UPDATE` are transient states and count as neither pass nor fail, so
+a DFS measurement - which may take ten minutes - can never accumulate strikes.
+
+The name is historical and the check used to do something else entirely: it read
+`-B` (config file, and from it the phy) and `-P` (pid file) off each hostapd
+command line and compared the pid file against the running process. That has
+been dead since OpenWrt 21.02, which replaced the per-phy hostapd processes with
+a single global one:
+
+```
+/usr/sbin/hostapd -s -g /var/run/hostapd/global
+```
+
+It has no `-B` and no `-P`, so the `ps | grep hostapd | grep .pid` that fed the
+script found nothing - measured on a node running `26090710bro`: zero matches.
+The script was never called, and neither were questions 2 and 3 above. The uci
+key keeps the name `hostapd_pids` on purpose: renaming it would silently
+re-enable the check on any node where somebody had set
+`hotfix.hostapd_pids.disabled='1'`.
+
+The check deliberately does **not** use `/var/run/hostapd/<ifname>` as its
+signal. On all three nodes examined, that directory holds only the second
+radio's socket plus `global` - `client0` has no socket there while its ubus
+object answers perfectly well.
+
+A wifi restart from this check has a cool-down, 30 minutes by default. Without
+it, a section whose radio never comes up at all - broken hardware, a phy that
+fails to probe - would restart wifi roughly three times an hour forever, each
+time throwing the clients off both radios without fixing anything.
+
+```
+uci set hotfix.settings.hostapd_cooldown_min='60'
+uci commit hotfix
+```
 
 Crashed wifi firmware (`wifi_firmware`)
 ---------------------------------------

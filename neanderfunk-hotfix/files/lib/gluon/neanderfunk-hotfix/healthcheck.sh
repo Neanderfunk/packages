@@ -76,8 +76,14 @@ check_disabled kernel_bug || { dmesg | grep -q "Kernel bug" && now_reboot "[kern
 # ath/ksoftirq-malloc-errors (upcoming oom scenario)
 check_disabled ath_malloc || { dmesg | grep "ath" | grep "alloc of size" | grep -q "failed" && now_reboot "[ath_malloc] ath0 malloc fail" ; true ; }
 check_disabled ksoftirqd_malloc || { dmesg | grep "ksoftirqd" | grep -q "page allocation failure" && now_reboot "[ksoftirqd_malloc] kernel malloc fail" ; true ; }
-# interate over hostapd threads running 
-check_disabled hostapd_pids || ps|grep hostapd|grep .pid|xargs -r -n 10 /lib/gluon/neanderfunk-hotfix/check_hostapd.sh
+# hostapd bedient die konfigurierten AP-Interfaces?
+#
+# Frueher wurde hier jeder hostapd-Prozess aus der ps-Ausgabe hereingereicht:
+#     ps | grep hostapd | grep .pid | xargs -r -n 10 .../check_hostapd.sh
+# Seit OpenWrt 21.02 laeuft aber ein einziger globaler hostapd ohne -P, und
+# damit fand dieses grep nichts - am Knoten gemessen null Treffer, das Skript
+# wurde nie aufgerufen. Es zaehlt seine Interfaces jetzt selbst auf.
+check_disabled hostapd_pids || /lib/gluon/neanderfunk-hotfix/check_hostapd.sh
 #check if hostapd-DFS scanning is broken according to sylogs
 # -l 200 statt -l 5: der Check laeuft alle 7 Minuten, und in dieser Zeit
 # entstehen auf einem normalen Knoten weit mehr als fuenf Logzeilen (allein
