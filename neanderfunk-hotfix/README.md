@@ -196,6 +196,27 @@ Three consecutive failures of any of them restart wifi. `ACS`, `HT_SCAN`, `DFS`
 and `COUNTRY_UPDATE` are transient states and count as neither pass nor fail, so
 a DFS measurement - which may take ten minutes - can never accumulate strikes.
 
+An interface is skipped entirely, before any of the three questions, when there
+is nothing to serve:
+
+| situation | what happens |
+| --- | --- |
+| the node has no wifi at all | `uci show wireless` fails, the loop body never runs. Measured on an EdgeRouter X: 0.06 s, no markers, no log line |
+| the `wifi-iface` section is `disabled` | skipped - this is how Gluon switches a client or mesh interface off |
+| the `wifi-device` is `disabled` | skipped |
+| netifd reports the radio as `disabled` | skipped |
+| netifd does not know the radio at all | skipped |
+
+The last three matter: a radio that is off has no BSS, so question 1 would call
+that a fault and restart wifi every 30 minutes - which does not bring a disabled
+radio back. A radio netifd knows nothing about is not a hostapd problem either;
+`bsses` and `mesh_neighbours` in neanderfunk-linkcheck are the checks for that.
+
+The distinction is deliberately not "does the BSS exist" but "does the BSS exist
+*although its radio is up*". Verified on a node against a fabricated config: an
+AP interface pointing at an unknown radio stays silent, an AP interface on the
+running radio whose BSS hostapd does not know strikes and restarts.
+
 The name is historical and the check used to do something else entirely: it read
 `-B` (config file, and from it the phy) and `-P` (pid file) off each hostapd
 command line and compared the pid file against the running process. That has

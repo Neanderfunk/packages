@@ -87,6 +87,22 @@ for section in $(uci show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.]*\)\
 	[ "$(uci -q get wireless."$section".disabled)" = "1" ] && continue
 	radio="$(uci -q get wireless."$section".device)"
 
+	# Ist das Radio ueberhaupt in Betrieb? Ohne diese Abfrage wuerde Pruefung 1
+	# unten auf einem Knoten, dessen Radio abgeschaltet ist, das fehlende
+	# BSS als Fehler werten und alle 30 Minuten grundlos das WLAN neu starten -
+	# was ein abgeschaltetes Radio auch nicht zurueckbringt.
+	#
+	# Drei Wege, weil "aus" auf drei Arten zustande kommt: als Option am
+	# wifi-device, als Zustand, den netifd meldet, und dadurch, dass netifd das
+	# Radio gar nicht kennt (Hardware weg oder nie dagewesen). Ein Radio, das
+	# netifd nicht kennt, ist kein hostapd-Problem; dafuer sind die
+	# bsses- und mesh_neighbours-Checks in neanderfunk-linkcheck da.
+	[ -n "$radio" ] || continue
+	[ "$(uci -q get wireless."$radio".disabled)" = "1" ] && continue
+	rup="$(printf '%s' "$wifistatus" | jsonfilter -e "@[\"$radio\"].up" 2>/dev/null)"
+	[ -n "$rup" ] || continue
+	[ "$(printf '%s' "$wifistatus" | jsonfilter -e "@[\"$radio\"].disabled" 2>/dev/null)" = "true" ] && continue
+
 	# --- 1) kennt der globale hostapd dieses BSS, und laeuft es? ------------
 	#
 	# Der Nachfolger der PID-Pruefung. hostapd legt je BSS ein ubus-Objekt
@@ -127,18 +143,15 @@ for section in $(uci show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.]*\)\
 	# phy-Nummer abgeleitet. jsonfilter statt grep -A 6: die Zuordnung Radio ->
 	# Feld ist damit exakt, und nicht mehr davon abhaengig, wie viele Zeilen
 	# netifd je Radio ausgibt.
-	if [ -n "$radio" ] ; then
-		sema="/tmp/hotfix.wifipending"
-		up="$(printf '%s' "$wifistatus" | jsonfilter -e "@[\"$radio\"].up" 2>/dev/null)"
-		pending="$(printf '%s' "$wifistatus" | jsonfilter -e "@[\"$radio\"].pending" 2>/dev/null)"
-		if [ "$up" = "false" ] && [ "$pending" = "true" ] ; then
-			if [ "$(strike "$sema.fail.$radio")" -ge 3 ] ; then
-				logger -t "$HOTFIX_TAG" -p 5 "[hostapd_pids] hostapd down and pending on $radio"
-				restart_wifi && unstrike "$sema.fail.$radio"
-			fi
-		elif [ -n "$up" ] ; then
-			unstrike "$sema.fail.$radio"
+	sema="/tmp/hotfix.wifipending"
+	pending="$(printf '%s' "$wifistatus" | jsonfilter -e "@[\"$radio\"].pending" 2>/dev/null)"
+	if [ "$rup" = "false" ] && [ "$pending" = "true" ] ; then
+		if [ "$(strike "$sema.fail.$radio")" -ge 3 ] ; then
+			logger -t "$HOTFIX_TAG" -p 5 "[hostapd_pids] hostapd down and pending on $radio"
+			restart_wifi && unstrike "$sema.fail.$radio"
 		fi
+	else
+		unstrike "$sema.fail.$radio"
 	fi
 
 	# --- 3) AP ohne Kanal ---------------------------------------------------
