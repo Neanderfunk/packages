@@ -179,7 +179,14 @@ log_status() {
 	old_t=''
 	old_sig=''
 	if [ -f "$f" ] ; then
-		{ read -r old_t ; read -r old_sig ; } < "$f"
+		# IFS= ist hier nicht kosmetisch: die Signatur wird als
+		# sigstring=${sigstring}" "... aufgebaut und faengt deshalb mit einem
+		# Leerzeichen an. Ein blosses "read -r" schneidet fuehrenden
+		# IFS-Whitespace ab, die zurueckgelesene Signatur war also immer um
+		# genau ein Byte kuerzer als die aktuelle - am Knoten gemessen 458
+		# gegen 459 -, der Vergleich schlug nie an und die Zusammenfassung
+		# wurde weiter bei jedem Lauf geschrieben.
+		{ IFS= read -r old_t ; IFS= read -r old_sig ; } < "$f"
 	fi
 
 	if [ "$sig" = "$old_sig" ] ; then
