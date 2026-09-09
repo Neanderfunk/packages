@@ -4,7 +4,7 @@ This branch targets **Gluon 2025.1.x**. It was branched off `v2023.2.x` on
 2026-09-09 and is byte-identical to it at that point; differences appear only
 where 2025.1 makes them necessary.
 
-> ## Limited scope, roughly until 2026-11
+> ## Limited scope, roughly until 2026-11: wireless-less devices only
 >
 > **Only the EdgeRouter X — a device without radios — is in scope for now.**
 > The point of this branch is getting the ERX through the automatic migration to
