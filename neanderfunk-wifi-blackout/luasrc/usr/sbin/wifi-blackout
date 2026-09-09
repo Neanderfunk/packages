@@ -302,5 +302,6 @@ local reason = string.format('no associated station on any radio for %i min and 
 	blackout_wait_secs / 60)
 log(reason .. ' - rebooting')
 reboot_log(reason)
-os.execute('sync')
-os.execute('reboot -f')
+-- Flash-Sync ohne Haengenbleiben, reboot -f, und sysrq als Nachschlag, falls
+-- das Geraet danach noch laeuft. Siehe /lib/gluon/neanderfunk/reboot.sh.
+os.execute('nf-reboot')
