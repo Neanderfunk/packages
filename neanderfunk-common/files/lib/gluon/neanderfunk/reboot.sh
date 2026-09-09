@@ -73,6 +73,80 @@ nf_reboot_log_preload() {
 	NF_REBOOT_LOG_MAX="$(nf_reboot_log_max)"
 }
 
+# Warten, ohne auf einen fork angewiesen zu sein: bevorzugt mit sleep, und wenn
+# der sich nicht forken laesst - der Fall, fuer den es watchdog.sh gibt - ueber
+# /proc/uptime busy. read ist ein Builtin. CPU zu verbrennen ist auf einem
+# Geraet, das gleich neu startet, der kleinere Preis.
+#
+# Beendet ein Signal das sleep (Rueckgabe ueber 128), baut jemand das System
+# ab. Dann nicht nachwarten, sondern zurueck an den Aufrufer - dieselbe
+# Unterscheidung wie in watchdog.sh, und aus demselben Grund.
+nf_reboot_wait() {
+	local secs="${1:-3}" rc t0 t1
+
+	case "$secs" in
+		''|*[!0-9]*) secs=3 ;;
+	esac
+
+	sleep "$secs" 2>/dev/null
+	rc=$?
+	[ "$rc" -eq 0 ] && return 0
+	[ "$rc" -gt 128 ] && return 0
+
+	# -gt und nicht -ge: die Nachkommastellen fallen weg, ein Unterschied von
+	# genau $secs kann also schon nach gut einer Sekunde weniger zustande
+	# kommen (10,99 -> 12,00 sind zwei gezaehlte, aber nur 1,01 echte). Eine
+	# ganze Sekunde mehr zu warten ist billiger als ein Sync, der zu frueh
+	# abgeschnitten wird. Gemessen: bei "2" kam der Fallback vorher nach 1 s
+	# zurueck.
+	read t0 _ < /proc/uptime ; t0=${t0%.*}
+	while : ; do
+		read t1 _ < /proc/uptime ; t1=${t1%.*}
+		[ $((t1 - t0)) -gt "$secs" ] && return 0
+	done
+}
+
+# Das Geschriebene auf den Flash bringen - ohne dabei haengen zu koennen und
+# ohne auf einen fork angewiesen zu sein. Direkt vor jedem Reboot aufzurufen.
+#
+# Keiner der drei Bausteine genuegt fuer sich, deshalb alle drei:
+#
+#   sync       ist bei busybox kein Shell-Builtin (CONFIG_SYNC=y, eigenes
+#              Applet), kostet also einen fork - und genau davon hat ein Knoten
+#              mit Speichermangel keinen mehr uebrig. Dafuer ist es das
+#              einzige, was tatsaechlich wartet, bis alles geschrieben ist. Es
+#              kann auf klemmendem Flash aber beliebig lange blockieren, und
+#              dann unterbliebe der Reboot ganz. Also in den Hintergrund: dann
+#              haelt es uns nicht auf, und der Reboot raeumt es ohnehin weg.
+#
+#   sysrq 's'  braucht keinen fork (echo ist ein Builtin) und blockiert nie.
+#              Dafuer ist es asynchron - emergency_sync() haengt die Arbeit als
+#              work item ein und kehrt sofort zurueck; die Kerneldoku sagt
+#              ausdruecklich, man solle auf "Emergency Sync complete" warten,
+#              bevor man 'b' schickt. Schlimmer: das work item wird mit
+#              kmalloc(GFP_ATOMIC) geholt, und schlaegt das fehl, faellt der
+#              Sync ersatzlos und stillschweigend aus (fs/sync.c). Ausgerechnet
+#              unter Speichermangel ist darauf also kein Verlass.
+#
+#   warten     bevorzugt mit sleep. Laesst sich das nicht forken - der Fall,
+#              fuer den es watchdog.sh gibt -, wird ueber /proc/uptime busy
+#              gewartet; read ist ein Builtin. CPU zu verbrennen ist auf einem
+#              Geraet, das gleich neu startet, der kleinere Preis. Beendet ein
+#              Signal das sleep, baut jemand das System ab: dann nicht noch
+#              nachwarten, sondern zurueck an den Aufrufer.
+#
+# Das [ -w ] vor dem sysrq-Schreiben ist kein Luxus: fehlt die Datei (Kernel
+# ohne CONFIG_MAGIC_SYSRQ), meldet die fehlgeschlagene Umleitung die Shell
+# selbst, und daran kommt ein 2>/dev/null nicht heran.
+nf_reboot_flush() {
+	local secs="${1:-3}"
+
+	sync &
+	[ -w /proc/sysrq-trigger ] && echo s > /proc/sysrq-trigger 2>/dev/null
+
+	nf_reboot_wait "$secs"
+}
+
 nf_reboot_log() {
 	local lines=0 max stamp line
 
@@ -126,4 +200,42 @@ nf_reboot_log() {
 
 	[ -n "$line" ] && echo >> "$NF_REBOOT_LOG"
 	echo "$stamp $*" >> "$NF_REBOOT_LOG"
+}
+
+# Zweiter Anker, falls der Reboot selbst haengenbleibt.
+#
+# "reboot -f" ruft reboot(RB_AUTOBOOT); der Kernel geht dann durch
+# device_shutdown(), und ein Treiber, dessen shutdown haengt, haelt dort alles
+# an. Das Geraet steht dann - kein Warmstart, kein Zurueckkommen, und der
+# aufrufende Prozess klebt im Syscall fest. Genau deshalb wird der Reboot vom
+# Aufrufer in den Hintergrund geschickt: sonst wartet die Shell mit ihm
+# zusammen ewig und kaeme hier nie an.
+#
+# sysrq 'b' geht diesen Weg nicht: emergency_restart() ueberspringt
+# device_shutdown() und startet sofort neu. Als Nachschlag nach einem
+# haengenden regulaeren Reboot ist das also genau das richtige Mittel.
+#
+# Bewusst 'b' und nicht 'o': 'o' ist poweroff. Ein Knoten, der aus ist, ist
+# schlechter dran als einer, der haengt - er kommt ohne Hand am Stecker nie
+# wieder, und bei den meisten Routern tut 'o' ohnehin nichts, weil es keine
+# Abschaltmoeglichkeit gibt.
+nf_reboot_escalate() {
+	local secs="${1:-60}"
+
+	nf_reboot_wait "$secs"
+
+	echo "neanderfunk: reboot did not take effect within ${secs}s, forcing via sysrq" > /dev/kmsg 2>/dev/null
+	[ -w /proc/sysrq-trigger ] && echo b > /proc/sysrq-trigger 2>/dev/null
+	return 0
+}
+
+# Der uebliche harte Reboot: erst alles auf den Flash, dann reboot -f, und wenn
+# das Geraet danach noch laeuft, ueber sysrq nachhelfen.
+#
+# Das "&" ist nicht Bequemlichkeit: ohne es wartet die Shell auf ein reboot -f,
+# das im Kernel haengt, und die Eskalation darunter kaeme nie zum Zug.
+nf_reboot_hard() {
+	nf_reboot_flush
+	reboot -f &
+	nf_reboot_escalate
 }

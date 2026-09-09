@@ -91,6 +91,13 @@ Aus Lua oder von der Kommandozeile:
 nf-reboot-log "[$check] $grund"
 ```
 
+Und der Reboot selbst, statt `sync` plus `reboot -f`:
+
+```sh
+nf_reboot_hard        # aus der Shell
+nf-reboot             # aus Lua oder von der Kommandozeile
+```
+
 Schreibt eine Zeile nach `/lib/gluon/neanderfunk/reboot.log`: Datum plus den
 übergebenen Grund. Die Zeile darf lang sein, aber es bleibt bei einer je
 Reboot.
@@ -169,3 +176,56 @@ Geschrieben wird unmittelbar vor einem harten Reboot. Ein abgerissener
 Schreibvorgang ist deshalb keine Ausnahme, sondern zu erwarten: eine letzte
 Zeile ohne `\n` wird mitgezählt und bekommt ihr Newline nachgereicht, damit
 der nächste Eintrag nicht an die halbe Zeile geklebt wird.
+
+## Der Reboot selbst
+
+`nf_reboot_hard` macht der Reihe nach: alles auf den Flash bringen, `reboot -f`,
+und wenn das Gerät danach immer noch läuft, über sysrq nachhelfen. Die drei
+Teile gibt es auch einzeln (`nf_reboot_flush`, `nf_reboot_wait`,
+`nf_reboot_escalate`) — `watchdog.sh` braucht sie so.
+
+### Warum nicht einfach `sync`
+
+Keiner der Wege genügt für sich:
+
+| | forkt | kann hängen | wartet bis fertig |
+|---|---|---|---|
+| `sync` | **ja** (bei busybox kein Builtin) | **ja** (klemmender Flash) | ja |
+| `echo s > /proc/sysrq-trigger` | nein | nein | **nein** |
+
+Dazu kommt beim sysrq-Weg ein Detail aus `fs/sync.c`: `emergency_sync()` holt
+sein work item mit `kmalloc(GFP_ATOMIC)`, und schlägt das fehl, fällt der Sync
+ersatzlos und stillschweigend aus. Ausgerechnet unter Speichermangel — also
+genau dann, wenn der Watchdog zuschlägt — ist darauf kein Verlass.
+
+`nf_reboot_flush` stößt deshalb beides an: `sync` im **Hintergrund**, damit es
+uns nicht aufhalten kann, plus sysrq `s`, und wartet danach ein paar Sekunden.
+Gewartet wird bevorzugt mit `sleep`; lässt sich das nicht forken, über
+`/proc/uptime` busy — `read` ist ein Builtin. CPU zu verbrennen ist auf einem
+Gerät, das gleich neu startet, der kleinere Preis.
+
+### Wenn der Reboot selbst hängenbleibt
+
+`reboot -f` ruft `reboot(RB_AUTOBOOT)`, der Kernel geht durch
+`device_shutdown()`, und ein Treiber, dessen `shutdown` hängt, hält dort alles
+an: kein Warmstart, kein Zurückkommen — und der aufrufende Prozess klebt im
+Syscall fest. Deshalb schickt `nf_reboot_hard` den Reboot in den Hintergrund;
+sonst wartet die Shell mit ihm zusammen ewig und käme zur Eskalation nie.
+
+`nf_reboot_escalate` wartet 60 s und schickt dann sysrq `b`. Das geht über
+`emergency_restart()`, überspringt `device_shutdown()` und startet sofort neu —
+also genau das richtige Mittel gegen einen hängenden regulären Reboot. Vorher
+geht eine Zeile nach `/dev/kmsg`, damit der Fall überhaupt auffällt.
+
+Bewusst `b` und nicht `o`: `o` ist poweroff. Ein Knoten, der aus ist, ist
+schlechter dran als einer, der hängt — er kommt ohne Hand am Stecker nie wieder,
+und bei den meisten Routern tut `o` ohnehin nichts, weil es gar keine
+Abschaltmöglichkeit gibt.
+
+`/proc/sysrq-trigger` ignoriert übrigens die `kernel.sysrq`-Maske
+(`write_sysrq_trigger` ruft `__handle_sysrq(c, false)`), der Weg steht also
+unabhängig von der sysctl-Einstellung offen. Nachgesehen im Buildtree: auf
+allen Zielen, die wir bauen — ath79 (generic/nand/mikrotik), ramips mt7621,
+mediatek filogic und mt7622, x86 — ist `CONFIG_MAGIC_SYSRQ=y`. Das `[ -w ]` vor
+dem Schreiben bleibt trotzdem stehen, für den Fall, dass ein Ziel dazukommt, wo
+das nicht gilt.

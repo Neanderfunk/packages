@@ -156,6 +156,7 @@ Weitere Befunde derselben Klasse:
 | `rebooting\.\.\. reason: \[(\S+)\] .*` | **Reboot.** Der Grund in Klammern ist der Check-Name |
 | `.*4th: .*, rebooting!` | **Reboot** durch linkcheck |
 | `\[watchdog\] .*, rebooting via sysrq` | **Reboot**, micrond war 15 min tot. Geht über `/dev/kmsg`, nicht über syslog — im weitergeleiteten Log also evtl. nicht sichtbar |
+| `reboot did not take effect within \d+s, forcing via sysrq` | **Selten und ernst**: `reboot -f` ist im Kernel hängengeblieben, der Knoten wurde über sysrq `b` hart neu gestartet. Ebenfalls über `/dev/kmsg`. Häuft sich das auf einem Gerätetyp, hängt dort ein Treiber im `shutdown` |
 
 Die ersten sechs Reboot-Gründe überleben den Neustart in
 `/lib/gluon/neanderfunk/reboot.log` — eine Zeile je Reboot, mit Datum und dem
