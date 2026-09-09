@@ -1,0 +1,178 @@
+#!/bin/sh
+#
+# Stufe 2 der ERX-Migration: holt das 2025.1-Image und uebergibt an
+# erx-migrate.sh.
+#
+# Stufe 1 ist das Zwischenimage selbst. Das kommt ueber den ganz normalen
+# Autoupdater (2023.2 -> 2023.2, compat 1.x -> 1.x), bringt dieses Paket mit
+# und startet es beim Boot ueber /etc/init.d/erx-migrate.
+#
+#
+# Wovon nichts angefasst wird
+# ---------------------------
+# Kein Schreibzugriff aufs Flash, solange die Migration nicht wirklich losgeht.
+# Das Log liegt in /tmp, das Image auch, und beides wird bei jedem Fehlschlag
+# weggeraeumt - ein ERX hat 256 MB RAM, aber ein liegengebliebenes 7-MB-Image
+# je Versuch summiert sich.
+#
+# Zustand ueber Neustarts hinweg gibt es deshalb nicht. Nach einem Reboot faengt
+# alles von vorn an, auch nach einer dauerhaften Absage. Das ist gewollt: ein
+# Neuversuch je Boot kostet nichts, und der Verzicht auf persistenten Zustand
+# spart die ganze Frage, wann er wieder aufgeraeumt gehoert.
+#
+#
+# Warum ueberhaupt
+# ----------------
+# Der Kernel 6.6 aus OpenWrt 24.10 ist 3.173.564 Bytes gross und passt damit um
+# 27 KB nicht mehr in einen der beiden alten 3-MB-Slots. OpenWrt riegelt den
+# Wechsel ueber compat_version 1.x -> 2.0 ab, und dieser Riegel greift erst in
+# "sysupgrade --test", also nach dem vollstaendigen Download. Ein nicht
+# migrierter Knoten wuerde bei jedem Autoupdater-Lauf dieselben 7 MB ziehen und
+# dieselbe Absage bekommen - rund 690 MB am Tag, unsichtbar ausser in logread.
+
+set -u
+
+ZIEL="/lib/gluon/erx-migrate/ziel.conf"
+MIGRATE="/lib/gluon/erx-migrate/erx-migrate.sh"
+STAGE2="/lib/gluon/erx-migrate/erx-migrate-stage2.sh"
+
+LOG="/tmp/erx-migrate.log"
+IMAGE="/tmp/erx-migrate-image.bin"
+LOCK="/tmp/erx-migrate.laeuft"
+AUFGEGEBEN="/tmp/erx-migrate.aufgegeben"
+
+# Das Image braucht Platz in /tmp, und dort liegt auch schon die
+# Konfigurationssicherung, die erx-migrate.sh anlegt. 24 MB als Untergrenze
+# sind reichlich fuer ein 7-MB-Image plus Entpacken.
+PLATZ_MIN_KB=24576
+
+protokoll() {
+	printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG"
+}
+
+# Zwei Arten von Ende, und der Unterschied entscheidet ueber den Neuversuch:
+#
+#   spaeter   voruebergehend - kein Uplink, Download abgebrochen. micron.d
+#             versucht es in einer Stunde wieder.
+#   endgueltig  aussichtslos bis zum naechsten Boot - falsches Board, Pruefsumme
+#             stimmt nicht, Vorpruefung durchgefallen. Ein stuendlicher
+#             Neuversuch wuerde daran nichts aendern und nur Traffic kosten.
+spaeter() {
+	protokoll "AUFSCHUB: $*"
+	aufraeumen
+	exit 0
+}
+
+endgueltig() {
+	protokoll "ABBRUCH: $*"
+	: > "$AUFGEGEBEN"
+	aufraeumen
+	exit 1
+}
+
+aufraeumen() {
+	rm -f "$IMAGE"
+	rmdir "$LOCK" 2>/dev/null
+}
+
+# --- Voraussetzungen, alle ohne Schreibzugriff ---------------------------
+
+[ -r "$ZIEL" ] || exit 0
+# shellcheck source=/dev/null
+. "$ZIEL"
+
+case "$(cat /tmp/sysinfo/board_name 2>/dev/null)" in
+	ubnt,edgerouter-x)
+		URL="${IMAGE_URL_ERX:-}"
+		SHA="${IMAGE_SHA_ERX:-}"
+		;;
+	ubnt,edgerouter-x-sfp)
+		URL="${IMAGE_URL_ERX_SFP:-}"
+		SHA="${IMAGE_SHA_ERX_SFP:-}"
+		;;
+	*)
+		# Kein ERX. Kein Log, kein Marker - das Paket ist hier schlicht nicht
+		# zustaendig und soll auch nichts hinterlassen.
+		exit 0
+		;;
+esac
+
+# Ohne Ziel tut das Paket nichts. Ebenfalls ohne Log: das ist der Zustand, in
+# dem das Paket ausgeliefert wird, bevor die Daten feststehen.
+[ -n "$URL" ] && [ -n "$SHA" ] || exit 0
+
+[ -e "$AUFGEGEBEN" ] && exit 0
+
+# Schon migriert? Dann gibt es nur noch eine Partition namens "kernel", nicht
+# mehr kernel1 und kernel2. Der haeufigste Fall im Dauerbetrieb, deshalb frueh.
+if grep -q '"kernel"' /proc/mtd 2>/dev/null; then
+	exit 0
+fi
+grep -q '"kernel1"' /proc/mtd 2>/dev/null || {
+	protokoll "Weder kernel noch kernel1 in /proc/mtd - unerwartetes Layout."
+	: > "$AUFGEGEBEN"
+	exit 1
+}
+
+# mkdir als Lock: atomar auch auf tmpfs, anders als "test -e und dann touch".
+mkdir "$LOCK" 2>/dev/null || exit 0
+
+[ -x "$MIGRATE" ] || endgueltig "$MIGRATE fehlt oder ist nicht ausfuehrbar."
+[ -r "$STAGE2" ]  || endgueltig "$STAGE2 fehlt."
+
+# --- Ab hier wird geredet ------------------------------------------------
+
+: > "$LOG"
+protokoll "Start. Board $(cat /tmp/sysinfo/board_name), Release $(cat /lib/gluon/release 2>/dev/null)"
+
+# Vorpruefung des Migrationsskripts, bevor irgendetwas geladen wird. Sie
+# schreibt nichts und sagt uns, ob Layout, Boot-Index und Waechter stimmen.
+if ! pruefung="$(sh "$MIGRATE" --check 2>&1)"; then
+	protokoll "$pruefung"
+	endgueltig "Vorpruefung nicht bestanden."
+fi
+protokoll "Vorpruefung bestanden."
+
+frei_kb="$(df -k /tmp | awk 'NR==2 {print $4}')"
+[ -n "$frei_kb" ] || frei_kb=0
+if [ "$frei_kb" -lt "$PLATZ_MIN_KB" ]; then
+	spaeter "Nur $frei_kb kB frei in /tmp, gebraucht werden $PLATZ_MIN_KB kB."
+fi
+
+# --- Download ------------------------------------------------------------
+
+protokoll "Lade $URL"
+rm -f "$IMAGE"
+if ! uclient-fetch -q -O "$IMAGE" "$URL" 2>>"$LOG"; then
+	spaeter "Download fehlgeschlagen. Kein Uplink, oder der Server antwortet nicht."
+fi
+[ -s "$IMAGE" ] || spaeter "Heruntergeladene Datei ist leer."
+protokoll "Geladen, $(wc -c < "$IMAGE") Bytes."
+
+# Erst wenn die Datei vollstaendig und richtig ist, wird migriert. Die
+# Pruefsumme deckt beides ab - ein Abbruch mitten im Download ergibt eine
+# andere Summe.
+ist="$(sha256sum "$IMAGE" | cut -d' ' -f1)"
+if [ "$ist" != "$SHA" ]; then
+	protokoll "erwartet $SHA"
+	protokoll "ist      $ist"
+	endgueltig "Pruefsumme stimmt nicht."
+fi
+protokoll "Pruefsumme stimmt."
+
+# --- Uebergabe -----------------------------------------------------------
+#
+# Ab hier faengt erx-migrate.sh an zu schreiben. Es setzt selbst beide
+# Waechter-Marker, sichert die Konfiguration, hebt darin die compat_version und
+# uebergibt per "ubus call system sysupgrade" an Stufe 2 im RAM-Root.
+#
+# Kommt der Aufruf zurueck, ist die Migration NICHT gelaufen - im Erfolgsfall
+# baut sich das System darunter ab.
+
+protokoll "Uebergebe an erx-migrate.sh."
+if STAGE2="$STAGE2" SHA256="$SHA" UNBEAUFSICHTIGT=1 sh "$MIGRATE" "$IMAGE" >>"$LOG" 2>&1; then
+	protokoll "erx-migrate.sh ist zurueckgekehrt, ohne zu flashen."
+else
+	protokoll "erx-migrate.sh mit Fehler zurueckgekehrt."
+fi
+endgueltig "Migration nicht durchgefuehrt, Einzelheiten oben."

@@ -1,0 +1,33 @@
+#!/bin/sh /etc/rc.common
+#
+# Startet den ersten Migrationsversuch nach dem Boot.
+#
+# Warum init.d und nicht /etc/rc.local: rc.local steht in den conffiles von
+# base-files. Es reist damit in /sysupgrade.tgz mit und ueberschreibt beim
+# naechsten Upgrade die Fassung aus dem neuen Image - ein Hook dort kaeme auf
+# keinem Knoten an, der seine Konfiguration behaelt. init.d-Skripte liegen im
+# squashfs, der rc.d-Symlink wird beim Imagebau angelegt, beides ist nicht Teil
+# der Sicherung.
+#
+# START=99: so spaet wie moeglich. Der Uplink steht beim Boot ohnehin noch
+# nicht, deshalb wartet der Hintergrundlauf unten erst einmal ab.
+
+START=99
+STOP=01
+
+start() {
+	# Im Hintergrund, damit der Bootvorgang nicht auf Netz wartet.
+	#
+	# Die Wartezeit ist kein Schaetzwert fuer "wann ist der Tunnel oben",
+	# sondern nur der erste Versuch. Klappt er nicht, uebernimmt micron.d
+	# stuendlich - erx-migrate-run unterscheidet dafuer zwischen Aufschub und
+	# endgueltiger Absage.
+	(
+		sleep 300
+		/usr/sbin/erx-migrate-run
+	) >/dev/null 2>&1 &
+}
+
+stop() {
+	:
+}

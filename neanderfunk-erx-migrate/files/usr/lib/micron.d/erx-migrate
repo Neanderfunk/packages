@@ -1,0 +1,7 @@
+# Stuendlicher Neuversuch, zu einer krummen Minute, damit nicht die ganze
+# Flotte gleichzeitig am Firmwareserver zieht.
+#
+# erx-migrate-run beendet sich still, sobald es nichts zu tun gibt: kein ERX,
+# kein Ziel eingetragen, schon migriert, oder in diesem Boot bereits endgueltig
+# abgesagt. Der Lauf kostet dann nichts.
+37 * * * * /usr/sbin/erx-migrate-run

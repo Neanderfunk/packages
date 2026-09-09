@@ -1,0 +1,56 @@
+#!/bin/sh
+#
+# Gibt /tmp/erx-migrate.log aus, wenn das richtige Token mitkommt:
+#
+#   http://[<knoten>]/cgi-bin/erx-migrate-log?t=<token>
+#
+# Das Token steht in /lib/gluon/erx-migrate/ziel.conf, die beim Bau des
+# Zwischenimages gefuellt wird - nicht in diesem oeffentlichen Paketfeed. Ist
+# es leer, schweigt das CGI vollstaendig.
+#
+# Was das Token leistet und was nicht: Port 80 ist auf einem Gluon-Knoten aus
+# mesh und loc_client ohnehin offen, die Statusseite liegt dort. Wer im Netz
+# ist, kommt an die Seite. Das Token verhindert nur, dass das Log unter einem
+# geratenen Pfad herausfaellt. Im Log steht ohnehin nichts Vertrauliches -
+# Partitionslayout, Groessen, Pruefsummen, Fehlermeldungen.
+#
+# Warum ueberhaupt ueber HTTP: die Karte zeigt keine unbekannten
+# respondd-Felder an. Der Weg ist deshalb, in der Kartenstatistik die ERX ohne
+# "-ka" im Imagenamen zu suchen und dort nachzusehen. Das sind so wenige, dass
+# es von Hand geht.
+
+set -u
+
+ZIEL="/lib/gluon/erx-migrate/ziel.conf"
+LOG="/tmp/erx-migrate.log"
+
+schweigen() {
+	printf 'Status: 404 Not Found\r\nContent-Type: text/plain\r\n\r\n'
+	exit 0
+}
+
+[ -r "$ZIEL" ] || schweigen
+# shellcheck source=/dev/null
+. "$ZIEL"
+
+[ -n "${LOG_TOKEN:-}" ] || schweigen
+
+# QUERY_STRING ist "t=<token>". Ohne Shell-Werkzeug zum Zerlegen: alles bis
+# zum ersten "=" weg, alles ab einem folgenden "&" weg.
+gefragt="${QUERY_STRING:-}"
+gefragt="${gefragt#t=}"
+gefragt="${gefragt%%&*}"
+
+[ "$gefragt" = "$LOG_TOKEN" ] || schweigen
+
+printf 'Content-Type: text/plain; charset=utf-8\r\n\r\n'
+
+if [ -r "$LOG" ]; then
+	cat "$LOG"
+else
+	echo "Kein Log vorhanden."
+	echo
+	echo "Entweder laeuft auf diesem Knoten keine Migration, oder sie ist seit"
+	echo "dem letzten Neustart noch nicht angelaufen. Das Log liegt nur im RAM"
+	echo "und ist nach einem Neustart weg - der naechste Versuch legt es neu an."
+fi
