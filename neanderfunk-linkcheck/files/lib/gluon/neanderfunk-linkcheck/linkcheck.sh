@@ -194,7 +194,17 @@ checkgroup='bsses'
 if ! check_disabled "$checkgroup" ; then
   checks=''
   linksexist=''
-  links='wireless.mesh_radio0 wireless.batmesh_radio0 wireless.mesh_radio1 wireless.batmesh_radio1 wireless.mesh_radio2 wireless.batmesh_radio2 wireless.client_radio0 wireless.client_radio1 wireless.client_radio2'
+  # Hier stand eine feste Liste von neun Sektionsnamen fuer radio0 bis radio2.
+  # owe_radio* kam darin ueberhaupt nicht vor - OWE-Interfaces wurden also nie
+  # geprueft, seit es sie gibt.
+  #
+  # Jetzt aus uci: was konfiguriert ist, weiss uci, nicht wir. Die Praefixe sind
+  # bewusst aufgezaehlt statt "alles mit ifname" - wan_radio* (privates WLAN)
+  # gehoert nicht in diese Pruefung. Nebenbei traegt das auch Geraete mit mehr
+  # als drei Radios, die es ab Gluon 2025.1 geben kann.
+  links=$(uci show wireless 2>/dev/null \
+    | grep -E "^wireless\.(client|owe|mesh|batmesh|ibss)_radio[0-9]+\.ifname=" \
+    | cut -d. -f1-2 | awk '!seen[$0]++')
   for link in $links; do
     linkname=$(uci get $link.ifname 2>/dev/null)
     if [ ! -z "${linkname}" ] ; then
@@ -263,7 +273,18 @@ if ! check_disabled "$checkgroup" ; then
 
 # 3) check for disappearing batman-interfaces
   # (a companion list "wirebatlinks" used to sit here, assigned and never read)
-  wifibatlinks='mesh0 mesh1 mesh2 mesh3'
+  # Ausnahmeliste, keine Pruefliste: was hier drinsteht, wird vom
+  # Originator-Check weiter unten NICHT als Reboot-Bedingung gewertet. Ein
+  # fehlender Eintrag heisst also nicht "wird uebersehen", sondern "wird
+  # mitgeprueft und kann bis zum Reboot eskalieren". Fest standen hier mesh0 bis
+  # mesh3, was heute reicht, aber eben nur zufaellig.
+  wifibatlinks=$(uci show wireless 2>/dev/null \
+    | grep -E "^wireless\.(mesh|ibss|batmesh)_radio[0-9]+\.ifname=" \
+    | sed "s/.*='//;s/'$//" | tr '\n' ' ')
+  # Liefert uci nichts - kein wireless-Config, kaputtes uci -, dann lieber die
+  # alte feste Liste als eine leere: eine leere Ausnahmeliste wuerde die
+  # WLAN-Mesh-Interfaces in die Reboot-Bedingung hineinnehmen.
+  [ -n "$(echo $wifibatlinks)" ] || wifibatlinks='mesh0 mesh1 mesh2 mesh3'
 
   # inventory of bat-interfaces, from all possible sources, probably unneccesary
   batinterfaces2=$(batctl n|tail -n +3|awk '{print $1}'|sort|uniq)
