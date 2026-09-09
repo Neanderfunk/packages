@@ -51,6 +51,11 @@ case "$cron_min" in ''|*[!0-9]*) cron_min=5 ;; esac
 stale="$(uci -q get hotfix.settings.autoupdater_stale_min)"
 case "$stale" in ''|*[!0-9]*) stale=300 ;; esac
 
+# Auch der Deckel des Reboot-Logs wird hier aufgeloest, solange forken noch
+# geht - nf_reboot_log fragt danach kein uci mehr. Siehe
+# /lib/gluon/neanderfunk/reboot.sh.
+nf_reboot_log_preload
+
 deadline=$((interval * 3 * 60))
 stale_s=$((stale * 60))
 
@@ -81,6 +86,19 @@ reboot_now() {
 
 	# best effort, still fork-free: /dev/kmsg shows up in logread
 	echo "neanderfunk-hotfix: [watchdog] $1, rebooting via sysrq" > /dev/kmsg 2>/dev/null
+
+	# Und in das Log, das den Neustart ueberlebt. Der Ringpuffer tut es nicht,
+	# und ausgerechnet dieser Reboot ist der, den hinterher niemand erklaeren
+	# kann: er geht ueber /dev/kmsg, taucht im weitergeleiteten Syslog also
+	# unter Umstaenden gar nicht auf.
+	#
+	# Das ist die einzige Stelle hier, die den fork-freien Teil aufweicht.
+	# nf_reboot_log kommt dem entgegen: der Deckel ist oben schon aufgeloest,
+	# gezaehlt wird mit Builtins, und schlaegt selbst das date fehl, steht statt
+	# der Uhrzeit die Uptime in der Zeile. Vor dem sysrq, damit das folgende
+	# 's' (emergency sync) die Zeile noch auf den Flash bringt.
+	nf_reboot_log "[watchdog] $1"
+
 	echo s > /proc/sysrq-trigger 2>/dev/null
 	echo b > /proc/sysrq-trigger 2>/dev/null
 	# only reached if sysrq is unavailable; then at least try the normal way
