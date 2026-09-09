@@ -11,7 +11,7 @@ define Package/$(PKG_NAME)
   SECTION:=neanderfunk
   CATEGORY:=Workarounds
   TITLE:=Wifi blackout workaround (Eulenfunk, FreifunkHochstift)
-  DEPENDS:=+gluon-core +micrond
+  DEPENDS:=+neanderfunk-common +gluon-core +micrond
   CONFLICTS:=neanderfunk-ath9kblackout eulenfunk-ath9kblackout gluon-ath9kblackout
   MAINTAINER:=Freifunk im Neanderland <projekt@neanderfunk.de>
 endef

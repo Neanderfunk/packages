@@ -25,17 +25,22 @@ end
 
 -- Check for autoupdater running
 --
--- Das Kommando muss ein einzelnes einfaches Kommando bleiben. busybox' "sh -c"
--- exec't so eines, statt zu forken: der Shell-Prozess wird durch pgrep ersetzt,
--- und pgrep schliesst sich selbst aus. Steht hier je etwas Zusammengesetztes
--- (Pipe, Schleife, mehrere Kommandos), bleibt die Shell mit der vollen
--- Kommandozeile stehen, "pgrep -f autoupdater" findet sich darin selbst, und
--- der Check meldet dauerhaft "laeuft". Am Knoten mit beiden Varianten geprueft.
+-- Hier stand "pgrep -f autoupdater", und das war die einzige Stelle im Feed,
+-- die wirklich anfaellig war: "-f" durchsucht die Kommandozeile, findet also
+-- jeden fremden Prozess, der das Wort fuehrt - am Knoten gemessen drei PIDs,
+-- von denen keine der Autoupdater war, darunter ein Skript, das seinerseits
+-- nur danach suchte. Der Check haette dann dauerhaft "laeuft" gemeldet und
+-- den ssid-changer stillgelegt.
+--
+-- nf-pgrep vergleicht stattdessen den Prozessnamen exakt und blendet die
+-- eigene Prozesskette aus; die Kunstgriffe, die hier frueher noetig waren
+-- (ein einzelnes einfaches Kommando, damit busybox' "sh -c" es exec't statt
+-- zu forken), entfallen damit.
+--
+-- os.execute liefert unter Lua 5.1 den rohen wait-Status; 0 heisst, nf-pgrep
+-- hat etwas gefunden.
 local function is_autoupdater_running()
-	local handle = io.popen('pgrep -f autoupdater')
-	local result = handle:read("*a")
-	handle:close()
-	return result ~= ''
+	return os.execute('nf-pgrep -q autoupdater') == 0
 end
 
 if is_autoupdater_running() then

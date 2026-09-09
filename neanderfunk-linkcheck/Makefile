@@ -11,7 +11,7 @@ define Package/$(PKG_NAME)
   SECTION:=gluon
   CATEGORY:=Gluon
   TITLE:=WIFI and batman Neighborcheck
-  DEPENDS:=+gluon-core +micrond
+  DEPENDS:=+neanderfunk-common +gluon-core +micrond
 endef
 
 define Package/$(PKG_NAME)/description

@@ -1,4 +1,7 @@
 #!/bin/sh
+# nf_running()/nf_count(): Prozesssuche, die sich selbst nie findet.
+# Aus neanderfunk-common, siehe dort die Begruendung.
+. /lib/gluon/neanderfunk/proc.sh
 # Shared helpers for the neanderfunk-linkcheck checks. Sourced, not executed.
 #
 # Every single check can be switched off on a node:
@@ -109,8 +112,8 @@ autoupdater_running() {
 		# exit 0 heisst, der Lock war frei - dann laeuft kein Autoupdater
 		flock -n /var/lock/autoupdater.lock true 2>/dev/null || return 0
 	fi
-	pgrep autoupdater >/dev/null 2>&1 && return 0
-	pgrep sysupgrade  >/dev/null 2>&1 && return 0
+	nf_running autoupdater && return 0
+	nf_running sysupgrade  && return 0
 	return 1
 }
 

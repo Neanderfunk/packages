@@ -1,4 +1,7 @@
 #!/bin/sh
+# nf_running()/nf_count(): Prozesssuche, die sich selbst nie findet.
+# Aus neanderfunk-common, siehe dort die Begruendung.
+. /lib/gluon/neanderfunk/proc.sh
 # Weekly reboot, spread over the small hours so the whole fleet does not come
 # back at the same moment. Started by micrond, see /usr/lib/micron.d/weeklyreboot.
 
@@ -55,8 +58,8 @@ autoupdater_running() {
 		# exit 0 means the lock was free, so no autoupdater holds it
 		flock -n /var/lock/autoupdater.lock true 2>/dev/null || return 0
 	fi
-	pgrep autoupdater >/dev/null 2>&1 && return 0
-	pgrep sysupgrade  >/dev/null 2>&1 && return 0
+	nf_running autoupdater && return 0
+	nf_running sysupgrade  && return 0
 	return 1
 }
 

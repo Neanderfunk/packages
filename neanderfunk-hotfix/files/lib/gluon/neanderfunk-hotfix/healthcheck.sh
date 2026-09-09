@@ -106,16 +106,24 @@ if ! check_disabled dfs_failcheck && [ "$(logread -l 200|grep -c "daemon.warn ho
 
 # too many tunneldigger restarts
 check_disabled tunneldigger || {
-# [t] wie in der Zeile darunter: ohne die Klammer findet das grep sich selbst in
-# der ps-Ausgabe wieder (am Knoten gemessen: Grundwert 1 statt 0), die Schwelle
-# lag damit faktisch bei 3 statt bei 4.
-[ "$(ps |grep -c -e "[t]unneldigger restart" -e "[t]unneldigger-watchdog")" -ge "4" ] && now_reboot "[tunneldigger] too many Tunneldigger watchdogs"
-[ "$(ps |grep -c -e "/usr/bin/[t]unneldigger")" -ge "7" ] && now_reboot "[tunneldigger] too many Tunneldigger instances"
+# Hier stand "ps | grep -c "[t]unneldigger"". Der Klammertrick verhindert nur,
+# dass das grep sich selbst findet - nicht, dass es die aufrufende Shell oder
+# ein Geschwister derselben Pipeline mitzaehlt. Am Knoten gemessen: aus einem
+# Aufrufer, dessen Kommandozeile das Wort fuehrt, kam die Klammervariante auf
+# 5 statt auf 3. Beide Schwellen hier loesen einen REBOOT aus, ein zu hoher
+# Zaehlerstand ist also teuer.
+#
+# nf_count vergleicht den Prozessnamen exakt, nf-ps blendet die eigene
+# Prozesskette aus - siehe /lib/gluon/neanderfunk/proc.sh. Der Watchdog-Zaehler
+# muss ueber nf-ps gehen, weil "tunneldigger-watchdog" ein Lua-Skript ist und
+# unter comm nicht eindeutig auftaucht.
+[ "$(nf-ps | grep -c -e "tunneldigger restart" -e "tunneldigger-watchdog")" -ge "4" ] && now_reboot "[tunneldigger] too many Tunneldigger watchdogs"
+[ "$(nf_count tunneldigger)" -ge "7" ] && now_reboot "[tunneldigger] too many Tunneldigger instances"
 true; }
 
 
 reboot_when_not_running() {
-  (pgrep $1 || sleep 20 ; pgrep $1 || now_reboot "[$1] $1 not running") &> /dev/null
+  (nf_running "$1" || sleep 20 ; nf_running "$1" || now_reboot "[$1] $1 not running") &> /dev/null
 }
 
 # check if 5min load >2 (panic reboot)

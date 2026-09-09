@@ -11,7 +11,7 @@ define Package/$(PKG_NAME)
   SECTION:=gluon
   CATEGORY:=Workaround
   TITLE:=Hotfix collection: reinit wifi or reboot on various failure conditions (Ruben Kelevra & Eulenfunk)
-  DEPENDS:=+gluon-core +micrond
+  DEPENDS:=+neanderfunk-common +gluon-core +micrond
 endef
 
 define Package/$(PKG_NAME)/description

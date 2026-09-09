@@ -11,7 +11,7 @@ define Package/$(PKG_NAME)
   SECTION:=gluon
   CATEGORY:=Gluon
   TITLE:=weekly reboot scheduled on thursdays
-  DEPENDS:=+gluon-core +micrond
+  DEPENDS:=+neanderfunk-common +gluon-core +micrond
   # ffac-weeklyreboot installs the same two paths (the worker and the micron.d
   # entry) and does the same job; gluon-weeklyreboot is what this package was
   # called before the rename and still exists upstream. Either together with

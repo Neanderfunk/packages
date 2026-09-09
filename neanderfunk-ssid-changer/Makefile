@@ -12,7 +12,7 @@ include $(TOPDIR)/../package/gluon.mk
 
 define Package/$(PKG_NAME)
   TITLE:=changes the SSID to an Offline-SSID so clients don't connect to an offline WiFi
-  DEPENDS:=+gluon-web-admin +gluon-state-check +micrond
+  DEPENDS:=+neanderfunk-common +gluon-web-admin +gluon-state-check +micrond
   # This is a fork of ffac-ssid-changer and installs the exact same six paths
   # (/etc/config/ssid-changer, the micron.d entry, the upgrade script, the
   # worker and both config-mode files), shares its /tmp state files, and would
