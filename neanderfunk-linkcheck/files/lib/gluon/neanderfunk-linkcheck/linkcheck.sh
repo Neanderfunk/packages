@@ -85,8 +85,8 @@ valuecheck ()
       nf_reboot_log "[${checkgroup}] lost neighbours 4th: ${linkname}.${check}"
       sleep 10
       autoupdater_running && exit
-      reboot -f
-      # reboot -f does not necessarily return immediately
+      nf_reboot_hard
+      # nf_reboot_hard does not necessarily return
       exit
       ;;
   esac
