@@ -81,6 +81,8 @@ valuecheck ()
         return
       fi
       logger -s -t "neanderfunk-linkcheck" -p 5 "[${checkgroup}] lost neighbours 4th: ${linkname}.${check}, rebooting!"
+      # Der Grund muss den Reboot ueberleben - der Ringpuffer tut es nicht.
+      nf_reboot_log "[${checkgroup}] lost neighbours 4th: ${linkname}.${check}"
       sleep 10
       autoupdater_running && exit
       reboot -f

@@ -2,6 +2,7 @@
 # nf_running()/nf_count(): Prozesssuche, die sich selbst nie findet.
 # Aus neanderfunk-common, siehe dort die Begruendung.
 . /lib/gluon/neanderfunk/proc.sh
+. /lib/gluon/neanderfunk/reboot.sh
 # Shared helpers for the neanderfunk-linkcheck checks. Sourced, not executed.
 #
 # Every single check can be switched off on a node:
