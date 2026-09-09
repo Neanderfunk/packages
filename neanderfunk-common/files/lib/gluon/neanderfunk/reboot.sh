@@ -65,29 +65,65 @@ nf_reboot_log_max() {
 	echo "$m"
 }
 
+# Fuer Aufrufer, die spaeter nicht mehr forken duerfen - watchdog.sh laeuft ab
+# einem bestimmten Punkt bewusst fork-frei, weil der Fall, fuer den es ihn
+# gibt, Speichermangel einschliesst. Wer das hier beim Start aufruft, loest den
+# Deckel auf, solange forken noch geht; nf_reboot_log fragt dann kein uci mehr.
+nf_reboot_log_preload() {
+	NF_REBOOT_LOG_MAX="$(nf_reboot_log_max)"
+}
+
 nf_reboot_log() {
-	local lines=0 max
+	local lines=0 max stamp line
 
 	[ -n "$*" ] || return 0
 
-	max="$(nf_reboot_log_max)"
+	# Ein vorab aufgeloester Deckel spart den uci-Aufruf, siehe oben.
+	max="$NF_REBOOT_LOG_MAX"
+	[ -n "$max" ] || max="$(nf_reboot_log_max)"
 	[ "$max" -gt 0 ] || return 0
 
 	[ -d "$NF_REBOOT_LOG_DIR" ] || mkdir -p "$NF_REBOOT_LOG_DIR" 2>/dev/null || return 0
 
-	# [ -f ] zuerst: "wc -l < datei" auf eine fehlende Datei meldet die Shell
-	# selbst ("can't open"), und daran kommt ein 2>/dev/null am wc nicht heran.
-	# Beim allerersten Reboot stand diese Meldung sonst im Syslog, direkt vor
-	# dem Neustart - und schickte jeden, der dem Reboot nachging, erst einmal
-	# auf die falsche Faehrte.
+	# [ -f ] zuerst: eine Umleitung von einer fehlenden Datei meldet die Shell
+	# selbst ("can't open"), und daran kommt ein 2>/dev/null nicht heran. Beim
+	# allerersten Reboot stand diese Meldung sonst im Syslog, direkt vor dem
+	# Neustart - und schickte jeden, der dem Reboot nachging, auf die falsche
+	# Faehrte.
+	#
+	# Gezaehlt wird mit der Schleife statt mit "wc -l": read ist ein Builtin,
+	# das spart einen fork auf einem Pfad, der oefter als uns lieb ist unter
+	# Speichermangel begangen wird. Bei hoechstens einer Handvoll Zeilen kostet
+	# die Schleife nichts.
+	#
+	# Das letzte read schlaegt am Dateiende fehl, legt einen angefangenen Rest
+	# ohne abschliessendes Newline aber trotzdem in $line ab. Deshalb wird
+	# $line in der Schleife geleert: was danach drinsteht, ist genau so ein
+	# Rest. Der Fall ist hier nicht theoretisch - geschrieben wird unmittelbar
+	# vor einem harten Reboot, ein abgerissener Schreibvorgang ist also die
+	# Regel und nicht die Ausnahme. Er wird mitgezaehlt (sonst zaehlte der
+	# Deckel eine Zeile zu wenig) und bekommt sein Newline nachgereicht, damit
+	# der neue Eintrag nicht an die halbe Zeile angeklebt wird.
 	if [ -f "$NF_REBOOT_LOG" ] ; then
-		lines="$(wc -l < "$NF_REBOOT_LOG")"
-		case "$lines" in
-			''|*[!0-9]*) lines=0 ;;
-		esac
+		while IFS= read -r line ; do
+			lines=$((lines + 1))
+			line=''
+		done < "$NF_REBOOT_LOG"
+		[ -n "$line" ] && lines=$((lines + 1))
 	fi
 
 	[ "$lines" -ge "$max" ] && return 0
 
-	echo "$(date) $*" >> "$NF_REBOOT_LOG"
+	# date ist der letzte verbliebene fork. Schlaegt er fehl, steht statt der
+	# Uhrzeit die Uptime in der Zeile - eine Zeile ohne Zeitangabe waere beim
+	# Nachsehen wertlos, und /proc/uptime liest read fork-frei. Ohne RTC ist
+	# die Uptime ohnehin oft die ehrlichere Angabe.
+	stamp="$(date 2>/dev/null)"
+	if [ -z "$stamp" ] ; then
+		read stamp _ < /proc/uptime
+		stamp="uptime=${stamp%.*}s"
+	fi
+
+	[ -n "$line" ] && echo >> "$NF_REBOOT_LOG"
+	echo "$stamp $*" >> "$NF_REBOOT_LOG"
 }

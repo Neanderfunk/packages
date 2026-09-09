@@ -85,6 +85,12 @@ Zum Sourcen aus Shell-Skripten:
 nf_reboot_log "[$check] $grund"
 ```
 
+Aus Lua oder von der Kommandozeile:
+
+```sh
+nf-reboot-log "[$check] $grund"
+```
+
 Schreibt eine Zeile nach `/lib/gluon/neanderfunk/reboot.log`: Datum plus den
 übergebenen Grund. Die Zeile darf lang sein, aber es bleibt bei einer je
 Reboot.
@@ -98,8 +104,10 @@ Logzeile stand im Ringpuffer, und der ist weg. Bis hierher schrieb nur
 hinterließ nichts. Auf die Frage „warum ist der Knoten neu gestartet" gab es
 für die Hälfte der Reboots keine Antwort mehr.
 
-Der Pfad liegt deshalb jetzt hier und nicht in einem der beiden Pakete: es
-schreiben zwei hinein, und keines soll vom anderen abhängen.
+Der Pfad liegt deshalb hier und nicht in einem der Pakete: es schreiben mehrere
+hinein, und keines soll vom anderen abhängen. Erfasst sind alle Stellen im
+Feed, die einen Knoten neu starten — `hotfix` (`now_reboot()` und der
+Watchdog), `linkcheck` (vierte Stufe und Gateway) und `wifi-blackout`.
 
 ### Deckel
 
@@ -141,3 +149,23 @@ trotzdem nicht weiter.
 Die Datei liegt unter `/lib/gluon/` und überlebt ein Firmware-Update
 absichtlich **nicht** — `sysupgrade` bewahrt dort nur
 `/lib/gluon/core/sysconfig/`. Nach einem Update zählt es wieder von vorn.
+
+### Sparsam mit forks
+
+`watchdog.sh` arbeitet ab einem bestimmten Punkt bewusst fork-frei: der Fall,
+für den es den Watchdog gibt, schließt Speichermangel ein, und dann kann das
+Starten eines weiteren Prozesses schlicht fehlschlagen. Damit dort trotzdem
+etwas ins Log kommt, ist `nf_reboot_log()` so sparsam wie möglich:
+
+* Gezählt wird mit `read` statt mit `wc -l` — ein Builtin, kein fork.
+* Wer den Deckel vorab auflösen will, ruft beim Start
+  `nf_reboot_log_preload` auf; danach fragt `nf_reboot_log()` kein `uci`
+  mehr.
+* Bleibt `date` als einziger fork. Schlägt der fehl, steht statt der Uhrzeit
+  `uptime=NNNNs` in der Zeile — die kommt aus `/proc/uptime` und braucht
+  keinen. Ohne RTC ist das ohnehin oft die ehrlichere Angabe.
+
+Geschrieben wird unmittelbar vor einem harten Reboot. Ein abgerissener
+Schreibvorgang ist deshalb keine Ausnahme, sondern zu erwarten: eine letzte
+Zeile ohne `\n` wird mitgezählt und bekommt ihr Newline nachgereicht, damit
+der nächste Eintrag nicht an die halbe Zeile geklebt wird.
