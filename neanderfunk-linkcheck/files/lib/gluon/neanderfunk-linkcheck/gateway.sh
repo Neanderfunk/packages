@@ -43,6 +43,7 @@ reboot_if_old() {
 		return 0
 	fi
 	logger -s -t "neanderfunk-linkcheck" -p 5 "[$1] $2, rebooting"
+	nf_reboot_log "[$1] $2"
 	sync
 	reboot -f
 	# reboot -f does not necessarily return immediately, and if it does there is
