@@ -41,7 +41,8 @@ restart_wifi() {
 	# in der Config, deren phy nicht hochkommt - alle drei Laeufe einen
 	# WLAN-Neustart ausloesen, also rund dreimal pro Stunde, und jedes Mal alle
 	# Clients beider Radios abwerfen, ohne dass es etwas repariert. Genau das
-	# Muster, das in neanderfunk-mt7915-backlog schon einmal aufgefallen ist.
+	# Muster, das auf v2023.2.x in neanderfunk-mt7915-backlog schon einmal
+	# aufgefallen ist.
 	#     uci set hotfix.settings.hostapd_cooldown_min='60' ; uci commit hotfix
 	cooldown="$(uci -q get hotfix.settings.hostapd_cooldown_min)"
 	case "$cooldown" in

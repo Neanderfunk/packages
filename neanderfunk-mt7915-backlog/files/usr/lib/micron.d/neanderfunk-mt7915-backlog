@@ -1,2 +1,0 @@
-# run every second minute
-*/2 * * * * /lib/gluon/neanderfunk-mt7915-backlog/backlog.sh

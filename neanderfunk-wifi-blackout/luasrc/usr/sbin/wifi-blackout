@@ -241,7 +241,7 @@ if n <= setting('restarts_before_reboot', 1) then
 	log(string.format('no associated station on any radio for %i min (attempt %i) - restarting wifi',
 		blackout_wait_secs / 60, n))
 	-- Gemeinsame Sperre, dieselbe Datei wie in neanderfunk-hotfix, -linkcheck,
-	-- -mt7915-backlog und -ssid-changer. Die ganze Sequenz laeuft unter EINER
+	-- und -ssid-changer. Die ganze Sequenz laeuft unter EINER
 	-- flock-Instanz, die Sperre wird also durchgehend gehalten und nicht
 	-- zwischen den Einzelkommandos freigegeben.
 	--

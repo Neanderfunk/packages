@@ -158,7 +158,7 @@ else
 end
 
 -- Gemeinsame Sperre fuer WLAN-Eingriffe, dieselbe Datei wie in
--- neanderfunk-hotfix, -linkcheck und -mt7915-backlog. Auf einem Knoten koennen
+-- neanderfunk-hotfix und -linkcheck. Auf einem Knoten koennen
 -- sieben Stellen das WLAN anfassen, dieses Skript als einziges jede Minute.
 -- Laeuft gerade ein Neustart, wird nicht dazwischengefunkt.
 --

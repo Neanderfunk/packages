@@ -22,8 +22,13 @@ where 2025.1 makes them necessary.
 >   is *not* a statement about nodes that do have radios.
 > * **Do not roll this branch out to nodes with radios** until the open points in
 >   `docs/2025.1-regressionstest.md` have been checked on real hardware —
->   above all the radio naming, `mt7915-backlog` under the new in-driver queue
->   fix, and whether `rf_regval` still exists under mt76 in OpenWrt 24.10.
+>   above all the radio naming and whether `rf_regval` still exists under mt76
+>   in OpenWrt 24.10. (`mt7915-backlog` is gone from this branch — see below.)
+>
+> **Removed on this branch:** `neanderfunk-mt7915-backlog`. OpenWrt 24.10 as
+> shipped with Gluon 2025.1 carries an in-driver fix for stuck mt7915 PLE queues
+> (`patches/openwrt/0012-mt7915-detect-and-purge-stuck-PLE-queues.patch`), which
+> is what that package worked around. It still exists on `v2023.2.x`.
 >
 > For nodes in production, `v2023.2.x` remains the branch to use.
 
@@ -102,13 +107,6 @@ configured german code allows. See [](neanderfunk-txpowerfix/README.md)
 
 weekly reboot sheduled on thursday morning. See [](neanderfunk-weeklyreboot/README.md)
 
-### neanderfunk-mt7915-backlog ###
-
-restarts wifi if an mt7915 radio's txq backlog fills up, the known mcu-timeout
-symptom. Looks at the driver of each radio rather than trusting the build
-target, so an mt7621 board with different wifi is left alone, and holds a
-cool-down so a backlog that does not clear cannot restart wifi every two
-minutes. See [](neanderfunk-mt7915-backlog/README.md)
 
 ### neanderfunk-node-whisperer ###
 

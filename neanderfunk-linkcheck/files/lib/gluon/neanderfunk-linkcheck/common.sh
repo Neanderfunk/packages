@@ -119,8 +119,8 @@ autoupdater_running() {
 
 # --- gemeinsame Sperre fuer WLAN-Eingriffe ----------------------------------
 #
-# Auf einem Knoten koennen sieben Stellen das WLAN neu starten: ssid-changer
-# (jede Minute), ap-timer (jede Minute), mt7915-backlog (*/2), linkcheck (*/5),
+# Auf einem Knoten koennen sechs Stellen das WLAN neu starten: ssid-changer
+# (jede Minute), ap-timer (jede Minute), linkcheck (*/5),
 # healthcheck samt check_hostapd (*/7), wifi-blackout (*/10), IfNoWificlient
 # (*/15) und stuendlich ffac-autoupdater-wifi-fallback. Die Einzelinstanz-Locks
 # der einzelnen Skripte (fd 200) verhindern nur, dass ein Skript sich selbst
