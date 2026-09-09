@@ -186,6 +186,16 @@ local function log(msg)
 	os.execute('logger -s -t neanderfunk-wifi-blackout -p local0.info "[wifi_blackout] ' .. msg .. '"')
 end
 
+-- Eine Zeile ins gemeinsame Reboot-Log, das den Neustart ueberlebt - der
+-- Ringpuffer tut es nicht, und ohne diese Zeile war hinterher nicht mehr
+-- feststellbar, dass der Knoten wegen des Blackouts neu gestartet ist.
+-- Deckel und Abschaltung: siehe /lib/gluon/neanderfunk/reboot.sh.
+local function reboot_log(msg)
+	-- Der Grund geht als ein einziges Argument in Hochkommata; ein
+	-- Hochkomma im Text wird dabei ausgehebelt und wieder eingehaengt.
+	os.execute("nf-reboot-log '[wifi_blackout] " .. msg:gsub("'", "'\\''") .. "'")
+end
+
 if uci:get_bool('wifi_blackout', 'settings', 'disabled') then
 	os.exit(0)
 end
@@ -288,7 +298,9 @@ if autoupdater_running() then
 	os.exit(0)
 end
 
-log(string.format('no associated station on any radio for %i min and the wifi restart did not help - rebooting',
-	blackout_wait_secs / 60))
+local reason = string.format('no associated station on any radio for %i min and the wifi restart did not help',
+	blackout_wait_secs / 60)
+log(reason .. ' - rebooting')
+reboot_log(reason)
 os.execute('sync')
 os.execute('reboot -f')
