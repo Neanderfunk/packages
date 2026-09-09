@@ -178,11 +178,39 @@ iface_is_up() {
 
 radio_is_wifi6() {
   # $1: ifname
-  # Ask for the kernel module, not the driver name: on a ZyXEL NWA50AX Pro
-  # (mediatek/filogic) the radios sit in the SoC and the driver is called
-  # "mt798x-wmac", while the module is the same mt7915e as on the COVR. The
-  # driver name alone would miss every filogic node; here it only happened to
-  # work because the target fallback below caught them.
+  #
+  # Die Frage, um die es hier eigentlich geht, ist nicht "ist das ein mt7915",
+  # sondern "zerlegt ein Scan auf diesem Radio seine Mesh-Links". Das haengt an
+  # der Faehigkeit des Radios, nicht am Treibernamen - und ab OpenWrt 24.10
+  # steht die Faehigkeit im Klartext in /etc/board.json:
+  #
+  #   .wlan.<phy>.info.bands.<2G|5G|6G>.he    Wi-Fi 6
+  #   .wlan.<phy>.info.bands.<...>.eht        Wi-Fi 7
+  #
+  # Geschrieben wird der Abschnitt von wifi-detect.uc beim Booten. Die
+  # Zuordnung Interface -> phy kommt aus dem sysfs und muss ebenfalls nicht
+  # geraten werden: /sys/class/net/<if>/phy80211/name.
+  local phy band
+  phy="$(cat "/sys/class/net/$1/phy80211/name" 2>/dev/null)"
+  if [ -n "$phy" ] && [ -r /etc/board.json ] ; then
+    for band in 2G 5G 6G ; do
+      case "$(jsonfilter -i /etc/board.json -e "@.wlan['$phy'].info.bands['$band'].he" 2>/dev/null)" in
+        true) return 0 ;;
+      esac
+    done
+    # board.json kennt den phy, sagt aber kein HE -> belastbares Nein, kein
+    # Rueckfall auf die Heuristik.
+    if [ -n "$(jsonfilter -i /etc/board.json -e "@.wlan['$phy'].path" 2>/dev/null)" ] ; then
+      return 1
+    fi
+  fi
+
+  # Rueckfall fuer Staende ohne den wlan-Abschnitt in board.json - auf Gluon
+  # 2023.2.x fehlt er komplett, dort entsteht er mangels wifi-detect.uc nie.
+  # Erst nach dem Kernelmodul fragen, nicht nach dem Treibernamen: auf einem
+  # ZyXEL NWA50AX Pro (mediatek/filogic) sitzen die Radios im SoC und der
+  # Treiber heisst "mt798x-wmac", das Modul ist aber dasselbe mt7915e wie auf
+  # der COVR. Der Treibername allein verfehlt jeden filogic-Knoten.
   mod="$(readlink -f "/sys/class/net/$1/device/driver/module" 2>/dev/null)"
   [ -n "$mod" ] || mod="$(readlink -f "/sys/class/net/$1/device/driver" 2>/dev/null)"
   case "${mod##*/}" in
@@ -194,7 +222,17 @@ checkgroup='bsses'
 if ! check_disabled "$checkgroup" ; then
   checks=''
   linksexist=''
-  links='wireless.mesh_radio0 wireless.batmesh_radio0 wireless.mesh_radio1 wireless.batmesh_radio1 wireless.mesh_radio2 wireless.batmesh_radio2 wireless.client_radio0 wireless.client_radio1 wireless.client_radio2'
+  # Hier stand eine feste Liste von neun Sektionsnamen fuer radio0 bis radio2.
+  # Zwei Luecken hatte sie: owe_radio* kam ueberhaupt nicht vor, OWE-Interfaces
+  # wurden also nie geprueft - und ab Gluon 2025.1 kann ein Geraet mehr als drei
+  # Radios haben (Release Notes zu #3563), die dann stumm durchgefallen waeren.
+  #
+  # Jetzt aus uci: was konfiguriert ist, weiss uci, nicht wir. Die Praefixe sind
+  # bewusst aufgezaehlt statt "alles mit ifname" - wan_radio* (privates WLAN)
+  # gehoert nicht in diese Pruefung.
+  links=$(uci show wireless 2>/dev/null \
+    | grep -E "^wireless\.(client|owe|mesh|batmesh|ibss)_radio[0-9]+\.ifname=" \
+    | cut -d. -f1-2 | awk '!seen[$0]++')
   for link in $links; do
     linkname=$(uci get $link.ifname 2>/dev/null)
     if [ ! -z "${linkname}" ] ; then
@@ -263,7 +301,19 @@ if ! check_disabled "$checkgroup" ; then
 
 # 3) check for disappearing batman-interfaces
   # (a companion list "wirebatlinks" used to sit here, assigned and never read)
-  wifibatlinks='mesh0 mesh1 mesh2 mesh3'
+  # Ausnahmeliste, keine Prueflste: was hier drinsteht, wird vom
+  # Originator-Check weiter unten NICHT als Reboot-Bedingung gewertet. Ein
+  # fehlender Eintrag heisst also nicht "wird uebersehen", sondern "wird
+  # mitgeprueft und kann bis zum Reboot eskalieren" - deshalb ist das die
+  # einzige der festen Listen, deren Luecke teuer war. Fest standen hier mesh0
+  # bis mesh3; ab Gluon 2025.1 kann ein Geraet mehr Radios haben.
+  wifibatlinks=$(uci show wireless 2>/dev/null \
+    | grep -E "^wireless\.(mesh|ibss|batmesh)_radio[0-9]+\.ifname=" \
+    | sed "s/.*='//;s/'$//" | tr '\n' ' ')
+  # Liefert uci nichts - kein wireless-Config, kaputtes uci -, dann lieber die
+  # alte feste Liste als eine leere: eine leere Ausnahmeliste wuerde die
+  # WLAN-Mesh-Interfaces in die Reboot-Bedingung hineinnehmen.
+  [ -n "$(echo $wifibatlinks)" ] || wifibatlinks='mesh0 mesh1 mesh2 mesh3'
 
   # inventory of bat-interfaces, from all possible sources, probably unneccesary
   batinterfaces2=$(batctl n|tail -n +3|awk '{print $1}'|sort|uniq)

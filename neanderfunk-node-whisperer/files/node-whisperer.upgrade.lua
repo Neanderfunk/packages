@@ -46,6 +46,33 @@ uci:section('neanderfunk-node-whisperer', 'settings', 'settings', {
 	disabled = disabled,
 })
 uci:set('neanderfunk-node-whisperer', 'settings', 'information', sources)
--- This also works on single-band devices
-uci:set('neanderfunk-node-whisperer', 'settings', 'interface', {'client0', 'client1'})
+
+-- Auf welchen Interfaces angekuendigt wird: aus uci, nicht geraten.
+--
+-- Hier stand fest {'client0', 'client1'} mit dem Hinweis, dass das auch auf
+-- Einband-Geraeten funktioniert - nicht vorhandene Interfaces schaden also
+-- nicht. Ab Gluon 2025.1 kann ein Geraet aber mehr als zwei Radios haben, und
+-- dann fehlte client2 aufwaerts.
+--
+-- Damit das hier ueberhaupt etwas findet, muss dieses Skript NACH
+-- 320-gluon-client-bridge-wireless laufen - dort entstehen die
+-- client_radio*-Sektionen. Es lief frueher als 150-, also davor, und haette
+-- eine dynamische Aufzaehlung ins Leere laufen lassen. Siehe Makefile.
+local interfaces = {}
+uci:foreach('wireless', 'wifi-iface', function(s)
+	if s['.name'] and s['.name']:match('^client_radio%d+$') and s.ifname then
+		table.insert(interfaces, s.ifname)
+	end
+end)
+table.sort(interfaces)
+
+-- Ohne WLAN - ein EdgeRouter X etwa hat gar kein /etc/config/wireless - bleibt
+-- die Liste leer. Dann die bisherige Vorgabe behalten statt eine leere Liste zu
+-- schreiben: was node-whisperer mit einer leeren Liste tut, ist nicht geprueft,
+-- und mit client0/client1 laeuft es dort seit jeher.
+if #interfaces == 0 then
+	interfaces = {'client0', 'client1'}
+end
+
+uci:set('neanderfunk-node-whisperer', 'settings', 'interface', interfaces)
 uci:commit('neanderfunk-node-whisperer')

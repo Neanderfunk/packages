@@ -54,7 +54,10 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/node-whisperer $(1)/usr/bin/neanderfunk-node-whisperer
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/openwrt/node-whisperer/files/node-whisperer.init $(1)/etc/init.d/neanderfunk-node-whisperer
 	$(CP) $(PKG_BUILD_DIR)/openwrt/node-whisperer/files/node-whisperer.uci $(1)/etc/config/neanderfunk-node-whisperer
-	$(INSTALL_BIN) ./files/node-whisperer.upgrade.lua $(1)/lib/gluon/upgrade/150-neanderfunk-node-whisperer
+	# 330-, nicht mehr 150-: das Skript zaehlt die client_radio*-Sektionen auf,
+	# und die entstehen erst in 320-gluon-client-bridge-wireless. Als 150- lief
+	# es davor und haette nie etwas gefunden.
+	$(INSTALL_BIN) ./files/node-whisperer.upgrade.lua $(1)/lib/gluon/upgrade/330-neanderfunk-node-whisperer
 endef
 
 $(eval $(call BuildPackageGluon,$(PKG_NAME)))

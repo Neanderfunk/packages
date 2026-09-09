@@ -261,9 +261,26 @@ end
 -- offline SSID lives on in the uncommitted wireless delta. Deciding the revert
 -- from off_count alone would then never fire again and the node would stay on
 -- the offline SSID until its next reboot, with the config looking untouched.
+--
+-- Welche Sektionen es gibt, weiss uci - frueher stand hier "for i = 0, 2", was
+-- ein viertes Radio stumm uebergangen haette. Gluon 2025.1 unterstuetzt
+-- ausdruecklich mehr als zwei Radios (Release Notes zu #3563), und auf Geraeten
+-- mit mehreren Radios je Band kann die Nummerierung ohnehin Luecken haben.
+local function radio_sections(prefix)
+	local out = {}
+	uci:foreach('wireless', 'wifi-iface', function(s)
+		local name = s['.name']
+		if name and name:match('^' .. prefix .. '_radio%d+$') then
+			table.insert(out, name)
+		end
+	end)
+	table.sort(out)
+	return out
+end
+
 local function offline_ssid_is_configured()
-	for i = 0, 2 do
-		if uci:get('wireless', 'client_radio' .. i, 'ssid') == offline_ssid then
+	for _, section in ipairs(radio_sections('client')) do
+		if uci:get('wireless', section, 'ssid') == offline_ssid then
 			return true
 		end
 	end
@@ -319,19 +336,22 @@ elseif status == 'offline' then
 			-- if has been offline for at least half checks in monitor duration
 			-- set the SSID to the offline SSID
 			-- and disable owe client radios
-			for i = 0, 2 do
-				local client_ssid = uci:get('wireless', 'client_radio' .. i, 'ssid')
-				if client_ssid then
-					uci:set('wireless', 'client_radio' .. i, 'ssid', offline_ssid)
+			for _, section in ipairs(radio_sections('client')) do
+				if uci:get('wireless', section, 'ssid') then
+					uci:set('wireless', section, 'ssid', offline_ssid)
 				end
-
-				local owe_ssid = uci:get('wireless', 'owe_radio' .. i, 'ssid')
-				if owe_ssid then
-					uci:set('wireless', 'owe_radio' .. i, 'disabled', 1)
-				end
-				-- save does not commit
-				uci:save('wireless')
 			end
+			-- OWE laesst sich nicht umbenennen: der Sinn der Offline-SSID ist,
+			-- dass ein Mensch sie sieht, und ein OWE-BSS taucht daneben als
+			-- zweites, gleichnamiges Netz auf. Also abschalten statt umbenennen.
+			for _, section in ipairs(radio_sections('owe')) do
+				if uci:get('wireless', section, 'ssid') then
+					uci:set('wireless', section, 'disabled', 1)
+				end
+			end
+			-- save does not commit; der Rueckweg macht uci:revert('wireless')
+			-- und verwirft damit auch das disabled der OWE-Interfaces wieder.
+			uci:save('wireless')
 			log("reconfiguring wifi to offline ssid")
 			if not wifi_reconf() then
 				-- Der uci-Delta traegt die Offline-SSID schon, angewendet ist
