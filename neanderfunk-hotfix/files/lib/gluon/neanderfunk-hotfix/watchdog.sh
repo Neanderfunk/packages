@@ -72,6 +72,13 @@ echo $$ > "$PIDFILE"
 
 # fork-free from here on
 reboot_now() {
+	# Niemals in einen laufenden Flash-Vorgang hinein rebooten - unabhaengig
+	# davon, aus welchem Zweig der Aufruf kommt. Der Test steht hier und nicht
+	# nur an den Aufrufstellen weiter unten, weil genau das der Fehler war: der
+	# Zweig fuer das fehlgeschlagene sleep sprang an der Marker-Pruefung der
+	# Schleife vorbei und rebootete hart mitten im sysupgrade.
+	[ -f "$FLASHMARK" ] && return 1
+
 	# best effort, still fork-free: /dev/kmsg shows up in logread
 	echo "neanderfunk-hotfix: [watchdog] $1, rebooting via sysrq" > /dev/kmsg 2>/dev/null
 	echo s > /proc/sysrq-trigger 2>/dev/null
@@ -89,10 +96,28 @@ slice=30
 waited=0
 
 while : ; do
-	if ! sleep "$slice" ; then
-		# could not even fork sleep - that is the out-of-memory case this
-		# watchdog is meant to survive, and waiting longer will not help
-		reboot_now "unable to fork (out of memory?)"
+	sleep "$slice"
+	rc=$?
+	if [ "$rc" -ne 0 ] ; then
+		if [ "$rc" -gt 128 ] ; then
+			# Ein Signal hat das sleep beendet - Exitcode 128 + Signalnummer,
+			# bei TERM also 143. Das ist KEIN Speichermangel, sondern jemand
+			# baut das System ab: sysupgrade schickt beim Abbau erst TERM und
+			# dann KILL an alle verbliebenen Prozesse.
+			#
+			# Hier zu rebooten hiess, mitten in einen Flash-Vorgang zu
+			# rebooten. Gemeldet aus der Firmware-Session am 2026-09-09: vier
+			# von fuenf ERX-Migrationslaeufen wurden so abgebrochen, das Geraet
+			# stand danach mit neuem Kernel auf altem Rootfs. Wer uns TERM
+			# schickt, weiss in aller Regel, was er tut - also aussteigen.
+			# micrond startet den Watchdog beim naechsten Tick ohnehin neu.
+			echo "neanderfunk-hotfix: [watchdog] sleep ended by signal (rc=$rc), system is being torn down - exiting without reboot" > /dev/kmsg 2>/dev/null
+			exit 0
+		fi
+		# rc ungleich 0, aber nicht ueber 128: sleep liess sich nicht forken.
+		# Das ist der Speichermangel, fuer den dieser Zweig gedacht war, und
+		# laenger zu warten hilft dagegen nicht.
+		reboot_now "sleep could not fork (rc=$rc), out of memory"
 	fi
 
 	# Has a newer instance taken over? Only a readable pid file naming someone
