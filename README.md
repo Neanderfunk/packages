@@ -1,6 +1,33 @@
 # Neanderfunk Packages
 
-This branch works for gluon 2023.2.x.
+This branch targets **Gluon 2025.1.x**. It was branched off `v2023.2.x` on
+2026-09-09 and is byte-identical to it at that point; differences appear only
+where 2025.1 makes them necessary.
+
+> ## Limited scope, roughly until 2026-11
+>
+> **Only the EdgeRouter X — a device without radios — is in scope for now.**
+> The point of this branch is getting the ERX through the automatic migration to
+> 2025.1; everything else comes later.
+>
+> What that means in practice:
+>
+> * **The wired paths are the ones that matter here**: batman interfaces,
+>   bridges and their ports, gateway and IPv6 anycast, the deadman watchdog,
+>   load, respondd, dropbear, the autoupdater guards.
+> * **The wireless paths are untested on 2025.1.** They are known to bail out
+>   cleanly on a node without radios — measured on a wifi-less node: ssid-changer,
+>   wifi-blackout, check_wifi_firmware and IfNoWificlient all return within
+>   0.00 s, write no log line and leave no marker. That is enough for the ERX and
+>   is *not* a statement about nodes that do have radios.
+> * **Do not roll this branch out to nodes with radios** until the open points in
+>   `docs/2025.1-regressionstest.md` have been checked on real hardware —
+>   above all the radio naming, `mt7915-backlog` under the new in-driver queue
+>   fix, and whether `rf_regval` still exists under mt76 in OpenWrt 24.10.
+>
+> For nodes in production, `v2023.2.x` remains the branch to use.
+
+For the previous branch, see `v2023.2.x`.
 
 ### neanderfunk-wifi-blackout ###
 
