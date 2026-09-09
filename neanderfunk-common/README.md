@@ -75,3 +75,69 @@ kein Selbstfilter, sondern nur der exakte Namensvergleich, also `nf_pids` statt
 
 `/proc` einmal durchlesen: am Knoten 107 Prozesse in 0,03 s, fork-frei. Fünf
 `nf-pgrep`-Aufrufe hintereinander brauchten 0,24 s inklusive Prozessstart.
+
+## Gemeinsames Reboot-Log
+
+Zum Sourcen aus Shell-Skripten:
+
+```sh
+. /lib/gluon/neanderfunk/reboot.sh
+nf_reboot_log "[$check] $grund"
+```
+
+Schreibt eine Zeile nach `/lib/gluon/neanderfunk/reboot.log`: Datum plus den
+übergebenen Grund. Die Zeile darf lang sein, aber es bleibt bei einer je
+Reboot.
+
+### Warum
+
+Ein Reboot, den ein Check auslöst, ist danach nicht mehr nachweisbar — die
+Logzeile stand im Ringpuffer, und der ist weg. Bis hierher schrieb nur
+`neanderfunk-hotfix` seine Gründe mit, unter einem eigenen Pfad;
+`neanderfunk-linkcheck` rief in der vierten Stufe direkt `reboot -f` und
+hinterließ nichts. Auf die Frage „warum ist der Knoten neu gestartet" gab es
+für die Hälfte der Reboots keine Antwort mehr.
+
+Der Pfad liegt deshalb jetzt hier und nicht in einem der beiden Pakete: es
+schreiben zwei hinein, und keines soll vom anderen abhängen.
+
+### Deckel
+
+Voreingestellt sechs Zeilen, gemeinsam über alle Pakete. Es geht um die
+**ersten** Reboots nach einem Firmwarestand, nicht um eine Chronik — ein Knoten,
+der in einer Schleife hängt, soll nicht über Jahre in den Flash schreiben.
+
+Auf dem Knoten:
+
+```sh
+uci set neanderfunk.settings.reboot_log_max='10'
+uci commit neanderfunk
+```
+
+Gemeinschaftsweit in der `site.conf`, optional:
+
+```lua
+neanderfunk = {
+  reboot_log_max = 6,   -- 0 = kein Reboot-Log
+},
+```
+
+`0` schaltet das Log ganz ab: es wird nichts geschrieben und die Datei nicht
+angelegt. Ein bereits vorhandenes Exemplar wird nicht gelöscht — beim nächsten
+Firmware-Update ist es ohnehin weg.
+
+Fehlt der Schlüssel in der `site.conf`, bleibt es bei der eingebauten Vorgabe;
+es gibt bewusst keine `check_site.lua` dafür, damit eine Site, die ihn nicht
+kennt, weiter baut. Der uci-Wert auf dem Knoten gewinnt immer über die
+`site.conf`. Ein Wert, der nicht aus reinen Ziffern besteht, fällt auf die
+Vorgabe zurück statt das Log stillschweigend abzuschalten.
+
+Der Deckel ist eine Obergrenze, keine Punktbedingung (`-ge`, nicht `-eq`):
+findet sich dort aus irgendeinem Grund schon eine zu lange Datei, wächst sie
+trotzdem nicht weiter.
+
+### Lebensdauer
+
+Die Datei liegt unter `/lib/gluon/` und überlebt ein Firmware-Update
+absichtlich **nicht** — `sysupgrade` bewahrt dort nur
+`/lib/gluon/core/sysconfig/`. Nach einem Update zählt es wieder von vorn.

@@ -1,0 +1,38 @@
+#!/bin/sh
+# Seeds /etc/config/neanderfunk from the site.conf. Laeuft bei jedem
+# gluon-reconfigure, ueberschreibt aber nie, was auf dem Knoten von Hand
+# gesetzt wurde - ein lokales `uci set neanderfunk...` gewinnt also immer.
+#
+# site.conf, alles optional:
+#   neanderfunk = {
+#     reboot_log_max = 6,   -- Zeilen im gemeinsamen Reboot-Log, 0 = kein Log
+#   },
+#
+# Bewusst ohne check_site.lua und ohne ausgeliefertes /etc/config/neanderfunk:
+#
+#   - Kein check_site: der Schluessel ist optional. Eine Site, die ihn nicht
+#     kennt, soll weiter bauen; die eingebaute Vorgabe (6) traegt dann. Die
+#     Build-Umgebungen nebenan muessen deshalb nichts nachziehen.
+#   - Keine ausgelieferte Konfigdatei: /etc/config/* ueberlebt den sysupgrade,
+#     das mitgelieferte Exemplar wird verworfen. Eine Sektion, die dort
+#     spaeter dazukaeme, erreichte einen bestehenden Knoten nie - genau der
+#     Fehler, der in /etc/config/hotfix jahrelang steckte. Die Datei entsteht
+#     hier beim ersten commit und wird hier gepflegt.
+
+sitefile=/lib/gluon/site.json
+
+uci -q get neanderfunk.settings >/dev/null || uci -q set neanderfunk.settings=settings
+
+# Nur wenn der Knoten keinen eigenen Wert hat; unbelegt heisst "eingebaute
+# Vorgabe", siehe nf_reboot_log_max() in /lib/gluon/neanderfunk/reboot.sh.
+#
+# -z und nicht "-n $v": eine site.conf mit reboot_log_max = 0 soll das Log
+# tatsaechlich abschalten koennen, und "0" ist ein gueltiger Wert.
+if [ -z "$(uci -q get neanderfunk.settings.reboot_log_max)" ] ; then
+	v="$(jsonfilter -i "$sitefile" -e '@.neanderfunk.reboot_log_max' 2>/dev/null)"
+	[ -n "$v" ] && uci -q set neanderfunk.settings.reboot_log_max="$v"
+fi
+
+# Ohne vorgemerkte Aenderung ist commit ein no-op und fasst den Flash nicht an.
+uci -q commit neanderfunk
+exit 0
