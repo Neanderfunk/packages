@@ -41,7 +41,8 @@ define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
 	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk/*.sh \
 	                    $(1)/lib/gluon/upgrade/490-neanderfunk-common \
-	                    $(1)/usr/bin/nf-ps $(1)/usr/bin/nf-pgrep
+	                    $(1)/usr/bin/nf-ps $(1)/usr/bin/nf-pgrep \
+	                    $(1)/usr/bin/nf-reboot-log
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))

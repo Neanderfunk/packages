@@ -159,8 +159,15 @@ Weitere Befunde derselben Klasse:
 
 Die ersten sechs Reboot-Gründe überleben den Neustart in
 `/lib/gluon/neanderfunk/reboot.log` — eine Zeile je Reboot, mit Datum und dem
-vollen Grund, und seit dem gemeinsamen Log auch die von linkcheck. Wer per SSH
-nachsieht: das ist die erste Datei.
+vollen Grund. Dort schreiben inzwischen alle Stellen hinein, die einen Knoten
+neu starten: `hotfix` (Checks und Watchdog), `linkcheck` (vierte Stufe und
+Gateway) und `wifi-blackout`. Wer per SSH nachsieht: das ist die erste Datei.
+
+Beim Watchdog ist sie sogar die einzige Quelle — dessen Meldung geht über
+`/dev/kmsg` und taucht im weitergeleiteten Syslog unter Umständen gar nicht
+auf. Steht dort statt der Uhrzeit `uptime=NNNNs`, hat der Knoten beim
+Schreiben nicht einmal mehr `date` forken können; das ist für sich schon ein
+Befund (Speichermangel).
 
 Ein Firmware-Update wirft die Datei weg, das ist so gewollt: die Frage lautet
 immer „warum startet dieses Gerät auf DIESEM Stand neu". Der Deckel ist
