@@ -2,6 +2,7 @@
 # nf_running()/nf_count(): Prozesssuche, die sich selbst nie findet.
 # Aus neanderfunk-common, siehe dort die Begruendung.
 . /lib/gluon/neanderfunk/proc.sh
+. /lib/gluon/neanderfunk/reboot.sh
 # Shared helpers for the neanderfunk-hotfix checks. Sourced, not executed.
 #
 # Every single check can be switched off on a node:
@@ -191,13 +192,9 @@ now_reboot() {
 		return 0
 	fi
 	logger -s -t "$HOTFIX_TAG" -p 5 "rebooting... reason: $1"
-	LOG=/lib/gluon/neanderfunk-hotfix
-	[ ! -d $LOG ] && mkdir $LOG
-	LOG="$LOG/reboot.log"
-	# the first 5 times log the reason for a reboot in a file that is rebootsave
-	# (|| echo 0: on the very first reboot the file does not exist yet, and an
-	# empty $() would make the -gt comparison bail out with a shell error)
-	[ "$(wc -l < "$LOG" 2>/dev/null || echo 0)" -gt 5 ] || echo "$(date) $1" >> "$LOG"
+	# Gemeinsames Reboot-Log, siehe /lib/gluon/neanderfunk/reboot.sh: die
+	# ersten sechs Reboots je Firmwarestand, ueber alle Pakete zusammen.
+	nf_reboot_log "$1"
 	# -f overrides this, but never a flash write in progress: an interrupted
 	# sysupgrade bricks the node, and no check is worth that.
 	if [ -f /tmp/hotfix.autoupdater-flashing ] ; then

@@ -157,9 +157,14 @@ Weitere Befunde derselben Klasse:
 | `.*4th: .*, rebooting!` | **Reboot** durch linkcheck |
 | `\[watchdog\] .*, rebooting via sysrq` | **Reboot**, micrond war 15 min tot. Geht über `/dev/kmsg`, nicht über syslog — im weitergeleiteten Log also evtl. nicht sichtbar |
 
-Die ersten fünf Reboot-Gründe überleben den Neustart in
-`/lib/gluon/neanderfunk-hotfix/reboot.log`. Wer per SSH nachsieht: das ist die
-erste Datei.
+Die ersten sechs Reboot-Gründe überleben den Neustart in
+`/lib/gluon/neanderfunk/reboot.log` — eine Zeile je Reboot, mit Datum und dem
+vollen Grund, und seit dem gemeinsamen Log auch die von linkcheck. Wer per SSH
+nachsieht: das ist die erste Datei.
+
+Ein Firmware-Update wirft die Datei weg, das ist so gewollt: die Frage lautet
+immer „warum startet dieses Gerät auf DIESEM Stand neu". Der Deckel ist
+`neanderfunk.settings.reboot_log_max` (Vorgabe 6, `0` schaltet das Log ab).
 
 ## 5. Was daraus Zeitreihen werden sollten
 
