@@ -95,14 +95,26 @@ reboot_now() {
 	# Das ist die einzige Stelle hier, die den fork-freien Teil aufweicht.
 	# nf_reboot_log kommt dem entgegen: der Deckel ist oben schon aufgeloest,
 	# gezaehlt wird mit Builtins, und schlaegt selbst das date fehl, steht statt
-	# der Uhrzeit die Uptime in der Zeile. Vor dem sysrq, damit das folgende
-	# 's' (emergency sync) die Zeile noch auf den Flash bringt.
+	# der Uhrzeit die Uptime in der Zeile.
 	nf_reboot_log "[watchdog] $1"
 
-	echo s > /proc/sysrq-trigger 2>/dev/null
+	# Und dann die Zeile auch tatsaechlich auf den Flash bringen, BEVOR das 'b'
+	# kommt. Hier stand vorher 's' und unmittelbar danach 'b' - das hat die
+	# Zeile mit hoher Wahrscheinlichkeit nicht mehr gerettet: emergency_sync()
+	# haengt die Arbeit nur als work item ein und kehrt sofort zurueck, und
+	# unter Speichermangel faellt sie ganz aus, weil das work item per
+	# kmalloc(GFP_ATOMIC) geholt wird. nf_reboot_flush stoesst zusaetzlich ein
+	# sync im Hintergrund an (das uns nicht aufhalten kann) und wartet, notfalls
+	# fork-frei ueber /proc/uptime.
+	nf_reboot_flush
+
 	echo b > /proc/sysrq-trigger 2>/dev/null
-	# only reached if sysrq is unavailable; then at least try the normal way
-	reboot -f
+
+	# Nur erreicht, wenn sysrq nicht zur Verfuegung steht. Dann der regulaere
+	# Weg, und falls auch der haengenbleibt, noch einmal sysrq - im
+	# Hintergrund gestartet, sonst klebt die Shell mit im Syscall fest.
+	reboot -f &
+	nf_reboot_escalate
 }
 
 # The deadline is waited out in slices so being relieved can be noticed in

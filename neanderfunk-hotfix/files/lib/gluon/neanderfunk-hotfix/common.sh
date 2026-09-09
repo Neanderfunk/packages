@@ -203,8 +203,9 @@ now_reboot() {
 	if [ "$2" != "-f" ] && autoupdater_busy ; then
 		safety_exit "autoupdate running"
 	fi
-	sync
-	/sbin/reboot -f
+	# Flash-Sync ohne Haengenbleiben, reboot -f, und sysrq als Nachschlag, falls
+	# das Geraet danach noch laeuft. Siehe /lib/gluon/neanderfunk/reboot.sh.
+	nf_reboot_hard
 }
 
 # --- gemeinsame Sperre fuer WLAN-Eingriffe ----------------------------------
