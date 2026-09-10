@@ -28,6 +28,7 @@
 
 local uci = require('simple-uci').cursor()
 local wireless = require 'gluon.wireless'
+local sysconfig = require 'gluon.sysconfig'
 local iwinfo = require 'iwinfo'
 
 --- Gluons Kanal-Erhalt. Mit gesetztem gluon.wireless.preserve_channels laesst
@@ -68,12 +69,25 @@ end
 --- steht nur in uci. Am 2026-09-10 auf neun Testknoten nachgesehen: 7 von 17
 --- Radios lagen 3 bis 7 dB unter dem Wert, den der Kernel ohne Vorgabe nimmt.
 ---
---- Wer eine Sendeleistung bewusst gesetzt hat (Erweiterte Einstellungen) und
---- sie ueber Updates behalten will:
+--- Entfernt wird EINMAL je Knoten, danach steht in sysconfig ein Vermerk, und
+--- txpower wird nie wieder angefasst. Dieses Skript setzt ja selbst keine
+--- Sendeleistung mehr - jeder spaetere Wert kommt von jemandem, der ihn bewusst
+--- gesetzt hat (Erweiterte Einstellungen), und bleibt. Bei jedem Lauf zu
+--- entfernen ginge nicht: seit 2025.1 loest schon das Speichern der
+--- Erweiterten Einstellungen einen gluon-reconfigure aus, ein Domainwechsel tut
+--- es in beiden Staenden. Der Vermerk liegt in /lib/gluon/core/sysconfig/ und
+--- uebersteht damit jedes sysupgrade; bei einer Neuinstallation gibt es nichts
+--- zu entfernen, dann wird nur vermerkt.
+---
+--- Wer vor diesem einmaligen Lauf bewusst eine Sendeleistung gesetzt hat und
+--- sie behalten will:
 ---     uci set gluon.wireless.preserve_txpower='1' ; uci commit gluon
---- Der Schalter liegt absichtlich neben Gluons preserve_channels. Die Sektion
---- legt Gluons 190-preserve-wireless-channels bei jedem Lauf an; es setzt nur
---- preserve_channels und laesst andere Optionen der Sektion stehen.
+--- Solange der Schalter steht, wird nicht aufgeraeumt und nicht vermerkt;
+--- aufgeraeumt wird im ersten Lauf ohne ihn. Er liegt absichtlich neben Gluons
+--- preserve_channels. Die Sektion legt Gluons 190-preserve-wireless-channels
+--- bei jedem Lauf an; es setzt nur preserve_channels und laesst andere Optionen
+--- der Sektion stehen.
+local TXPOWER_CLEANED = 'neanderfunk_txpowerfix_unpinned'
 if uci:get('gluon', 'wireless') and uci:get('gluon', 'wireless', 'preserve_txpower') == nil then
 	-- sichtbar machen, was gilt: "uci show gluon.wireless" zeigt den Schalter
 	-- dann neben preserve_channels
@@ -81,9 +95,13 @@ if uci:get('gluon', 'wireless') and uci:get('gluon', 'wireless', 'preserve_txpow
 	uci:save('gluon')
 end
 
-local txpower_state = 'preserved'
-if not uci:get_bool('gluon', 'wireless', 'preserve_txpower') then
-	txpower_state = 'unset'
+local txpower_state
+if sysconfig[TXPOWER_CLEANED] then
+	txpower_state = 'untouched'
+elseif uci:get_bool('gluon', 'wireless', 'preserve_txpower') then
+	txpower_state = 'preserved'
+else
+	txpower_state = 'cleaned up once'
 	local pinned = {}
 	uci:foreach('wireless', 'wifi-device', function(section)
 		if section.txpower then
@@ -91,10 +109,11 @@ if not uci:get_bool('gluon', 'wireless', 'preserve_txpower') then
 		end
 	end)
 	for radio, txpower in pairs(pinned) do
-		log(radio .. ": removing pinned txpower " .. txpower .. " dBm")
+		log(radio .. ": removing pinned txpower " .. txpower .. " dBm (one-time cleanup)")
 		uci:delete('wireless', radio, 'txpower')
 	end
 	uci:save('wireless')
+	sysconfig[TXPOWER_CLEANED] = '1'
 end
 
 --- Which radio is 2.4 GHz, which is 5 GHz?
