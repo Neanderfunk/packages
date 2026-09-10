@@ -1,0 +1,62 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"PO-Revision-Date: 2026-09-10 00:00+0200\n"
+"Last-Translator: Neanderfunk <technik@neanderfunk.de>\n"
+"Language-Team: German\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Ports"
+msgstr "Ports"
+
+msgid "Assign a role to each network port. A port without a role is not used. These are the same settings as the interface roles on the \"Network\" page."
+msgstr "Hier bekommt jeder Netzwerk-Port seine Rolle. Ein Port ohne Rolle wird nicht verwendet. Es sind dieselben Einstellungen wie die Schnittstellen-Rollen auf der Seite „Netzwerk“."
+
+msgid "Roles"
+msgstr "Rollen"
+
+msgid "%s: own network interface, isolation works"
+msgstr "%s: eigene Netzwerkkarte, Isolation wirkt"
+
+msgid "%s: switch (%s), isolation works in hardware"
+msgstr "%s: Switch (%s), isoliert in Hardware"
+
+msgid "%s: switch (%s), no isolation in hardware"
+msgstr "%s: Switch (%s), keine Isolation in Hardware"
+
+msgid "How LAN ports with the \"Mesh\" role are joined. \"Isolated\" keeps them from forwarding to each other; on switches that cannot do this in hardware, \"separate bridges\" gives the same result with one mesh interface per port."
+msgstr "Wie LAN-Ports mit der Rolle „Mesh“ verbunden werden. „Isoliert“ verhindert, dass sie untereinander weiterleiten; auf Switches, die das nicht in Hardware können, erreichen „getrennte Bridges“ dasselbe mit einer Mesh-Schnittstelle je Port."
+
+msgid "\"Automatic\" currently means: %s."
+msgstr "„Automatisch“ bedeutet hier derzeit: %s."
+
+msgid "isolated"
+msgstr "isoliert"
+
+msgid "separate bridges"
+msgstr "getrennte Bridges"
+
+msgid "Only one LAN port has the \"Mesh\" role; the mode does not matter."
+msgstr "Nur ein LAN-Port hat die Rolle „Mesh“; der Modus spielt keine Rolle."
+
+msgid "Wired mesh between LAN ports"
+msgstr "Kabel-Mesh zwischen den LAN-Ports"
+
+msgid "Mode"
+msgstr "Modus"
+
+msgid "Automatic"
+msgstr "Automatisch"
+
+msgid "Isolated (one bridge)"
+msgstr "Isoliert (eine Bridge)"
+
+msgid "Isolated (separate bridges)"
+msgstr "Isoliert (getrennte Bridges)"
+
+msgid "Bridged, not isolated"
+msgstr "Gebridged, nicht isoliert"
