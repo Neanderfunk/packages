@@ -427,7 +427,7 @@ local lan_role = roles_of('iface_lan')
 local single_role = roles_of('iface_single')
 
 -- WAN-Adressen, nur wenn das Interface oben ist
-local wan_v4, wan_v6
+local wan_v4, wan_v6, wan_gw
 pcall(function()
 	local ubus = require('ubus')
 	local conn = ubus.connect()
@@ -435,6 +435,9 @@ pcall(function()
 	local w4 = conn:call('network.interface.wan', 'status', {})
 	if w4 and w4.up and w4['ipv4-address'] and w4['ipv4-address'][1] then
 		wan_v4 = w4['ipv4-address'][1].address
+	end
+	for _, r in ipairs((w4 and w4.up and w4.route) or {}) do
+		if r.target == '0.0.0.0' and tonumber(r.mask) == 0 and r.nexthop then wan_gw = r.nexthop break end
 	end
 	local w6 = conn:call('network.interface.wan6', 'status', {})
 	if w6 and w6.up then
@@ -469,17 +472,33 @@ end
 
 -- Mit WLAN kompakt in zwei Zeilen; ohne WLAN steht an Stelle der Radio-Tabelle
 -- die ausfuehrlichere Port-Tabelle (port_table, weiter unten).
+-- Die Adressen des Uplinks (br-wan) gehoeren zu der Gruppe mit der Rolle
+-- uplink - das ist meist WAN, kann aber auch LAN oder der einzige Port sein.
+-- Das Gateway steht in Klammern hinter der Rolle, die eigene v4 in Spalte C,
+-- die v6 (bis 39 Zeichen) auf einer Folgezeile ab Spalte B.
+local uplink_shown = false
+local function is_uplink(role)
+	if uplink_shown or not role or not role:find('uplink') then return false end
+	uplink_shown = true
+	return true
+end
+local function roletxt_gw(role)
+	return role .. (wan_gw and (' (' .. wan_gw .. ')') or '')
+end
+
 if has_wifi then
-	if single_role then
-		port_rows('Port', single_role, port_cells('lan'))
-	else
-		if wc then
-			port_rows('WAN', wan_role, wc, wan_v4 and ('v4 ' .. wan_v4) or '')
-			-- IPv6 bis 39 Zeichen: ab Spalte B, sonst bricht die Zeile um
-			if wan_v6 then row('', '', 'v6 ' .. wan_v6, '') end
+	local groups = single_role and { { 'Port', single_role, port_cells('lan') } }
+		or { { 'WAN', wan_role, wc }, { 'LAN', lan_role, port_cells('lan') } }
+	for _, g in ipairs(groups) do
+		local label, role, cells = g[1], g[2], g[3]
+		if cells and #cells > 0 then
+			if is_uplink(role) then
+				port_rows(label, roletxt_gw(role), cells, wan_v4 and ('v4 ' .. wan_v4) or '')
+				if wan_v6 then row('', '', 'v6 ' .. wan_v6, '') end
+			else
+				port_rows(label, role, cells)
+			end
 		end
-		local lc = port_cells('lan')
-		if lc and #lc > 0 then port_rows('LAN', lan_role, lc) end
 	end
 end
 
@@ -595,8 +614,9 @@ local function port_table(wiredmesh)
 			local name = (#swp > 1 and ('Port ' .. (p.index or p.num))) or (g.label == 'WAN' and 'Port wan' or 'Port')
 			place(TCOLS, { '', ' ' .. name, '', st and c('green', st) or c('dim', '-') })
 		end
-		if g.label == 'WAN' and (wan_v4 or wan_v6) then
-			row('', wan_v4 and ('v4 ' .. wan_v4) or '', wan_v6 and ('v6 ' .. wan_v6) or '', '')
+		if is_uplink(g.role) and (wan_gw or wan_v4 or wan_v6) then
+			row('', wan_gw and ('gw ' .. wan_gw) or '', wan_v4 and ('v4 ' .. wan_v4) or '', '')
+			if wan_v6 then row('', '', 'v6 ' .. wan_v6, '') end
 		end
 	end
 	for _, name in ipairs(rest) do
@@ -618,6 +638,54 @@ local limittxt = limit and string.format('%g/%gMbit',
 	(tonumber(uci:get('gluon', 'mesh_vpn', 'limit_ingress')) or 0) / 1000,
 	(tonumber(uci:get('gluon', 'mesh_vpn', 'limit_egress')) or 0) / 1000) or 'ohne Limit'
 
+-- Gegenstelle des Tunnels und Name des Supernodes (tunneldigger).
+--
+-- Nicht aus netstat: tunneldigger haelt zu JEDEM Broker einen UDP-Socket
+-- offen, die erste Zeile ist nicht die verbundene. Aus conntrack: die Proben
+-- zu den uebrigen Brokern sind still und laufen dort aus, der aktive Tunnel hat
+-- staendig Traffic und steht als [ASSURED] mit der hoechsten Restzeit da.
+-- Der Name: die Broker-Hostnamen aus uci per DNS aufloesen und mit der
+-- Gegenstelle vergleichen, davon der erste Teil ("kallisto").
+local function resolve(host)
+	local addrs = {}
+	local answer = sh('nslookup ' .. host):match('Name:.*$') or ''
+	for a in answer:gmatch('Address[^:]*:%s*(%S+)') do addrs[a] = true end
+	return addrs
+end
+
+local peer, supernode = '', nil
+if vpn_up and provider == 'tunneldigger' then
+	local brokers, ports = {}, {}
+	for _, b in ipairs(aslist(uci:get('tunneldigger', 'mesh_vpn', 'address'))) do
+		local host, port = b:match('^%[?(.-)%]?:(%d+)$')
+		if host then
+			table.insert(brokers, { host = host, port = port })
+			ports[port] = true
+		end
+	end
+
+	local best, peer_ip, peer_port = -1, nil, nil
+	for l in (readfile('/proc/net/nf_conntrack') or ''):gmatch('[^\n]+') do
+		if l:find(' udp ', 1, true) and l:find('[ASSURED]', 1, true) then
+			local timeout = tonumber(l:match('^%S+%s+%d+%s+%S+%s+%d+%s+(%d+)')) or 0
+			local dst, dport = l:match('dst=(%S+) sport=%d+ dport=(%d+)')
+			if dst and ports[dport] and timeout > best then
+				best, peer_ip, peer_port = timeout, dst, dport
+			end
+		end
+	end
+
+	if peer_ip then
+		peer = (peer_ip:find(':') and ('[' .. peer_ip .. ']') or peer_ip) .. ':' .. peer_port
+		for _, b in ipairs(brokers) do
+			if b.port == peer_port and (b.host == peer_ip or resolve(b.host)[peer_ip]) then
+				supernode = b.host:match('^[^.]+')
+				break
+			end
+		end
+	end
+end
+
 local vpnstate
 if not vpn_enabled then
 	vpnstate = c('dim', 'aus')
@@ -629,7 +697,8 @@ elseif vpn_up then
 		if st and st.uptime then since = ' seit ' .. duration(st.uptime) end
 		if conn then conn:close() end
 	end)
-	vpnstate = c('green', 'verbunden' .. since)
+	-- statt "verbunden" der Supernode, wenn er sich bestimmen laesst
+	vpnstate = c('green', (supernode or 'verbunden') .. since)
 elseif uptime < 300 then
 	vpnstate = c('yellow', 'baut auf')
 else
@@ -643,12 +712,6 @@ else
 	warn('red', 'VPN aktiviert, aber nicht verbunden' .. why)
 end
 
--- Gegenstelle des Tunnels, soweit netstat sie hergibt
-local peer = ''
-if vpn_up and provider == 'tunneldigger' then
-	peer = sh("netstat -unp | grep tunneldigger | awk '{print $5}' | head -n 1")
-	peer = trim(peer) or ''
-end
 
 row('VPN', vpnstate, trim((provider or '') .. ' ' .. (vpn_enabled and limittxt or '')),
 	vlen(peer) <= 80 - COLS[4] and peer or '')
