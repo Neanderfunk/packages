@@ -273,7 +273,10 @@ end
 row('Domain', site_code .. (domain and (' / ' .. domain) or '') .. (np and ('  NP:' .. np) or ''), cut(sname, room), '')
 
 row('Firmw.', readline('/lib/gluon/release') or '?',
-	'Gluon ' .. (readline('/lib/gluon/gluon-version') or '?'),
+	-- ohne "Gluon "-Praefix: die meisten Knoten auf der Karte laufen mit einem
+	-- Git-Stand wie v2021.1.2-21-gb015481d+ (23 Zeichen), mit Praefix passte
+	-- das nur bei 8 % in die Spalte
+	readline('/lib/gluon/gluon-version') or '?',
 	'OpenWrt ' .. (owrt.DISTRIB_RELEASE or '?'))
 
 -- RAM, Flash
