@@ -28,6 +28,11 @@ Domainwechsel.
   `200-wireless`. Scheitert die Abfrage, bleibt Gluons Wert stehen.
 * **txpower**: wird entfernt, sofern `gluon.wireless.preserve_txpower` nicht
   gesetzt ist.
+* **`gluon.wireless.preserve_channels`**: steht der Schalter, bleibt htmode
+  unangetastet - sonst waere die Breite nach jedem Update wieder die breiteste,
+  entgegen Gluons Zusage ("the channel width will not be reset"). Die Country
+  wird weiter gesetzt, sie folgt aus den ohnehin erhaltenen Kanaelen. Gesetzt
+  wird der Schalter von `neanderfunk-preserve-wifichannel`.
 
 Es schreibt nur Config (`uci:save()`, committet wird von Gluons `998-commit`).
 Kein `wifi reconf`, kein `iwinfo` als Kommando, kein `sleep`. Laufzeit auf einem

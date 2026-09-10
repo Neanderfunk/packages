@@ -24,6 +24,7 @@ define Package/$(PKG_NAME)/description
   already uses min(hardware, regulatory limit) for the current channel. To keep
   a deliberately set txpower across updates:
     uci set gluon.wireless.preserve_txpower='1'
+  With gluon.wireless.preserve_channels set, htmode is left alone.
 endef
 
 define Build/Prepare
