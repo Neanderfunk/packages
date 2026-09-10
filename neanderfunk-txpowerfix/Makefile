@@ -10,21 +10,20 @@ include $(TOPDIR)/../package/gluon.mk
 define Package/$(PKG_NAME)
   SECTION:=admin
   CATEGORY:=Workaround
-  DEPENDS:=+wireless-tools
-  TITLE:=Fixes txpower on some wifi nodes since OpenWrt chaos calmer
+  DEPENDS:=+gluon-core +libiwinfo-lua
+  TITLE:=Regulatory country and widest HT mode per radio, no txpower pinning
 endef
 
 define Package/$(PKG_NAME)/description
-  With chaoscalmer, wifi nodes seemed to be locked to less txpower than they could send.
-  First suggestions are, that this is a mistake in the upstream OpenWrt-Code. Even the
-  bugtrackers of OpenWrt are full of this.
-  The idea of this workaround is to derive a suitable regulatory country (DE/JP/TW/US,
-  based on the configured channels) and re-query the maximum available txpower/htmode
-  under it, since the shipped defaults are often more conservative than necessary. Runs
-  as a normal gluon-reconfigure upgrade script (every firmware upgrade, not just once),
-  since whether this actually helps is chipset-dependent and can't be detected up front.
-  iwinfo/iw calls are run with a 20s kill-9 timeout so a chipset that hangs on them
-  can't block the whole reconfigure run.
+  Derives a regulatory country (DE/JP/TW/US) from the configured channels and
+  sets the widest HT mode the hardware offers per radio. Runs as a normal
+  gluon-reconfigure upgrade script, including the one triggered by the config
+  mode's "Save & restart", and only writes config: no wifi restart, no iwinfo
+  command, no sleep - uhttpd kills the config-mode CGI after 60 s.
+  It no longer pins txpower and removes existing pins: without one the kernel
+  already uses min(hardware, regulatory limit) for the current channel. To keep
+  a deliberately set txpower across updates:
+    uci set gluon.wireless.preserve_txpower='1'
 endef
 
 define Build/Prepare
