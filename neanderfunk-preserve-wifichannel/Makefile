@@ -25,6 +25,8 @@ define Package/$(PKG_NAME)/description
   - key present (0 or 1): left alone
   - site or domain changed (nodeplacer, gluon-switch-domain): the site's
     channels are applied once, gluon.wireless.preserve_channels stays as it is
+  - outdoor mode (or an outdoor channel width) changed: the 5 GHz channels are
+    applied once, the other bands and gluon.wireless.preserve_channels stay
 endef
 
 define Build/Prepare
