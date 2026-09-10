@@ -17,7 +17,11 @@ actually running, not just what is configured:
 - node, image name, domain, firmware, uptime, load, free RAM and flash,
   autoupdater, contact and location
 - ports with link and speed from `/sys` (DSA) or `swconfig`, mapped to their
-  Gluon roles via `/etc/board.json`, WAN addresses
+  Gluon roles via `/etc/board.json`, WAN addresses. Ports split off into
+  further `gluon` interface sections (e.g. `iface_client`) or into own mesh
+  ports in `network` (`proto gluon_wired`, `gluon_preserve 1`, as set up by
+  the workshop guide "LAN-Ports trennen") get rows of their own; a port with a
+  role in more than one section is warned about.
 - VPN connected or not from `batctl if` (independent of the gateway TQ; right
   after boot it says "baut auf"), gateway with TQ and outgoing interface
 - clients (local, per band, mesh-wide), SSID and offline-SSID counters
@@ -48,7 +52,9 @@ It also installs these commands (all listed by `help`):
   boot and drops per port; `-r` shows the raw swconfig output.
 - `lanrole` / `wanrole` - show or set `gluon.iface_<lan|wan>.role`, checked
   like Gluon's Advanced Settings (client only alone, uplink+mesh allowed).
-  Removing the last uplink or a mesh role asks first (`-y` to skip).
+  Removing the last uplink or a mesh role asks first (`-y` to skip). Without
+  arguments it lists every role section including own mesh ports; it refuses
+  (also with `-y`) to give ports a role they already have elsewhere.
 - `reconf` - `gluon-reconfigure` and then reboot, detached in the background
   (survives the SSH session ending); log in `/tmp/reconf.log`, no reboot if
   the reconfigure fails.
