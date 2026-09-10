@@ -40,6 +40,68 @@ uci:foreach('gluon', 'interface', function(config)
 	end
 end)
 
+-- VLANs je Port: jedes VLAN ist eine eigene gluon.iface_*-Sektion mit
+-- name='<port>.<vid>'. netifd legt das VLAN-Unterinterface an, wenn es in einer
+-- Bridge oder einem Interface auftaucht. Neue VLANs kommen ohne Rolle an; ihre
+-- Zeile erscheint nach dem Speichern oben bei den Rollen. Gluon schreibt erst
+-- die Rollen, dann diese Listen - ein in derselben Speicherung entferntes VLAN
+-- bekommt also noch seine Rollen und wird danach geloescht.
+local physical = portroles.physical_ports(uci)
+if #physical > 0 then
+	local v = f:section(Section, translate('VLANs'), translate(
+		'Tagged VLANs on a single port, entered as VLAN IDs (1-4094). After saving, '
+		.. 'each VLAN appears as its own line under "Roles" (for example "lan3.5") '
+		.. 'and gets its roles there; a VLAN without a role is not used. The same '
+		.. 'VLAN ID can have different roles on different ports.'))
+	for _, port in ipairs(physical) do
+		local o = v:option(DynamicList, 'vlans_' .. port:gsub('[^%w]', '_'), port)
+		o.datatype = 'irange(1, 4094)'
+		o.optional = true
+		o.default = portroles.vlans_of(uci, port)
+		function o:write(data)
+			local want, have = {}, {}
+			for _, vid in ipairs(data or {}) do
+				want[tostring(tonumber(vid))] = true
+			end
+			for _, vid in ipairs(portroles.vlans_of(uci, port)) do
+				have[vid] = true
+			end
+			for vid in pairs(want) do
+				if not have[vid] then
+					uci:section('gluon', 'interface', portroles.vlan_section(port, vid), {
+						name = port .. '.' .. vid,
+					})
+				end
+			end
+			local remove = {}
+			uci:foreach('gluon', 'interface', function(sec)
+				local vid = type(sec.name) == 'string' and sec.name:match('^' .. port:gsub('%p', '%%%0') .. '%.(%d+)$')
+				if vid and not want[vid] then
+					table.insert(remove, sec['.name'])
+				end
+			end)
+			for _, name in ipairs(remove) do
+				uci:delete('gluon', name)
+			end
+		end
+	end
+end
+
+-- Hinweis fuer Ports hinter swconfig
+local groups = portroles.group_only_sections(uci)
+if #groups > 0 then
+	local names = {}
+	for _, g in ipairs(groups) do
+		table.insert(names, table.concat(g.ports, ' '))
+	end
+	f:section(Section, translate('Ports behind a switch without per-port access'), translatef(
+		'%s: the ports behind this interface sit on a switch configured with swconfig '
+		.. 'and appear as a single interface. Roles apply to all of them together; single '
+		.. 'ports and VLANs per port cannot be set here. On such a switch a VLAN spans '
+		.. 'the whole switch, so the same VLAN ID could not have different roles on '
+		.. 'different ports.', table.concat(names, ', ')))
+end
+
 -- Was die Hardware kann, fuer die Ports, die jetzt im LAN-Mesh sind
 local mesh_ports = portroles.mesh_other_ports(uci)
 local facts = {}
