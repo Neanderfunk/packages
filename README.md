@@ -37,6 +37,10 @@ For the previous branch, see `v2023.2.x`.
 How Gluon's `gluon-reconfigure` works, and what upgrade scripts in this feed
 rely on: [docs/gluon-reconfigure.md](docs/gluon-reconfigure.md).
 
+Which devices in the field drive their LAN ports via DSA and which via swconfig,
+and whether Gluon 2025.1 changes that:
+[docs/feldgeraete-dsa-swconfig.md](docs/feldgeraete-dsa-swconfig.md).
+
 ### neanderfunk-wifi-blackout ###
 
 detects a wifi blackout - the radios are up, but not a single station is
