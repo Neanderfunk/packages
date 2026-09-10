@@ -54,6 +54,14 @@ and the IPv6 anycast address gone unreachable. Escalates from a wifi restart to
 a reboot; each check is individually switchable.
 See [](neanderfunk-linkcheck/README.md)
 
+### neanderfunk-preserve-wifichannel
+
+Makes `wifi24.preserve_channels` from the site.conf the default for Gluon's uci
+option `gluon.wireless.preserve_channels` - Gluon itself never read the site
+key. Sets it where it is missing (on fresh installs once the config mode wizard
+is done), leaves an existing 0 or 1 alone, and applies the site's channels once
+after a site or domain switch. See [](neanderfunk-preserve-wifichannel/README.md)
+
 ### neanderfunk-ssid-changer
 
 Changes the SSID to an Offline-SSID so clients don't connect to an offline WiFi,
