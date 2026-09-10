@@ -36,7 +36,26 @@ def blob(gluon, ref, path):
 # Module, die ein Paket selbst mitbringt.
 EXTERNAL = {'simple-uci', 'iwinfo', 'posix', 'ubus', 'uci', 'nixio', 'cjson',
             'os', 'io', 'string', 'table', 'math', 'bit32', 'bit',
-            'platform_info', 'nodeplacer', 'jsonc', 'json'}
+            'platform_info', 'nodeplacer', 'jsonc', 'json',
+            # lua-hash (C-Modul aus Gluons packages/gluon/libs); gluon.util
+            # laedt es selbst, gluon-core haengt davon ab
+            'hash'}
+
+
+def feed_lua_modules(feed):
+    """Lua-Module, die Pakete im Feed selbst mitbringen
+    (<paket>/{luasrc,files}/usr/lib/lua/<a>/<b>.lua -> a.b). Die gibt es im
+    Gluon-Baum nicht, und das ist richtig so."""
+    mods = set()
+    for name in os.listdir(feed):
+        for sub in ('luasrc', 'files'):
+            base = os.path.join(feed, name, sub, 'usr', 'lib', 'lua')
+            for root, _, files in os.walk(base):
+                for f in files:
+                    if f.endswith('.lua'):
+                        rel = os.path.relpath(os.path.join(root, f[:-4]), base)
+                        mods.add(rel.replace(os.sep, '.'))
+    return mods
 
 # gluon.site gibt es im Baum nicht als Datei: das Modul wird beim Bauen aus der
 # site.conf erzeugt (gluon-site). Vorhanden ist es trotzdem immer, und seine
@@ -47,6 +66,7 @@ GENERATED = {'gluon.site'}
 def collect(feed):
     pkgs = defaultdict(lambda: {'deps': set(), 'requires': set(),
                                 'api': set(), 'paths': set()})
+    own = feed_lua_modules(feed)
     for name in sorted(os.listdir(feed)):
         d = os.path.join(feed, name)
         if not name.startswith('neanderfunk-') or not os.path.isdir(d):
@@ -69,7 +89,7 @@ def collect(feed):
                 mods = set()
                 for m in re.finditer(r"""require\s*\(?\s*['"]([\w.\-]+)['"]""", txt):
                     mod = m.group(1)
-                    if mod.split('.')[0] not in EXTERNAL:
+                    if mod.split('.')[0] not in EXTERNAL and mod not in own:
                         p['requires'].add(mod); mods.add(mod)
                 for mod in mods:
                     short = mod.split('.')[-1]
