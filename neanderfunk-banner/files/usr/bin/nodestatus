@@ -646,11 +646,33 @@ local limittxt = limit and string.format('%g/%gMbit',
 -- staendig Traffic und steht als [ASSURED] mit der hoechsten Restzeit da.
 -- Der Name: die Broker-Hostnamen aus uci per DNS aufloesen und mit der
 -- Gegenstelle vergleichen, davon der erste Teil ("kallisto").
-local function resolve(host)
-	local addrs = {}
-	local answer = sh('nslookup ' .. host):match('Name:.*$') or ''
-	for a in answer:gmatch('Address[^:]*:%s*(%S+)') do addrs[a] = true end
-	return addrs
+--
+-- Fehlerfaelle: ein Name ohne Eintrag liefert nichts, ein nicht erreichbarer
+-- Resolver haengt nslookup 5 s je Name - bei sechs Brokern eine halbe Minute
+-- Login. Deshalb alle Namen parallel, und ein Waechter beendet sie nach 2 s
+-- (ein timeout-Applet hat busybox hier nicht, sleep keine Bruchteile). Im
+-- Normalfall kommt die Antwort aus dem Cache von dnsmasq in Millisekunden. Was
+-- nicht rechtzeitig kommt, zaehlt nicht - dann bleibt es bei "verbunden".
+local function resolve_all(hosts)
+	local list = {}
+	for _, h in ipairs(hosts) do
+		-- kommt aus uci, landet in einer Shell-Zeile: nur Hostnamen-Zeichen
+		if h:match('^[%w%.%-]+$') then table.insert(list, h) end
+	end
+	local result = {}
+	if #list == 0 then return result end
+	local hs = table.concat(list, ' ')
+	local out = sh('d=$(mktemp -d) || exit 0; p=""; ' ..
+		'for h in ' .. hs .. '; do nslookup "$h" > "$d/$h" 2>/dev/null </dev/null & p="$p $!"; done; ' ..
+		'( sleep 2; kill $p ) >/dev/null 2>&1 </dev/null & w=$!; ' ..
+		'wait $p 2>/dev/null; kill $w 2>/dev/null; ' ..
+		'for h in ' .. hs .. '; do awk -v h="$h" \'/^Name:/{n=1} n && /^Address/{print h" "$NF}\' "$d/$h"; done; ' ..
+		'rm -rf "$d"')
+	for h, a in out:gmatch('(%S+) (%S+)') do
+		result[h] = result[h] or {}
+		result[h][a] = true
+	end
+	return result
 end
 
 local peer, supernode = '', nil
@@ -677,10 +699,18 @@ if vpn_up and provider == 'tunneldigger' then
 
 	if peer_ip then
 		peer = (peer_ip:find(':') and ('[' .. peer_ip .. ']') or peer_ip) .. ':' .. peer_port
+		-- nur Broker mit passendem Port; als IP eingetragene ohne DNS
+		local ask = {}
 		for _, b in ipairs(brokers) do
-			if b.port == peer_port and (b.host == peer_ip or resolve(b.host)[peer_ip]) then
-				supernode = b.host:match('^[^.]+')
-				break
+			if b.port == peer_port then
+				if b.host == peer_ip then ask = nil supernode = b.host break end
+				table.insert(ask, b.host)
+			end
+		end
+		if ask then
+			local addrs = resolve_all(ask)
+			for _, h in ipairs(ask) do
+				if addrs[h] and addrs[h][peer_ip] then supernode = h:match('^[^.]+') break end
 			end
 		end
 	end
