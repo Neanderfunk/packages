@@ -1,8 +1,8 @@
 #!/usr/bin/lua
 
--- neanderfunk-preserve-wifichannel, Teil 2 von 2: laeuft nach 200-wireless und
+-- neanderfunk-preserve-wifichannel, letzter Teil: laeuft nach 200-wireless und
 -- nach neanderfunk-txpowerfix (215), damit beide im selben Lauf noch den
--- aufgehobenen Schalter sehen. Siehe Teil 1 und das README.
+-- aufgehobenen Schalter sehen. Siehe Teil 1 (185), Teil 205 und das README.
 
 local site = require 'gluon.site'
 local sysconfig = require 'gluon.sysconfig'
@@ -11,6 +11,7 @@ local uci = require('simple-uci').cursor()
 
 local PENDING = 'neanderfunk_preserve_wifichannel_pending'
 local CONTEXT = 'neanderfunk_preserve_wifichannel_context'
+local OUTDOOR = 'neanderfunk_preserve_wifichannel_outdoor'
 local LIFTED = '/tmp/neanderfunk-preserve-wifichannel.lifted'
 
 --- Tag "nf-" statt "neanderfunk-": logd kuerzt Syslog-Tags auf 31 Zeichen, aus
@@ -23,7 +24,25 @@ local function log(message)
 end
 
 -- 1. Aufhebung aus Teil 1 zuruecknehmen. Zuerst, damit nichts dazwischenkommt.
+-- Vorher die Breite der Radios zurueckschreiben, die Teil 1 bei einem reinen
+-- Outdoor-Wechsel festgehalten hat (Kanal und Kanalliste hat Teil 205 schon
+-- zurueckgeschrieben, vor txpowerfix).
 if unistd.access(LIFTED) == 0 then
+	local f = io.open(LIFTED)
+	if f then
+		local changed = false
+		for line in f:lines() do
+			local radio, option, value = line:match('^restore\t([^\t]+)\t([^\t]+)\t(.*)$')
+			if radio and option == 'htmode' then
+				uci:set('wireless', radio, option, value ~= '' and value or nil)
+				changed = true
+			end
+		end
+		f:close()
+		if changed then
+			uci:save('wireless')
+		end
+	end
 	uci:set('gluon', 'wireless', 'preserve_channels', true)
 	uci:save('gluon')
 	os.remove(LIFTED)
@@ -52,6 +71,16 @@ if pending then
 	end
 end
 
--- 3. Stand merken, fuer den Vergleich im naechsten Lauf. sysconfig schreibt
--- nur, wenn sich der Wert aendert.
+-- 3. Stand merken, fuer den Vergleich im naechsten Lauf: Site/Domain und
+-- Outdoor-Stand (Aufbau wie outdoor_state() in Teil 1). sysconfig schreibt nur,
+-- wenn sich der Wert aendert.
 sysconfig[CONTEXT] = site.site_code() .. '/' .. (uci:get('gluon', 'core', 'domain') or '')
+
+local parts = {}
+for k, v in pairs(uci:get_all('gluon', 'wireless') or {}) do
+	if k == 'outdoor' or k:match('^outdoor_.+_htmode$') then
+		table.insert(parts, k .. '=' .. tostring(v))
+	end
+end
+table.sort(parts)
+sysconfig[OUTDOOR] = table.concat(parts, ' ')
