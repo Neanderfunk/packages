@@ -89,6 +89,16 @@ and the IPv6 anycast address gone unreachable. Escalates from a wifi restart to
 a reboot; each check is individually switchable.
 See [](neanderfunk-linkcheck/README.md)
 
+### neanderfunk-port-roles
+
+One role per network port instead of per port group: Gluon's multi-port
+interface sections (all LAN ports in `gluon.iface_lan`) are split into one
+section per port, on DSA switches and separate network interfaces. Plus a
+choice how LAN ports with the mesh role are joined - bridged, isolated, or one
+bridge and batman-adv interface per port for switches that cannot isolate in
+hardware (`auto` picks). "Ports" page in the config mode. Gluon 2025.1 only.
+See [](neanderfunk-port-roles/README.md)
+
 ### neanderfunk-preserve-wifichannel
 
 Makes `wifi24.preserve_channels` from the site.conf the default for Gluon's uci
