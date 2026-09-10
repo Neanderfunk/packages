@@ -34,6 +34,9 @@ where 2025.1 makes them necessary.
 
 For the previous branch, see `v2023.2.x`.
 
+How Gluon's `gluon-reconfigure` works, and what upgrade scripts in this feed
+rely on: [docs/gluon-reconfigure.md](docs/gluon-reconfigure.md).
+
 ### neanderfunk-wifi-blackout ###
 
 detects a wifi blackout - the radios are up, but not a single station is
