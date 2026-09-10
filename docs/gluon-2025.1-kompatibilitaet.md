@@ -87,10 +87,10 @@ in 2025.1 aber verbindlich und vollständig. Kein Handlungsbedarf, solange wir
 keine eigenen `wifi-iface`-Sektionen anlegen — täten wir das, bräuchten sie
 `gluon_preserve`.
 
-Für **ch13to9** (`209-`) und **txpowerfix** (`215-`) ist es unkritisch: die
-schreiben in `wifi-device`-Sektionen (`channel`, `country`, `htmode`), nicht in
-`wifi-iface`, und laufen nach `200-wireless`. Regeneriert werden nur die
-`wifi-iface`-Sektionen.
+Für **txpowerfix** (`215-`) ist es unkritisch: es schreibt in
+`wifi-device`-Sektionen (`country`, `htmode`), nicht in `wifi-iface`, und läuft
+nach `200-wireless`. Regeneriert werden nur die `wifi-iface`-Sektionen.
+(`ch13to9` stand hier ebenfalls; das Paket ist seit 2026-09-10 entfernt.)
 
 ### 1.4 tunneldigger ist aus Gluon entfernt
 
@@ -210,7 +210,7 @@ heute detektieren:
 * `gluon_preserve` für eigene `wifi-iface`-Sektionen
 
 Damit ließen sich unsere Band-Erkennungen (`radio_is_wifi6`, die 2,4-/5-GHz-Logik
-in txpowerfix und ch13to9) später auf eine Abfrage statt auf Heuristik
+in txpowerfix) später auf eine Abfrage statt auf Heuristik
 umstellen. Solange das Bestehende funktioniert, ist das reine Kür.
 
 ## 6. Nebenbefund: Ethernet-Namen auf x86
