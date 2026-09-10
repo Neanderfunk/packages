@@ -11,6 +11,10 @@
 # client nur allein, uplink+mesh geht. Geschrieben wird gluon.iface_<if>.role,
 # wirksam erst nach gluon-reconfigure und Neustart - dafuer gibt es "reconf".
 # Auf Geraeten mit nur einem Port gibt es nur iface_single.
+#
+# Ohne Rolle zeigt es auch weitere Sektionen (iface_client ...) und eigene
+# Mesh-Ports in network. Eine Rolle fuer Ports, die dort schon eine haben,
+# setzt es nicht.
 
 NAME=${0##*/}
 IF=${NAME%role}
@@ -32,10 +36,47 @@ for a in "$@"; do
 	esac
 done
 
+# Ports einer Gluon-Sektion: "/lan" usw. verweisen auf sysconfig
+ports_of() {
+	local n
+	n=$(uci -q get gluon.$1.name)
+	case "$n" in
+		/*) cat "/lib/gluon/core/sysconfig/${n#/}_ifname" 2>/dev/null ;;
+		*) echo "$n" ;;
+	esac
+}
+
+gluon_sections() {
+	uci -q show gluon | sed -n 's/^gluon\.\([^.=]*\)=interface$/\1/p'
+}
+
+# eigene Mesh-Ports in network (proto gluon_wired, gluon_preserve=1), wie sie
+# die Werkstatt-Anleitung "LAN-Ports trennen" anlegt
+own_mesh_sections() {
+	uci -q show network | sed -n "s/^network\.\([^.=]*\)\.gluon_preserve='1'$/\1/p" | while read -r s; do
+		[ "$(uci -q get network.$s.proto)" = gluon_wired ] && echo "$s"
+	done
+}
+
 show() {
-	for s in iface_wan iface_lan iface_single; do
-		uci -q get gluon.$s >/dev/null || continue
-		printf '%-7s %s\n' "${s#iface_}" "$(uci -q get gluon.$s.role || echo '(keine)')"
+	for s in $(gluon_sections); do
+		printf '%-12s %-14s %s\n' "${s#iface_}" "$(uci -q get gluon.$s.role || echo '(keine)')" "$(ports_of $s)"
+	done
+	for s in $(own_mesh_sections); do
+		printf '%-12s %-14s %s\n' "$s" 'mesh (eigen)' "$(uci -q get network.$s.ifname || uci -q get network.$s.device)"
+	done
+}
+
+# Ports, die ausser $1 schon eine Rolle haben: andere Gluon-Sektionen mit
+# Rolle und eigene Mesh-Ports
+ports_elsewhere() {
+	local s
+	for s in $(gluon_sections); do
+		[ "$s" = "$1" ] && continue
+		[ -n "$(uci -q get gluon.$s.role)" ] && echo "$(ports_of $s) "
+	done
+	for s in $(own_mesh_sections); do
+		echo "$(uci -q get network.$s.ifname || uci -q get network.$s.device) "
 	done
 }
 
@@ -79,8 +120,23 @@ esac
 
 CUR=$(uci -q get gluon.$SEC.role)
 if [ "$NEW" = "$CUR" ]; then
-	echo "$IF: unveraendert ($CUR)"
+	echo "$IF: unveraendert (${CUR:-keine})"
 	exit 0
+fi
+
+# Ports, die schon anderswo eine Rolle haben, bekaemen sonst zwei - Gluon
+# nimmt dann irgendeine davon. Das laesst sich auch mit -y nicht erzwingen.
+if [ -n "$NEW" ]; then
+	ELSE=" $(echo $(ports_elsewhere $SEC)) "
+	CLASH=
+	for p in $(ports_of $SEC); do
+		case "$ELSE" in *" $p "*) CLASH="$CLASH $p" ;; esac
+	done
+	if [ -n "$CLASH" ]; then
+		echo "$IF: nicht gesetzt - diese Ports haben schon eine andere Rolle:$CLASH" >&2
+		echo "Belegung zeigt: ${NAME}   (aufraeumen: Werkstatt-Anleitung \"LAN-Ports trennen\", Schritt 3)" >&2
+		exit 1
+	fi
 fi
 
 # riskant: danach hat kein Interface mehr uplink, oder dieses verliert mesh
@@ -89,7 +145,7 @@ case " $CUR " in
 	*" uplink "*)
 		case " $NEW " in *" uplink "*) ;; *)
 			OTHER=0
-			for s in iface_wan iface_lan iface_single; do
+			for s in $(gluon_sections); do
 				[ $s = $SEC ] && continue
 				case " $(uci -q get gluon.$s.role) " in *" uplink "*) OTHER=1 ;; esac
 			done
