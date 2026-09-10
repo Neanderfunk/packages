@@ -563,9 +563,15 @@ for _, radio in ipairs(radios) do
 		elseif (s['.name'] or ''):match('^owe_') then owe = entry end
 	end)
 
-	local function state(entry)
+	-- channel=auto heisst: kein Mesh auf diesem Radio, so vorgesehen. uci laesst
+	-- das Mesh-Interface dabei eingeschaltet, netifd scheitert beim Join ohne
+	-- Frequenz ("Channel is disabled") - das ist kein Fehler, nur Rauschen.
+	local mesh_by_auto = uci_ch == 'auto'
+
+	local function state(entry, is_mesh)
 		if not entry then return c('dim', '-') end
 		if entry.disabled or rdisabled then return c('dim', 'aus') end
+		if is_mesh and mesh_by_auto and not (entry.name and operup(entry.name)) then return c('dim', 'aus') end
 		if entry.name and operup(entry.name) then return c('green', 'an') end
 		return c('red', 'DOWN')
 	end
@@ -608,8 +614,8 @@ for _, radio in ipairs(radios) do
 		warn('yellow', label .. ' (' .. band .. ') ist abgeschaltet')
 	else
 		place(RCOLS, { c('bold', label), band, chtxt, widthtxt, modetxt, txtxt,
-			state(ap), state(mesh), tostring(clients), mesh and mesh.name and operup(mesh.name) and neighbour_cell(mesh.name) or '' })
-		if mesh and not mesh.disabled and not (mesh.name and operup(mesh.name)) then
+			state(ap), state(mesh, true), tostring(clients), mesh and mesh.name and operup(mesh.name) and neighbour_cell(mesh.name) or '' })
+		if mesh and not mesh.disabled and not mesh_by_auto and not (mesh.name and operup(mesh.name)) then
 			warn('red', label .. ' (' .. band .. '): Mesh konfiguriert, aber ' .. (mesh.name or 'Mesh-Interface') .. ' ist nicht aktiv')
 		end
 		if ap and not ap.disabled and not (ap.name and operup(ap.name)) then
