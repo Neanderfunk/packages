@@ -101,6 +101,15 @@ local function cut(s, n)
 	return out .. '~'
 end
 
+-- Kuerzt von links: das Ende bleibt stehen. Fuer Hostnamen und Image-Namen,
+-- bei denen gerade der Schluss zaehlt ("-EG", "-OG", "-v2").
+local function cut_left(s, n)
+	if vlen(s) <= n then return s end
+	local chars = {}
+	for ch in s:gmatch('[%z\1-\127\194-\244][\128-\191]*') do table.insert(chars, ch) end
+	return '~' .. table.concat(chars, '', #chars - (n - 2))
+end
+
 -- Setzt Zellen an feste Startspalten. Laeuft eine Zelle ueber, bekommt die
 -- naechste nur ein Leerzeichen Abstand - die Zeile verrutscht, der Rest nicht.
 local function place(cols, cells)
@@ -224,11 +233,25 @@ if not image_name then
 	pcall(function() image_name = require('platform_info').get_image_name() end)
 end
 
-row('Knoten', c('cyan', hostname), model, node_id)
-row('Image', image_name or '?', owrt.DISTRIB_TARGET or '', 'Kernel ' .. (readline('/proc/sys/kernel/osrelease') or '?'))
+-- Breiten gemessen an den 1205 Knoten von map.eulenfunk.de (10.09.2026):
+-- Hostname ueber 23 Zeichen bei 33 %, bis 57 -> eigene Zeile. Modell ueber 23
+-- bei 22 %, Image bei 11 %, Kontakt bei 27 % -> Spalte A und B (47 Zeichen),
+-- das passt bis auf 0,2 % der Kontakte.
+local AB = COLS[4] - COLS[2] - 1
 
--- Der Name darf Spalte B und C belegen, C bleibt in dieser Zeile frei.
-row('Domain', site_code .. (domain and (' / ' .. domain) or ''), cut(site_name, 80 - COLS[3]), '')
+model = model:gsub('%s+', ' ')
+row('Knoten', c('cyan', cut_left(hostname, 80 - COLS[2])), '', '')
+row('Modell', cut(model, AB), '', node_id)
+row('Image', cut_left(image_name or '?', AB), '', owrt.DISTRIB_TARGET or '')
+
+-- Domainname in Spalte B und C. Zu lang ist er bei 44 % unserer Domains,
+-- immer wegen eines Zusatzes wie "(Neanderfunk)" am Ende oder "Freifunk "
+-- am Anfang - der faellt zuerst weg, gekuerzt wird erst danach.
+local sname = site_name
+local room = 80 - COLS[3]
+if vlen(sname) > room then sname = sname:gsub('%s*%b()$', '') end
+if vlen(sname) > room then sname = sname:gsub('^Freifunk ', '') end
+row('Domain', site_code .. (domain and (' / ' .. domain) or ''), cut(sname, room), '')
 
 row('Firmw.', readline('/lib/gluon/release') or '?',
 	'Gluon ' .. (readline('/lib/gluon/gluon-version') or '?'),
@@ -257,8 +280,8 @@ local overlay_ro = (readfile('/proc/mounts') or ''):find('/ overlay ro,', 1, tru
 local l1, l5, l15 = (readline('/proc/loadavg') or ''):match('^(%S+) (%S+) (%S+)')
 local loadwarn = tonumber(l5) and tonumber(l5) > nproc
 local loadtxt = 'load ' .. (l1 or '?') .. ' ' .. (l5 or '?') .. ' ' .. (l15 or '?')
-row('System', 'up ' .. duration(uptime), loadwarn and c('yellow', loadtxt) or loadtxt,
-	nproc .. (nproc == 1 and ' Kern' or ' Kerne'))
+row('System', 'up ' .. duration(uptime) .. '  ' .. nproc .. (nproc == 1 and ' Kern' or ' Kerne'),
+	loadwarn and c('yellow', loadtxt) or loadtxt, 'Kernel ' .. (readline('/proc/sys/kernel/osrelease') or '?'))
 row('Frei', memwarn and c('yellow', memtxt) or memtxt,
 	(flashwarn or overlay_ro) and c('red', flashtxt) or flashtxt, '')
 
@@ -290,11 +313,13 @@ local lat = uci:get_first('gluon-node-info', 'location', 'latitude')
 local lon = uci:get_first('gluon-node-info', 'location', 'longitude')
 local loctxt
 if lat and lon then
-	loctxt = string.format('%.5f,%.5f', tonumber(lat) or 0, tonumber(lon) or 0) .. (share and '' or c('dim', ' (privat)'))
+	loctxt = string.format('%.5f,%.5f', tonumber(lat) or 0, tonumber(lon) or 0)
+	-- nicht uebermittelt: gelb, die Warnung unten sagt warum
+	if not share then loctxt = c('yellow', loctxt) end
 else
 	loctxt = c('yellow', 'kein Standort')
 end
-row('Kontakt', (contact and contact ~= '') and contact or c('yellow', 'kein Kontakt'), 'Standort ' .. loctxt, '')
+row('Kontakt', (contact and contact ~= '') and cut(contact, AB) or c('yellow', 'kein Kontakt'), '', loctxt)
 if not contact or contact == '' then warn('yellow', 'kein Kontakt eingetragen') end
 if not (lat and lon) then
 	warn('yellow', 'kein Standort eingetragen')
@@ -398,19 +423,37 @@ pcall(function()
 	conn:close()
 end)
 
+-- Rolle in Spalte A, die Ports ab Spalte B, bei vielen Ports auf Folgezeilen
+local function port_rows(label, role, cells, extra)
+	local lines, cur = {}, ''
+	for _, cell in ipairs(cells or {}) do
+		if cur ~= '' and vlen(cur) + 1 + vlen(cell) > (extra and (COLS[4] - COLS[3] - 1) or (80 - COLS[3])) then
+			table.insert(lines, cur)
+			cur = cell
+		else
+			cur = cur == '' and cell or (cur .. ' ' .. cell)
+		end
+	end
+	if cur ~= '' or #lines == 0 then table.insert(lines, cur) end
+	for i, l in ipairs(lines) do
+		if i == 1 then row(label, role or '', l, extra or '') else row('', '', l, '') end
+	end
+end
+
 if single_role then
-	row('Port', join(port_cells('lan') or {}, ' '), single_role, '')
+	port_rows('Port', single_role, port_cells('lan'))
 else
 	local wc = port_cells('wan')
 	if wc then
 		for _, cell in ipairs(wc) do
 			if not cell:gsub('\27%[[%d;]*m', ''):match(':%-$') then wan_link = true end
 		end
-		row('WAN', join(wc, ' '), wan_role or '', wan_v4 and ('v4 ' .. wan_v4) or '')
-		if wan_v6 then row('', '', '', 'v6 ' .. wan_v6) end
+		port_rows('WAN', wan_role, wc, wan_v4 and ('v4 ' .. wan_v4) or '')
+		-- IPv6 bis 39 Zeichen: ab Spalte B, sonst bricht die Zeile um
+		if wan_v6 then row('', '', 'v6 ' .. wan_v6, '') end
 	end
 	local lc = port_cells('lan')
-	if lc and #lc > 0 then row('LAN', join(lc, ' '), lan_role or '', '') end
+	if lc and #lc > 0 then port_rows('LAN', lan_role, lc) end
 end
 
 local wan_mesh = wan_role and wan_role:find('mesh')
@@ -431,9 +474,9 @@ local vpn_enabled = uci:get('gluon', 'mesh_vpn', 'enabled') == '1'
 local vpn_up = batif['mesh-vpn'] == 'active'
 local provider = nodeinfo.network and nodeinfo.network.mesh_vpn and nodeinfo.network.mesh_vpn.provider or ''
 local limit = uci:get('gluon', 'mesh_vpn', 'limit_enabled') == '1'
-local limittxt = limit and string.format('Limit %g/%g Mbit',
+local limittxt = limit and string.format('%g/%gMbit',
 	(tonumber(uci:get('gluon', 'mesh_vpn', 'limit_ingress')) or 0) / 1000,
-	(tonumber(uci:get('gluon', 'mesh_vpn', 'limit_egress')) or 0) / 1000) or 'kein Limit'
+	(tonumber(uci:get('gluon', 'mesh_vpn', 'limit_egress')) or 0) / 1000) or 'ohne Limit'
 
 local vpnstate
 if not vpn_enabled then
@@ -467,7 +510,9 @@ if vpn_up and provider == 'tunneldigger' then
 	peer = trim(peer) or ''
 end
 
-row('VPN', vpnstate, (provider ~= '' and provider or '') .. (peer ~= '' and (' ' .. peer) or ''), vpn_enabled and limittxt or '')
+row('VPN', vpnstate, trim((provider or '') .. ' ' .. (vpn_enabled and limittxt or '')),
+	vlen(peer) <= 80 - COLS[4] and peer or '')
+if vlen(peer) > 80 - COLS[4] then row('', 'Gegenstelle ' .. peer, '', '') end
 
 if vpn_enabled and wan_mesh then
 	warn('yellow', 'Mesh-on-WAN und VPN gleichzeitig aktiv')
@@ -533,8 +578,12 @@ uci:foreach('wireless', 'wifi-device', function(s)
 end)
 table.sort(radios)
 
+-- Die Regdomain steht links in der Kopfzeile: sie bestimmt die Grenzen der
+-- ganzen Tabelle (Kanaele, TX/max).
+local regdom
+for _, r in ipairs(radios) do regdom = regdom or uci:get('wireless', r, 'country') end
 if #radios > 0 then
-	place(RCOLS, { '', c('dim', 'Band'), c('dim', 'Kanal'), c('dim', 'Breite'), c('dim', 'Mode'),
+	place(RCOLS, { c('bold', regdom or '??'), c('dim', 'Band'), c('dim', 'Kanal'), c('dim', 'Breite'), c('dim', 'Mode'),
 		c('dim', 'TX/max'), c('dim', 'AP'), c('dim', 'Mesh'), c('dim', 'Clients'), c('dim', 'Nachbarn') })
 end
 
@@ -644,9 +693,8 @@ if #wiredmesh > 0 then
 	place(RCOLS, { c('bold', 'Kabel'), join(wiredmesh, ','), '', '', '', '', '', c('green', 'an'), '', nb })
 end
 
-if #radios > 0 then
-	row('', c('dim', 'Land ' .. (country or '?') .. (outdoor and '  outdoor-Modus an' or '') ..
-		(any_uci_tx and '  * Sendeleistung per uci gesetzt' or '')), '', '')
+if outdoor or any_uci_tx then
+	row('', c('dim', ((outdoor and 'outdoor-Modus an  ' or '') .. (any_uci_tx and '* Sendeleistung per uci gesetzt' or '')):gsub('%s+$', '')), '', '')
 end
 
 -- Insel: kein Mesh-Nachbar und kein VPN
