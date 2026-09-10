@@ -1,0 +1,90 @@
+#!/usr/bin/lua
+
+-- SPDX-License-Identifier: BSD-3-Clause
+-- SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+--
+-- neanderfunk-port-roles, Teil 2: laeuft nach 210-interface-mesh und vor
+-- 300-firewall-rules. Setzt den Mesh-Modus fuer die LAN-Mesh-Ports um
+-- (gluon.port_roles.mesh_mode). Siehe README.
+--
+-- 210 legt alle Mesh-Ports, die nicht zugleich Uplink sind, in eine Schnittstelle
+-- mesh_other: ein Port direkt, mehrere als Bridge mit "isolate" an jedem Port.
+--
+--   isolate   so lassen (Gluons eigener Weg)
+--   bridge    "isolate" entfernen: eine gemeinsame Bridge
+--   separate  mesh_other durch eine Bridge je Port ersetzen, jede ein eigenes
+--             gluon_wired, also ein eigenes batman-adv-Interface
+--   auto      isolate, wenn es auf allen Ports wirkt, sonst separate
+--             (siehe port_info() im Modul neanderfunk.portroles)
+--
+-- Vor 300 muss es laufen, weil 300-firewall-rules jedes gluon_wired-Interface
+-- ausser mesh_uplink in die Zone wired_mesh nimmt - die neuen also auch.
+-- 330-gluon-mesh-batman-adv-mac-addresses setzt nur die MAC von mesh_other;
+-- bei getrennten Bridges gibt es das nicht mehr, deshalb setzt dieses Skript
+-- die MACs selbst. "func" (2025.1) bzw. "index" (2023.2) werden bewusst nicht
+-- uebernommen: sie leiten die VXLAN-MAC aus einem der 8 Gluon-Plaetze ab, und
+-- mehrere Bridges bekaemen dieselbe. Ohne sie waehlt der Kernel fuer das
+-- VXLAN-Device eine zufaellige MAC.
+
+local uci = require('simple-uci').cursor()
+local util = require 'gluon.util'
+local portroles = require 'neanderfunk.portroles'
+
+local function log(message)
+	print(message)
+	os.execute('logger -t "neanderfunk-port-roles" -p 5 "' .. message .. '" 2>/dev/null')
+end
+
+local mesh = uci:get_all('network', 'mesh_other')
+if not mesh then
+	return
+end
+
+local ports = mesh.ifname
+if type(ports) == 'string' then
+	ports = portroles.resolve(ports)
+end
+if not ports or #ports < 2 then
+	-- ein einzelner Port: nichts zu bridgen, nichts zu isolieren
+	return
+end
+
+local mode = portroles.get_mode(uci)
+local effective = portroles.effective_mode(mode, ports)
+
+if effective == 'isolate' then
+	return
+end
+
+-- "isolate" an den Ports entfernen (210 legt dafuer je Port eine
+-- device-Sektion mit name und isolate an)
+uci:foreach('network', 'device', function(dev)
+	if dev.isolate and util.contains(ports, dev.name) then
+		uci:delete('network', dev['.name'], 'isolate')
+	end
+end)
+
+if effective == 'bridge' then
+	log("mesh ports " .. table.concat(ports, ' ') .. ": one bridge without isolation (mesh_mode=" .. mode .. ")")
+	uci:save('network')
+	return
+end
+
+-- separate
+uci:delete('network', 'mesh_other')
+local names = {}
+for index, port in ipairs(ports) do
+	local name = portroles.mesh_ifname(port, index)
+	uci:section('network', 'interface', name, {
+		ifname = port,
+		type = 'bridge',
+		igmp_snooping = false,
+		proto = 'gluon_wired',
+		hop_penalty = mesh.hop_penalty,
+		vxlan = mesh.vxlan,
+		macaddr = portroles.mac_for(port),
+	})
+	table.insert(names, name .. '(' .. port .. ')')
+end
+log("mesh ports: one bridge each, " .. table.concat(names, ' ') .. " (mesh_mode=" .. mode .. ")")
+uci:save('network')

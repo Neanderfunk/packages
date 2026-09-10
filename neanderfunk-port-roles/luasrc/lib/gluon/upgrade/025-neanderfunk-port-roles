@@ -1,0 +1,102 @@
+#!/usr/bin/lua
+
+-- SPDX-License-Identifier: BSD-3-Clause
+-- SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+--
+-- neanderfunk-port-roles, Teil 1: laeuft nach 021-interface-roles (legt
+-- gluon.iface_lan/_wan/_single an) und vor allem, was die Rollen auswertet
+-- (110-network, 210-interface-mesh, 300-...). Siehe README.
+--
+-- Eine Rolle je Port statt je Portgruppe: Gluons Sektionen mit mehreren Ports
+-- (typisch iface_lan mit name='/lan' = alle LAN-Ports) werden in eine Sektion
+-- je Port zerlegt, gluon.iface_port_<port>, mit den Rollen der Gruppe. Gluon
+-- baut daraus wie immer br-client, br-wan und das kabelgebundene Mesh, nur
+-- dass jetzt jeder Port seine eigene Rolle haben kann - auch in Gluons eigener
+-- Netzwerk-Seite, die je Sektion eine Zeile zeigt.
+--
+-- Die Gruppen-Sektion bleibt stehen, sonst legte 021 sie beim naechsten Lauf
+-- mit allen Ports neu an. Sie bekommt name='/none' (loest zu nichts auf) und
+-- merkt sich, woher ihre Ports kamen (neanderfunk_ports_from) und welche Rollen
+-- sie hatte (neanderfunk_default_role). Bringt ein spaeteres Board-Update einen
+-- Port dazu, bekommt er darueber eine eigene Sektion mit diesen Rollen.
+--
+-- Zerlegt wird nur, was sich einzeln verwenden laesst (eigenes Netdev, kein
+-- VLAN). Hinter swconfig haengen alle LAN-Ports an einem "eth0.1"; solche
+-- Sektionen bleiben, wie sie sind. Ports, die schon eine eigene Sektion haben
+-- (etwa eine von Hand angelegte), fasst das Skript nicht an.
+
+local uci = require('simple-uci').cursor()
+local portroles = require 'neanderfunk.portroles'
+
+local function log(message)
+	print(message)
+	os.execute('logger -t "neanderfunk-port-roles" -p 5 "' .. message .. '" 2>/dev/null')
+end
+
+-- Schalter fuer den Mesh-Modus sichtbar anlegen (Teil 2, 230)
+if not uci:get('gluon', 'port_roles') then
+	uci:section('gluon', 'port_roles', 'port_roles', { mesh_mode = 'auto' })
+end
+
+-- Gruppen-Sektionen mit mehreren einzeln verwendbaren Ports vormerken
+uci:foreach('gluon', 'interface', function(s)
+	if s.neanderfunk_ports_from then
+		return
+	end
+	local ports = portroles.resolve(s.name)
+	if #ports < 2 then
+		return
+	end
+	for _, port in ipairs(ports) do
+		if not portroles.splittable(port) then
+			return
+		end
+	end
+	uci:set('gluon', s['.name'], 'neanderfunk_ports_from', s.name)
+	uci:set('gluon', s['.name'], 'neanderfunk_default_role', s.role or {})
+	uci:set('gluon', s['.name'], 'name', '/none')
+	uci:delete('gluon', s['.name'], 'role')
+	log(s['.name'] .. ": splitting " .. s.name .. " into one section per port")
+end)
+
+-- Ports, die schon in einer Sektion stehen
+local assigned = {}
+uci:foreach('gluon', 'interface', function(s)
+	for _, port in ipairs(portroles.resolve(s.name)) do
+		assigned[port] = true
+	end
+end)
+
+-- Je Port einer Gruppe eine eigene Sektion, soweit noch keine da ist. Erst
+-- sammeln, dann anlegen: keine neuen interface-Sektionen, waehrend ueber genau
+-- diese iteriert wird.
+local new_sections = {}
+uci:foreach('gluon', 'interface', function(s)
+	if not s.neanderfunk_ports_from then
+		return
+	end
+	for _, port in ipairs(portroles.resolve(s.neanderfunk_ports_from)) do
+		local section = 'iface_port_' .. port:gsub('[^%w]', '_')
+		if not assigned[port] and portroles.splittable(port) and not uci:get('gluon', section) then
+			table.insert(new_sections, {
+				section = section,
+				port = port,
+				group = s['.name'],
+				role = s.neanderfunk_default_role or {},
+				hop_penalty = s.batadv_hop_penalty,
+			})
+			assigned[port] = true
+		end
+	end
+end)
+
+for _, n in ipairs(new_sections) do
+	uci:section('gluon', 'interface', n.section, {
+		name = n.port,
+		role = n.role,
+		batadv_hop_penalty = n.hop_penalty,
+	})
+	log(n.section .. ": " .. n.port .. " gets the roles of " .. n.group .. " (" .. table.concat(n.role, ' ') .. ")")
+end
+
+uci:save('gluon')
