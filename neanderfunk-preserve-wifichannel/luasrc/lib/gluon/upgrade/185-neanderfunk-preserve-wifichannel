@@ -1,0 +1,100 @@
+#!/usr/bin/lua
+
+-- neanderfunk-preserve-wifichannel, Teil 1 von 2: laeuft vor
+-- 190-preserve-wireless-channels (legt gluon.wireless.preserve_channels mit 0
+-- an, wenn der Schluessel fehlt) und vor 200-wireless (wertet ihn aus).
+--
+-- Gluon setzt bei jedem Update Kanal, Kanalliste und Breite auf die Werte der
+-- Site zurueck, ausser gluon.wireless.preserve_channels ist gesetzt. Das ist
+-- eine reine uci-Option (Gluon 388d264f, 2016). "wifi24.preserve_channels" in
+-- der site.conf liest Gluon nirgends - dieses Paket macht ihn zum Default fuer
+-- die uci-Option. Das Zusammenspiel beider Teile steht im README.
+
+local site = require 'gluon.site'
+local sysconfig = require 'gluon.sysconfig'
+local uci = require('simple-uci').cursor()
+
+local PENDING = 'neanderfunk_preserve_wifichannel_pending'
+local CONTEXT = 'neanderfunk_preserve_wifichannel_context'
+local LIFTED = '/tmp/neanderfunk-preserve-wifichannel.lifted'
+
+--- Tag "nf-" statt "neanderfunk-": logd kuerzt Syslog-Tags auf 31 Zeichen, aus
+--- neanderfunk-preserve-wifichannel (32) wuerde neanderfunk-preserve-wifichanne,
+--- und die Suche nach dem Paketnamen faende nichts. So findet
+--- "logread | grep preserve-wifichannel" die Zeilen.
+local function log(message)
+	print(message)
+	os.execute('logger -t "nf-preserve-wifichannel" -p 5 "' .. message .. '" 2>/dev/null')
+end
+
+-- Rest eines abgebrochenen Laufs. Dessen Aufhebung wurde nie committet (das
+-- tut erst 998-commit), und das uci-Delta in /tmp ist mit dem Reboot weg.
+os.remove(LIFTED)
+
+--- Default aus der Site, nil wenn sie nichts sagt - dann bleibt alles bei
+--- Gluons Verhalten. In unseren site.conf steht die Zahl 1.
+local function site_default()
+	local v = site.wifi24.preserve_channels(nil)
+	if v == nil then
+		return nil
+	end
+	return v == true or v == 1 or v == '1'
+end
+
+--- Woran die Kanaele haengen: Site und Domain. Beides wechselt der nodeplacer
+--- (gluon-switch-domain bzw. das Image einer anderen Site). Die neue Domain hat
+--- 005-set-domain in diesem Lauf schon nach gluon.core.domain geschrieben.
+local function context()
+	return site.site_code() .. '/' .. (uci:get('gluon', 'core', 'domain') or '')
+end
+
+-- 1. Schluessel fehlt: Default aus der Site.
+--
+-- Nur wenn er fehlt. Steht er auf 0 oder 1, bleibt er - egal ob ihn jemand
+-- von Hand gesetzt hat oder Gluons 190 bei einem frueheren Lauf. Auf
+-- Bestandsknoten aendert sich dadurch nichts.
+--
+-- Bei einer Neuinstallation (sysconfig.gluon_version leer, das schreibt
+-- 999-version erst am Ende des ersten Laufs) wird der Wert nur vorgemerkt: im
+-- ersten Lauf muss 200-wireless die Kanaele der Site ja erst eintragen. Die
+-- Vormerkung loest Teil 2 ein, sobald kein Config-Mode-Wizard mehr aussteht -
+-- sonst bliebe dessen Outdoor-Schritt ausgeblendet und eine dort gewaehlte
+-- Domain bekaeme ihre Kanaele nicht. sysconfig statt /tmp, damit sie einen
+-- Stromzyklus zwischen Erstboot und Wizard uebersteht.
+local default = site_default()
+if default ~= nil and uci:get('gluon', 'wireless', 'preserve_channels') == nil then
+	if not sysconfig.gluon_version then
+		sysconfig[PENDING] = default and '1' or '0'
+		log("fresh install: gluon.wireless.preserve_channels=" .. (default and '1' or '0')
+			.. " from the site, set once the first configuration is done")
+	else
+		uci:section('gluon', 'wireless', 'wireless', { preserve_channels = default })
+		uci:save('gluon')
+		log("gluon.wireless.preserve_channels was missing, set to " .. (default and '1' or '0') .. " from the site")
+	end
+end
+
+-- 2. Site oder Domain gewechselt: Kanaele der Site einmal uebernehmen.
+--
+-- Mit preserve_channels=1 liesse 200-wireless die alten Kanaele stehen, und
+-- ein Knoten, der in eine Domain mit anderen Kanaelen wechselt, funkte am
+-- WLAN-Mesh seiner neuen Nachbarn vorbei. Deshalb wird der Schalter fuer
+-- diesen einen Lauf aufgehoben und von Teil 2 wieder gesetzt. Unterm Strich
+-- aendert sich an ihm nichts: beides liegt nur im uci-Delta, committet wird
+-- erst von 998-commit, und dann steht er wieder auf 1.
+--
+-- Die Markierung wird VOR dem Aufheben geschrieben. Klappt das nicht, wird
+-- nicht aufgehoben - lieber die alten Kanaele als ein verlorener Schalter.
+local last = sysconfig[CONTEXT]
+local now = context()
+if last and last ~= now and uci:get_bool('gluon', 'wireless', 'preserve_channels') then
+	local f = io.open(LIFTED, 'w')
+	if f then
+		f:write(last, ' -> ', now, '\n')
+		f:close()
+		uci:set('gluon', 'wireless', 'preserve_channels', false)
+		uci:save('gluon')
+		log("site/domain changed (" .. last .. " -> " .. now
+			.. "): applying the site's channels once, gluon.wireless.preserve_channels stays 1")
+	end
+end

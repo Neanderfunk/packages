@@ -1,0 +1,57 @@
+#!/usr/bin/lua
+
+-- neanderfunk-preserve-wifichannel, Teil 2 von 2: laeuft nach 200-wireless und
+-- nach neanderfunk-txpowerfix (215), damit beide im selben Lauf noch den
+-- aufgehobenen Schalter sehen. Siehe Teil 1 und das README.
+
+local site = require 'gluon.site'
+local sysconfig = require 'gluon.sysconfig'
+local unistd = require 'posix.unistd'
+local uci = require('simple-uci').cursor()
+
+local PENDING = 'neanderfunk_preserve_wifichannel_pending'
+local CONTEXT = 'neanderfunk_preserve_wifichannel_context'
+local LIFTED = '/tmp/neanderfunk-preserve-wifichannel.lifted'
+
+--- Tag "nf-" statt "neanderfunk-": logd kuerzt Syslog-Tags auf 31 Zeichen, aus
+--- neanderfunk-preserve-wifichannel (32) wuerde neanderfunk-preserve-wifichanne,
+--- und die Suche nach dem Paketnamen faende nichts. So findet
+--- "logread | grep preserve-wifichannel" die Zeilen.
+local function log(message)
+	print(message)
+	os.execute('logger -t "nf-preserve-wifichannel" -p 5 "' .. message .. '" 2>/dev/null')
+end
+
+-- 1. Aufhebung aus Teil 1 zuruecknehmen. Zuerst, damit nichts dazwischenkommt.
+if unistd.access(LIFTED) == 0 then
+	uci:set('gluon', 'wireless', 'preserve_channels', true)
+	uci:save('gluon')
+	os.remove(LIFTED)
+end
+
+-- 2. Vormerkung einer Neuinstallation einloesen.
+--
+-- Nicht, solange der Config-Mode-Wizard noch aussteht: das ist der erste Lauf
+-- beim Erstboot im Setup-Mode, wenn der Setup-Mode nicht uebersprungen wird.
+-- site.setup_mode.skip wird direkt gelesen, wie in 300-setup-mode selbst -
+-- dessen "configured" ist hier noch nicht gesetzt, es laeuft erst nach uns.
+-- Beim naechsten Lauf, dem des Wizards, hat 200-wireless Outdoor- und
+-- Domain-Wahl schon eingetragen; dann wird eingeloest.
+local pending = sysconfig[PENDING]
+if pending then
+	local wizard_follows = not sysconfig.gluon_version
+		and unistd.access('/var/gluon/setup-mode') == 0
+		and not site.setup_mode.skip(false)
+		and not uci:get_first('gluon-setup-mode', 'setup_mode', 'configured', false)
+	if not wizard_follows then
+		uci:set('gluon', 'wireless', 'preserve_channels', pending == '1')
+		uci:save('gluon')
+		sysconfig[PENDING] = nil
+		log("first configuration done: gluon.wireless.preserve_channels set to " .. pending
+			.. ", channels and width are kept from the next update on")
+	end
+end
+
+-- 3. Stand merken, fuer den Vergleich im naechsten Lauf. sysconfig schreibt
+-- nur, wenn sich der Wert aendert.
+sysconfig[CONTEXT] = site.site_code() .. '/' .. (uci:get('gluon', 'core', 'domain') or '')
