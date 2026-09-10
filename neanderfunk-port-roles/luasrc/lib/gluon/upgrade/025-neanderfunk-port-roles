@@ -76,7 +76,7 @@ uci:foreach('gluon', 'interface', function(s)
 		return
 	end
 	for _, port in ipairs(portroles.resolve(s.neanderfunk_ports_from)) do
-		local section = 'iface_port_' .. port:gsub('[^%w]', '_')
+		local section = portroles.port_section(port)
 		if not assigned[port] and portroles.splittable(port) and not uci:get('gluon', section) then
 			table.insert(new_sections, {
 				section = section,

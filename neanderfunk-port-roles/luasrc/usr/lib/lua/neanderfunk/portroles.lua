@@ -30,11 +30,80 @@ function M.resolve(name)
 	return ret
 end
 
+--- VLAN-Unterinterface wie "lan3.5" (auf einem DSA-Port oder einer Karte)
+--- oder "eth0.1" (hinter swconfig).
+function M.is_vlan(port)
+	return port:find('.', 1, true) ~= nil
+end
+
 --- Ein Port, der sich einzeln verwenden laesst: eigenes Netdev und kein VLAN.
 --- Hinter swconfig haengen alle LAN-Ports an einem "eth0.1"; die bleiben, wie
 --- sie sind.
 function M.splittable(port)
-	return not port:find('.', 1, true) and unistd.access('/sys/class/net/' .. port) == 0
+	return not M.is_vlan(port) and unistd.access('/sys/class/net/' .. port) == 0
+end
+
+local function sanitize(s)
+	return (s:gsub('[^%w]', '_'))
+end
+
+--- Sektionsname fuer einen Port bzw. ein VLAN auf einem Port.
+function M.port_section(port)
+	return 'iface_port_' .. sanitize(port)
+end
+
+function M.vlan_section(port, vid)
+	return 'iface_port_' .. sanitize(port) .. '_' .. vid
+end
+
+--- Einzeln verwendbare Ports, die eine eigene Sektion haben - die, auf denen
+--- VLANs angelegt werden koennen.
+function M.physical_ports(uci)
+	local ret, seen = {}, {}
+	uci:foreach('gluon', 'interface', function(s)
+		local ports = M.resolve(s.name)
+		if #ports == 1 and not seen[ports[1]] and M.splittable(ports[1]) then
+			seen[ports[1]] = true
+			table.insert(ret, ports[1])
+		end
+	end)
+	table.sort(ret)
+	return ret
+end
+
+--- VLAN-IDs, die auf einem Port als eigene Sektion ("<port>.<vid>") stehen.
+function M.vlans_of(uci, port)
+	local ret = {}
+	uci:foreach('gluon', 'interface', function(s)
+		local ports = M.resolve(s.name)
+		local vid = #ports == 1 and ports[1]:match('^' .. port:gsub('%p', '%%%0') .. '%.(%d+)$')
+		if vid then
+			table.insert(ret, vid)
+		end
+	end)
+	table.sort(ret, function(x, y) return tonumber(x) < tonumber(y) end)
+	return ret
+end
+
+--- Gluons Board-Sektionen, deren Ports sich nicht einzeln verwenden lassen:
+--- ein Verweis wie "/lan", der auf ein VLAN-Unterinterface zeigt - so sehen
+--- LAN-Ports hinter swconfig aus ("eth0.1"). Von Hand angelegte VLAN-Sektionen
+--- (explizite Namen) zaehlen nicht dazu.
+function M.group_only_sections(uci)
+	local ret = {}
+	uci:foreach('gluon', 'interface', function(s)
+		if type(s.name) ~= 'string' or s.name:sub(1, 1) ~= '/' then
+			return
+		end
+		local ports = M.resolve(s.name)
+		for _, port in ipairs(ports) do
+			if M.is_vlan(port) then
+				table.insert(ret, { section = s['.name'], ports = ports })
+				return
+			end
+		end
+	end)
+	return ret
 end
 
 local function kernel_at_least(major, minor)
@@ -58,6 +127,12 @@ end
 ---   v6.11 (790-56, 793-03). Kernel 5.15 (Gluon 2023.2) reicht das Flag gar
 ---   nicht an den Switch weiter.
 function M.port_info(port)
+	if M.is_vlan(port) then
+		-- VLAN-Unterinterfaces bridged der Kernel in Software, auch auf einem
+		-- DSA-Port: dort wirkt "isolate" immer. (Beim Reconfigure gibt es sie
+		-- ohnehin noch nicht, netifd legt sie erst an.)
+		return { on_switch = false, vlan = true, hw_isolation = true }
+	end
 	local base = '/sys/class/net/' .. port
 	local switch_id = util.trim(util.readfile(base .. '/phys_switch_id') or '')
 	local link = unistd.readlink(base .. '/device/driver')
@@ -145,7 +220,7 @@ local reserved = { mesh_other = true, mesh_uplink = true, mesh_vpn = true }
 --- hoechstens 12 fuer den Namen. Kollisionen mit Gluons eigenen Namen und zu
 --- lange Namen weichen auf mesh_p<n> aus.
 function M.mesh_ifname(port, index)
-	local name = 'mesh_' .. port:gsub('[^%w]', '_')
+	local name = 'mesh_' .. sanitize(port)
 	if #name > 12 or reserved[name] or name:match('^mesh_radio') then
 		name = 'mesh_p' .. index
 	end
