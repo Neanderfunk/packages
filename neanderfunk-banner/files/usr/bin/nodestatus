@@ -226,7 +226,9 @@ uci:foreach('wireless', 'wifi-device', function(s)
 	table.insert(radios, s['.name'])
 end)
 table.sort(radios)
-local has_wifi = #radios > 0
+-- NODESTATUS_NOWIFI=1 zeigt das Layout ohne WLAN auch auf einem WLAN-Geraet,
+-- zum Ausprobieren.
+local has_wifi = #radios > 0 and os.getenv('NODESTATUS_NOWIFI') ~= '1'
 
 -- Kerne: fuer die Einordnung der Load
 local nproc = nodeinfo.hardware and tonumber(nodeinfo.hardware.nproc)
@@ -457,20 +459,25 @@ local function port_rows(label, role, cells, extra)
 	end
 end
 
-if single_role then
-	port_rows('Port', single_role, port_cells('lan'))
-else
-	local wc = port_cells('wan')
-	if wc then
-		for _, cell in ipairs(wc) do
-			if not cell:gsub('\27%[[%d;]*m', ''):match(':%-$') then wan_link = true end
+local wc = (not single_role) and port_cells('wan') or nil
+for _, cell in ipairs(wc or {}) do
+	if not cell:gsub('\27%[[%d;]*m', ''):match(':%-$') then wan_link = true end
+end
+
+-- Mit WLAN kompakt in zwei Zeilen; ohne WLAN steht an Stelle der Radio-Tabelle
+-- die ausfuehrlichere Port-Tabelle (port_table, weiter unten).
+if has_wifi then
+	if single_role then
+		port_rows('Port', single_role, port_cells('lan'))
+	else
+		if wc then
+			port_rows('WAN', wan_role, wc, wan_v4 and ('v4 ' .. wan_v4) or '')
+			-- IPv6 bis 39 Zeichen: ab Spalte B, sonst bricht die Zeile um
+			if wan_v6 then row('', '', 'v6 ' .. wan_v6, '') end
 		end
-		port_rows('WAN', wan_role, wc, wan_v4 and ('v4 ' .. wan_v4) or '')
-		-- IPv6 bis 39 Zeichen: ab Spalte B, sonst bricht die Zeile um
-		if wan_v6 then row('', '', 'v6 ' .. wan_v6, '') end
+		local lc = port_cells('lan')
+		if lc and #lc > 0 then port_rows('LAN', lan_role, lc) end
 	end
-	local lc = port_cells('lan')
-	if lc and #lc > 0 then port_rows('LAN', lan_role, lc) end
 end
 
 local wan_mesh = wan_role and wan_role:find('mesh')
@@ -482,6 +489,119 @@ for _, sec in ipairs({ 'iface_wan', 'iface_lan', 'iface_single' }) do
 	if #r > 1 then
 		warn('yellow', 'Interface ' .. (uci:get('gluon', sec, 'name') or sec) .. ' hat mehrere Rollen: ' .. join(r, '+'))
 	end
+end
+
+
+-- Port-Tabelle fuer Geraete ohne WLAN: je Port Link, Traffic seit Boot und
+-- Fehler, je Rollengruppe Mesh und Nachbarn. Nachbarn gibt es nur je Gruppe:
+-- mehrere Mesh-Ports fasst Gluon zu einer Bridge zusammen, batman sieht nur
+-- die Bridge und weiss nicht, an welchem Port ein Nachbar haengt.
+local function human(n)
+	n = tonumber(n)
+	if not n then return '-' end
+	local units = { 'B', 'K', 'M', 'G', 'T' }
+	local i = 1
+	while n >= 1024 and i < #units do n = n / 1024 i = i + 1 end
+	if i == 1 then return tostring(math.floor(n)) end
+	return (n < 10 and string.format('%.1f', n) or tostring(math.floor(n + 0.5))) .. units[i]
+end
+
+local function port_table(wiredmesh)
+	local TCOLS = { 0, 8, 18, 27, 33, 38, 50, 63 }
+	local groups = {}
+	local function add_group(label, role, boardkey)
+		local net = board.network and board.network[boardkey]
+		if not net then return end
+		local devs = net.ports or (net.device and { net.device }) or {}
+		table.insert(groups, { label = label, role = role or '', devs = devs, bat = {} })
+	end
+	if single_role then
+		add_group('Port', single_role, 'lan')
+	else
+		add_group('WAN', wan_role, 'wan')
+		add_group('LAN', lan_role, 'lan')
+	end
+	if #groups == 0 then return false end
+
+	-- batman-Interfaces den Gruppen zuordnen: direkt, ueber Bridge-Mitglieder,
+	-- Mesh-on-WAN (vxlan) zur WAN-Gruppe
+	local rest = {}
+	for _, name in ipairs(wiredmesh) do
+		local members = {}
+		for m in sh('ls /sys/class/net/' .. name .. '/brif'):gmatch('%S+') do members[m] = true end
+		local found
+		for _, g in ipairs(groups) do
+			for _, d in ipairs(g.devs) do
+				if d == name or members[d] then found = g break end
+			end
+			if found then break end
+		end
+		if not found and name:match('^vx') then
+			for _, g in ipairs(groups) do if g.label == 'WAN' then found = g end end
+		end
+		if found then table.insert(found.bat, name) else table.insert(rest, name) end
+	end
+
+	local function roletxt(r)
+		if vlen(r) <= 8 then return r end
+		return (r:gsub('uplink', 'upl'):gsub('client', 'cli'))
+	end
+
+	place(TCOLS, { c('bold', 'Ports'), c('dim', 'Device'), c('dim', 'Rolle'), c('dim', 'Link'), c('dim', 'Mesh'),
+		c('dim', 'Nachbarn'), c('dim', 'RX/TX'), c('dim', 'Fehler') })
+
+	for _, g in ipairs(groups) do
+		local meshcell, nbcell = c('dim', '-'), ''
+		if g.role:find('mesh') then
+			if #g.bat > 0 then
+				meshcell = c('green', 'an')
+				local n, lo, hi = 0, nil, nil
+				for _, b in ipairs(g.bat) do
+					local k, l, h = neighbours_of(b)
+					n = n + k
+					if l then lo = lo and math.min(lo, l) or l end
+					if h then hi = hi and math.max(hi, h) or h end
+				end
+				nbcell = n == 0 and c('dim', '0') or (lo == hi and string.format('%d TQ%d', n, lo) or string.format('%d TQ%d-%d', n, lo, hi))
+			else
+				meshcell = c('dim', 'aus')
+			end
+		end
+		-- swconfig: das Device ist ein VLAN auf dem Switch (eth0.1). Sein Link
+		-- ist der des CPU-Ports und sagt nichts - der kommt je Switch-Port aus
+		-- swconfig, Traffic und Fehler gibt es nur fuer das VLAN.
+		local swp = (#g.devs == 1 and g.devs[1]:find('%.') and exists('/sbin/swconfig'))
+			and switch_ports(g.label == 'WAN' and 'wan' or 'lan')
+		if swp and #swp == 0 then swp = nil end
+		for i, d in ipairs(g.devs) do
+			local st = devstate(d)
+			local base = '/sys/class/net/' .. d .. '/statistics/'
+			local link = st == nil and c('dim', '?') or (st and c('green', st) or c('dim', '-'))
+			if swp then link = '' end
+			local rxtx, errs = '', ''
+			if exists(base .. 'rx_bytes') then
+				rxtx = human(readline(base .. 'rx_bytes')) .. '/' .. human(readline(base .. 'tx_bytes'))
+				local e = (tonumber(readline(base .. 'rx_errors')) or 0) + (tonumber(readline(base .. 'tx_errors')) or 0)
+				errs = e > 0 and c('yellow', tostring(e)) or c('dim', '0')
+			end
+			place(TCOLS, { i == 1 and c('bold', g.label) or '', cut(d, 9), i == 1 and roletxt(g.role) or '',
+				link, i == 1 and meshcell or '', i == 1 and nbcell or '', rxtx, errs })
+		end
+		for _, p in ipairs(swp or {}) do
+			local st = swport_state(p.num)
+			local name = (#swp > 1 and ('Port ' .. (p.index or p.num))) or (g.label == 'WAN' and 'Port wan' or 'Port')
+			place(TCOLS, { '', ' ' .. name, '', st and c('green', st) or c('dim', '-') })
+		end
+		if g.label == 'WAN' and (wan_v4 or wan_v6) then
+			row('', wan_v4 and ('v4 ' .. wan_v4) or '', wan_v6 and ('v6 ' .. wan_v6) or '', '')
+		end
+	end
+	for _, name in ipairs(rest) do
+		local k, l, h = neighbours_of(name)
+		place(TCOLS, { c('bold', 'Mesh'), cut(name, 9), '', '', c('green', 'an'),
+			k == 0 and c('dim', '0') or (l == h and string.format('%d TQ%d', k, l) or string.format('%d TQ%d-%d', k, l, h)), '', '' })
+	end
+	return true
 end
 
 
@@ -606,7 +726,7 @@ end
 local country
 local outdoor = uci:get('gluon', 'wireless', 'outdoor') == '1'
 
-for _, radio in ipairs(radios) do
+for _, radio in ipairs(has_wifi and radios or {}) do
 	local band = uci:get('wireless', radio, 'band')
 	if not band then
 		local hw = uci:get('wireless', radio, 'hwmode') or ''
@@ -697,7 +817,11 @@ for name, st in pairs(batif) do
 	end
 end
 table.sort(wiredmesh)
-if #wiredmesh > 0 then
+if not has_wifi then
+	if not port_table(wiredmesh) and #wiredmesh > 0 then
+		row('Mesh', 'Kabel ' .. join(wiredmesh, ','), '', '')
+	end
+elseif #wiredmesh > 0 then
 	local n, lo, hi = 0, nil, nil
 	for _, w in ipairs(wiredmesh) do
 		local k, l, h = neighbours_of(w)
@@ -706,12 +830,7 @@ if #wiredmesh > 0 then
 		if h then hi = hi and math.max(hi, h) or h end
 	end
 	local nb = n == 0 and c('dim', '0') or (lo == hi and string.format('%d TQ%d', n, lo) or string.format('%d TQ%d-%d', n, lo, hi))
-	if has_wifi then
-		place(RCOLS, { c('bold', 'Kabel'), join(wiredmesh, ','), '', '', '', '', '', c('green', 'an'), '', nb })
-	else
-		-- ohne Radio-Tabelle keine Spaltenkoepfe: selbsterklaerend in einer Zeile
-		row('Mesh', 'Kabel ' .. join(wiredmesh, ','), nb .. (n == 1 and ' Nachbar' or ' Nachbarn'), '')
-	end
+	place(RCOLS, { c('bold', 'Kabel'), join(wiredmesh, ','), '', '', '', '', '', c('green', 'an'), '', nb })
 end
 
 if outdoor or any_uci_tx then

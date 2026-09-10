@@ -23,6 +23,10 @@ actually running, not just what is configured:
 - clients (local, per band, mesh-wide), SSID and offline-SSID counters
 - a radio table with the live channel, width, HT mode and tx power per radio
   (from `iwinfo`), AP and mesh state, clients and mesh neighbours with TQ
+- on devices without wifi (x86, ERX, ...) a port table in its place: per port
+  link, traffic since boot and error counters, per role group mesh state and
+  neighbours; on swconfig switches the real link per switch port.
+  `NODESTATUS_NOWIFI=1` shows this layout on a wifi device for testing
 - warnings, only when they apply: no gateway, VPN down (with the likely
   reason), mesh interface configured but down, radio disabled, multiple roles
   on one interface, location set but not shared, load above the core count,
