@@ -1,0 +1,31 @@
+#!/usr/bin/lua
+
+-- neanderfunk-preserve-wifichannel, Zwischenteil: laeuft gleich nach
+-- 200-wireless und vor neanderfunk-txpowerfix (215). Siehe Teil 1 (185).
+--
+-- Hat Teil 1 den Schalter nur wegen eines Outdoor-Wechsels aufgehoben, hat
+-- 200-wireless auch die Radios ausserhalb von 5 GHz auf die Kanaele der Site
+-- gesetzt. Kanal und Kanalliste kommen hier zurueck, bevor txpowerfix daraus
+-- die Country ableitet - bei Kanal 13 ist das JP, beim Site-Kanal waere es
+-- eine andere. Die Breite schreibt Teil 225 zurueck, nach txpowerfix.
+
+local uci = require('simple-uci').cursor()
+
+local LIFTED = '/tmp/neanderfunk-preserve-wifichannel.lifted'
+
+local f = io.open(LIFTED)
+if not f then
+	return
+end
+local changed = false
+for line in f:lines() do
+	local radio, option, value = line:match('^restore\t([^\t]+)\t([^\t]+)\t(.*)$')
+	if radio and option ~= 'htmode' then
+		uci:set('wireless', radio, option, value ~= '' and value or nil)
+		changed = true
+	end
+end
+f:close()
+if changed then
+	uci:save('wireless')
+end
