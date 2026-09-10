@@ -12,6 +12,7 @@ echo " autoupdater -f                    // Firmware-Update erzwingen
  brctl show                        // alle bridges anzeigen
  iwinfo                            // wlan-paramter anzeigen
  iw dev client0 station dump       // WLAN Nachbarn mit Details
+ status / nodestatus               // Statusuebersicht wie beim Login
  nodeinfo                          // diverse infos ausgegeben
  v4up                              // ipv4 holen, wenn kein vpnuplink"
  switchstatus  // switch0          // show port status of eth ifs 

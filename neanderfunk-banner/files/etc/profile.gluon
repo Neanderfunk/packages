@@ -1,67 +1,29 @@
-#!/bin/sh
-[ -f /etc/banner ] && cat /etc/banner
-echo -n "time='"$(date '+%A %d/%m/%Y %H:%M:%S')"'"
-batctl hp > /dev/null 2>&1 && echo -n " - HopPenalty='$(batctl hp|tr -d "\n")'"
-echo " - uptime='$(uptime|sed -e 's/^\ //1' -e 's/\ \ //g')'"
-export PATH=/usr/bin:/usr/sbin:/bin:/sbin
-export HOME=$(grep -e "^${USER:-root}:" /etc/passwd | cut -d ":" -f 6)
-export HOME=${HOME:-/root}
-export PS1='\u@\h:\w\$ '
-[ -x /bin/more ] || alias more=less
-[ -x /usr/bin/vim ] && alias vi=vim || alias vim=vi
-[ -z "$KSH_VERSION" -o \! -s /etc/mkshrc ] || . /etc/mkshrc
-[ -x /usr/bin/arp ] || arp() { cat /proc/net/arp; }
-[ -x /usr/bin/ldd ] || ldd() { LD_TRACE_LOADED_OBJECTS=1 $*; }
-batctl gwl
-export imagename=$(lua -e 'print(require("platform_info").get_image_name())')
-export OWrel=$(cat /etc/openwrt_release|grep DISTRIB_RELEASE|cut -d"=" -f2)
-export OWtarget=$(cat /etc/openwrt_release|grep DISTRIB_TARGET|cut -d"=" -f2)
-export OWarch=$(cat /etc/openwrt_release|grep DISTRIB_ARCH|cut -d"=" -f2)
-export gluonbranch=$(uci show|grep autoupdater.settings.branch|cut -d"=" -f2|tr -d \')
-export MoLoff=$(uci show|grep network.mesh_lan.disabled|cut -d"=" -f2)
-export MoWoff=$(uci show|grep network.mesh_wan.disabled|cut -d"=" -f2)
-export ifMoL=$(uci show|grep network.mesh_lan.ifname|cut -d"=" -f2)
-export ifWAN=$(uci show|grep network.wan.ifname|cut -d"=" -f2)
-export ifCLI=$(uci show|grep network.client.ifname|cut -d"=" -f2)
-export lanCLI=\'$(echo $ifCLI|sed -r 's/.*(eth[0-9.]{1,3}).*/\1/g'|grep eth)\'
-export WANrole=$(uci show|grep gluon.iface_wan.role|cut -d"=" -f2)
-export LANrole=$(uci show|grep gluon.iface_lan.role|cut -d"=" -f2)
-if [ "$(batctl gwl|grep ^*|cut -d"(" -f2|cut -d")" -f1)" -gt "80" ] ; then
-  export gwgood=1
-  export publicV6=$(wget -q -6 -O- http://ipecho.net/plain)
-  export batgw=$(batctl gwl|grep ^*|cut -d"[" -f2|cut -d"]" -f1)
-  export l2nodes=$(batctl o|grep -c "^ \*")
-  export tclients=$(batctl tg|grep -c W)
-  export wlclients=$(batctl tl|grep -c W)
-  export cclients=$(batctl tl |grep -c "\.\.\.\.\.\.")
-  [ "$(batctl gwl|grep ^*|cut -d"[" -f2|cut -d"]" -f1)" == "  mesh-vpn" ] && export publicV4=$(wget -q -4 -O- http://ipecho.net/plain)
- fi
-export VPNon="'0'"
-[ "$(uci show|grep gluon.mesh_vpn.enabled|cut -d"=" -f2)" == "'1'" ] && export VPNon="'1'"
-[ "$(uci show|grep tunneldigger.mesh_vpn.enabled|cut -d"=" -f2)" == "'1'" ] &&  export VPNon="'1'"
-echo OpenWRT=$OWrel arch=$OWarch target=$OWtarget kernel=\'$(uname -a|cut -d" " -f3,8,7,10,11)\'
-echo firmware=\'$(cat /lib/gluon/release)\'-\'$(cat /lib/gluon/gluon-version)\' autoupdater=$(uci show|grep autoupdater.settings.enabled|cut -d"=" -f2) branch=\'$gluonbranch\' MinGodSig=$(uci show|grep autoupdater.$gluonbranch.good_signatures|cut -d"=" -f2)
-echo vpn=$VPNon:$(uci show|grep tunneldigger.mesh_vpn.enabled|cut -d"=" -f2|sed -e "s/'1'/l2tp/"|sed -e "s/'0'/l2tp_off/") $(uci show|grep fastd.mesh_vpn.enabled|cut -d"=" -f2|sed -e "s/'1'/fastd/"|sed -e "s/'0'/fastd_off/") $(uci show|grep simple-tc.mesh_vpn.enabled|cut -d"=" -f2|sed -e "s/'1'/\*BW-LIMITED!\*/"|sed -e "s/'0'//") - imagename=\'$imagename\' - $(df|grep "overlayfs"|awk '{print "overlayfs="$4"kB free, "$5" used"}')
-for r in 0 1 2; do uci show|grep wireless.radio$r>/dev/null && (echo -n w$(uci show|grep wireless.radio$r.disabled|cut -d"=" -f2)|sed -e "s/w'1'/Radio$1.OFF/"|sed -e "s/w'0'/Radio$r.ON/"|sed -e "s/w/Radio$r.ON/";echo \ r$r.ch=$(uci show|grep radio$r.channel|cut -d"=" -f2) r$r.mode=$(uci show|grep wireless.radio$r.htmode|cut -d"=" -f2) r$r.tx=\'$(iwinfo radio$r txpowerlist|grep "^*"|cut -d" " -f2)\' r$r.wifimesh-off=$(uci show|grep wireless.mesh_radio$r.disabled|cut -d"=" -f2) r$r.ap-off=$(uci show|grep wireless.client_radio$r.disabled|cut -d"=" -f2)); done
-if [ -n "$MoWoff" ]; then
-echo -n "MoW.off=$MoWoff MoL.off=$MoLoff "
-[ "$MoLoff" == "'0'" ] && echo -n "MoL=$ifMoL "
-echo WAN=$ifWAN LANCLI=$lanCLI CLI=$ifCLI
+# /etc/profile auf Gluon-Knoten mit neanderfunk-banner
+#
+# Zuerst das Profil von OpenWrt, unveraendert: PATH, ENV=/etc/shinit (Aliase
+# wie ll auch in weiteren Shells), Failsafe, /etc/profile.d und der Hinweis
+# bei vollem Overlay. Es zeigt auch /etc/banner an.
+#
+# Dahinter die Statusuebersicht (nodestatus), aber nur in einer interaktiven
+# Shell und nicht im Failsafe: "ssh knoten befehl" und Skripte mit "sh -l"
+# bekommen sie nicht.
+
+if [ -f /etc/profile.openwrt ]; then
+	. /etc/profile.openwrt
+else
+	export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+	export HOME=$(grep -e "^${USER:-root}:" /etc/passwd | cut -d ":" -f 6)
+	export HOME=${HOME:-/root}
+	export PS1='\u@\h:\w\$ '
+	[ -f /etc/banner ] && cat /etc/banner
 fi
-[ -n "$publicV6" ] && echo -n "PublicV6:$publicV6 "
-[ -n "$publicV4" ] && echo -n "PublicV4:$publicV4 "
-[ -x /sbin/swconfig ] && echo -e "\nswitch0: "$(swconfig dev switch0 show | grep 'link:'|sed -e 's/link://g' -e 's/port:/p/g' -e 's/speed://g' -e 's/baseT//g' -e 's/ full-duplex/fdx/g' -e 's/ half-duplex/hdx/g' -e 's/flow/f/g' -e 's/\t//g' -e 's/$/;/g' -e 's/ ;/;/g')
-[ ! -z "$WANrole" ] && echo "WANrole:$WANrole LANrole:$LANrole"
-echo -n "###"
-if [ "$gwgood" == "1" ] ; then
-  echo -n " L2nodes:$l2nodes Tcli:$tclients WLcli:$wlclients Ccli:$cclients ###"
- fi
-echo " Contact:'$(uci show|grep contact|cut -d= -f2)'"
-([ "$VPNon" == "'1'" ] && [ "$MoWoff" == "'0'" ]) && echo ALARM! MoW-VPN-Konflikt?
-([ "$MoLoff" == "'0'" ] && [ "$ifCLI" == "$ifLAN" ]) && echo ALARM! MoL-CLI-Konflikt?
-([ "$VPNon" == "'1'" ] && [ ! $(echo "$batgw"|grep -i vpn) ]) && echo WARNING: VPN enabled, aber nicht verbunden?
-# just some handy aliases
-alias cd..="cd .."
-alias myip="echo -n 'ifconfig' && ifconfig |head|tail -n1 && echo 'from ssh : ' $SSH_CONNECTION"
-alias status="source /etc/profile"
-alias ll="ls -la"
+
+alias cd..='cd ..'
+alias myip='ip addr show br-client; echo "from ssh: $SSH_CONNECTION"'
+alias status='nodestatus'
+
+case "$-" in
+	*i*)
+		[ -z "$FAILSAFE" ] && [ -x /usr/bin/nodestatus ] && /usr/bin/nodestatus
+		;;
+esac
