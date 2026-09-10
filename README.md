@@ -103,7 +103,7 @@ configurable in config mode. See [](neanderfunk-ssid-changer/README.md)
 
 Sets a regulatory country (DE/JP/TW/US) matching the configured channels and
 the widest HT mode per radio. No longer pins txpower and removes existing pins
-(keep them with `gluon.wireless.preserve_txpower=1`). Config only, no wifi
+once per node (keep them with `gluon.wireless.preserve_txpower=1`). Config only, no wifi
 restart. See [](neanderfunk-txpowerfix/README.md)
 
 
