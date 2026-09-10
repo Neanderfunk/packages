@@ -92,14 +92,47 @@ in Hardware isoliert und was `auto` gerade bedeutet. Gespeichert wird wie auf
 Gluons Seite „Netzwerk" nur per `commit`; wirksam wird es mit dem Reconfigure
 beim „Speichern & Neustarten" im Wizard.
 
-Noch nicht enthalten
---------------------
+VLANs je Port
+-------------
 
-* **VLANs je Port.** Auf DSA-Ports geht das mit Gluons Mitteln: eine Sektion mit
-  `name='lan3.5'` erzeugt ein VLAN-Unterinterface nur auf `lan3`, VLAN 5 auf
-  `lan4` ist davon unabhängig. Die Oberfläche dafür kommt als nächster Schritt.
-  Bei swconfig sind VLANs switchweit, dort geht das nicht so.
-* **swconfig-Geräte.**
+Auf einem einzeln verwendbaren Port (DSA-Port oder eigene Netzwerkkarte) lassen
+sich getaggte VLANs anlegen. Jedes VLAN ist eine eigene Sektion
+`gluon.iface_port_<port>_<vid>` mit `name='<port>.<vid>'` und eigenen Rollen;
+netifd legt das VLAN-Unterinterface an, sobald es in einer Bridge oder einem
+Interface auftaucht. Auf der Seite „Ports" gibt es dafür je Port eine Liste von
+VLAN-IDs; ein neues VLAN erscheint nach dem Speichern als eigene Zeile unter
+„Rollen".
+
+**Dieselbe VLAN-ID kann auf verschiedenen Ports verschiedene Rollen haben** -
+`lan3.5` und `lan4.5` sind zwei getrennte Netdevs. VLAN-Unterinterfaces bridged
+der Kernel in Software; für reine VLAN-Mesh-Ports wählt `auto` deshalb
+`isolate`.
+
+Von Hand:
+
+```
+uci set gluon.iface_port_lan3_5=interface
+uci set gluon.iface_port_lan3_5.name='lan3.5'
+uci add_list gluon.iface_port_lan3_5.role='mesh'
+uci commit gluon
+```
+
+Einschränkungen
+---------------
+
+* **Nur DSA-Ports und eigene Netzwerkkarten.** Bei Geräten mit **swconfig**
+  (ältere ath79) hängen die LAN-Ports hinter einem VLAN-Unterinterface wie
+  `eth0.1` und erscheinen als eine Schnittstelle. Rollen gelten dort für alle
+  gemeinsam, einzelne Ports und VLANs je Port lassen sich nicht einstellen - die
+  Seite sagt das auf solchen Geräten ausdrücklich. Grund: bei swconfig gilt ein
+  VLAN für den ganzen Switch; dieselbe VLAN-ID mit verschiedenen Rollen auf
+  verschiedenen Ports wäre dort gar nicht abbildbar, und alles andere hieße, die
+  Switch-VLANs selbst zu verwalten.
+* **Am Gerät mit Gluon 2025.1 noch nicht geprüft**, insbesondere: ob ein
+  VLAN-Unterinterface auf einem DSA-Port, der zugleich (ungetaggt) in einer
+  Bridge steckt, bei `mt7530`/`qca8k` sauber durchgereicht wird, und ob
+  `isolate` unter 6.6 zwischen den Ports wirklich nichts mehr weiterleitet.
+* **Ein Port ohne Rolle** wird nicht verwendet; ein VLAN ohne Rolle ebenso.
 
 Geprüft
 -------
@@ -116,5 +149,11 @@ danach zurückgesetzt:
 * `bridge`: eine Bridge, `isolate` entfernt.
 * `lan2` auf `client`: `lan2` in `br-client`, `mesh_other` nur `lan1`.
 
-Die Seite ist per Nachbau geprüft (mt7530 unter 5.15 und 6.6, x86). Auf einem
-Gerät mit Gluon 2025.1 steht der Test noch aus.
+Außerdem mit derselben Kette: VLAN 5 auf `lan1` als `client` landet in
+`br-client`, VLAN 5 auf `lan2` als `mesh` bekommt bei `auto` eine eigene Bridge
+`mesh_lan2_5` (weil `lan1`/`lan2` unter 5.15 nicht isolieren), alle Mesh-Bridges
+in `wired_mesh`.
+
+Die Seite ist per Nachbau geprüft (mt7530 unter 5.15 und 6.6, x86, WDR3600 mit
+swconfig; VLANs anlegen und entfernen). Auf einem Gerät mit Gluon 2025.1 steht
+der Test noch aus.

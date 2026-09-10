@@ -96,8 +96,9 @@ interface sections (all LAN ports in `gluon.iface_lan`) are split into one
 section per port, on DSA switches and separate network interfaces. Plus a
 choice how LAN ports with the mesh role are joined - bridged, isolated, or one
 bridge and batman-adv interface per port for switches that cannot isolate in
-hardware (`auto` picks). "Ports" page in the config mode. Gluon 2025.1 only.
-See [](neanderfunk-port-roles/README.md)
+hardware (`auto` picks), and tagged VLANs per port with their own roles. "Ports"
+page in the config mode. DSA ports and separate NICs only, not swconfig. Gluon
+2025.1 only. See [](neanderfunk-port-roles/README.md)
 
 ### neanderfunk-preserve-wifichannel
 
