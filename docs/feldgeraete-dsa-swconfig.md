@@ -62,8 +62,11 @@ In 23.05 und 24.10 gleich.
 | TP-Link Archer C50 v3 | 1 | ramips mt76x8 |
 | Cudy WR1000 | 1 | ramips mt76x8 |
 
-Der **Archer C25 v1** ist in Gluon 2025.1 als `broken` markiert, ohne
-`BROKEN`-Build gibt es für ihn kein Image.
+Der **Archer C25 v1** ist in Gluon als `broken` markiert, in 2023.2 wie in
+2025.1, seit er 2022 für ath79 wieder aufgenommen wurde (ed0cb90d, #2477):
+„OOM with 5GHz enabled in most environments", 64 MB RAM für ath9k und ath10k
+(QCA9887). Unser Build setzt `BROKEN=1` (`build.conf`), das Image entsteht
+also in beiden Versionen.
 
 ## DSA — 138 Knoten
 
@@ -77,7 +80,8 @@ In 23.05 und 24.10 gleich.
 | lantiq xrx200 | AVM FRITZ!Box 7412 (3), 7362 SL (1), 7360 V2 (1), 7360 SL (1) |
 | mpc85xx | TP-Link TL-WDR4900 v1 (1) |
 
-Der **ZyXEL NWA55AXE** ist in Gluon 2025.1 als `broken` markiert.
+Der **ZyXEL NWA55AXE** ist in Gluon als `broken` markiert, in 2023.2 wie in
+2025.1: „Missing LED / Reset button". Auch er wird wegen `BROKEN=1` gebaut.
 
 ## Ohne Switch — 130 Knoten
 
