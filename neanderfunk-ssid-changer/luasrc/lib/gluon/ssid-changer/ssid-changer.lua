@@ -108,10 +108,32 @@ end
 
 local offline_ssid = calculate_offline_ssid()
 
--- Count offline incidents
+-- Buchfuehrung in /tmp, also nur bis zum naechsten Boot. Die Namen der drei
+-- aelteren Dateien fuehren in die Irre, deshalb hier, was sie wirklich enthalten:
+--
+--   ssid-changer-count           KEINE Summe. Minuten, die im laufenden Fenster
+--                                (switch_timeframe) als offline galten; an jeder
+--                                Fenstergrenze auf 0 oder 1 gesetzt, mit Gateway
+--                                sofort 0. Bei switch_timeframe=2 also 0..2.
+--   ssid-changer-gwofflinecount  KEIN Ereigniszaehler, sondern die Entprellung:
+--                                Minuten in Folge ohne Gateway, bis
+--                                gwofflinemaxcount; erst danach gilt der Knoten
+--                                als offline. Steht nach dem gezaehlten Ausfall
+--                                auf gwofflinemaxcount + 1, mit Gateway sofort 0.
+--   ssid-changer-offline         0/1: galt der Knoten am letzten Fensterwechsel
+--                                als offline. Nur Diagnose, sagt nicht, ob die
+--                                Offline-SSID tatsaechlich geschaltet hat.
+--
+-- Die beiden echten Zaehler seit dem Boot, fuer die Statusseite:
+--
+--   ssid-changer-offline-switches  wie oft die Offline-SSID geschaltet wurde
+--   ssid-changer-gateway-losses    wie oft das Gateway verloren ging - nach der
+--                                  Entprellung, ein kurzer Wackler zaehlt nicht
 local tmp = '/tmp/ssid-changer-count'
 local tmp_state = '/tmp/ssid-changer-offline'
 local tmp_gwoffstate = '/tmp/ssid-changer-gwofflinecount'
+local tmp_switches = '/tmp/ssid-changer-offline-switches'
+local tmp_gwlosses = '/tmp/ssid-changer-gateway-losses'
 local gwoffmaxcount = tonumber(uci:get('ssid-changer', 'settings', 'gwofflinemaxcount') or 3)
 local off_count = 0
 -- Muss hier stehen, nicht erst in der Zuweisung unten. gwoffcount war eine
@@ -155,6 +177,42 @@ else
 	gwoffstate_file = io.open(tmp_gwoffstate, 'w')
 	gwoffstate_file:write("0")
 	gwoffstate_file:close()
+end
+
+-- Die Zaehler seit dem Boot gleich mit 0 anlegen: die Statusseite erkennt an
+-- ihrem Vorhandensein, dass dieses Paket sie fuehrt, und zeigt dann "0" statt
+-- gar nichts.
+for _, path in ipairs({ tmp_switches, tmp_gwlosses }) do
+	local f = io.open(path, 'r')
+	if f then
+		f:close()
+	else
+		f = io.open(path, 'w')
+		if f then
+			f:write("0")
+			f:close()
+		end
+	end
+end
+
+-- Zaehlt einen Vorfall hoch. Ueber eine Nebendatei und os.rename statt direkt:
+-- io.open(..., 'w') kuerzt die Datei sofort, ein Abbruch vor dem Schreiben
+-- liesse sie leer zurueck (siehe offline_ssid_is_configured weiter unten) - bei
+-- einem Zaehler, der seit dem Boot summiert, waere das ein stiller Verlust.
+local function count_event(path)
+	local n = 0
+	local f = io.open(path, 'r')
+	if f then
+		n = tonumber(f:read("*a")) or 0
+		f:close()
+	end
+	f = io.open(path .. '.tmp', 'w')
+	if not f then
+		return
+	end
+	f:write(tostring(n + 1))
+	f:close()
+	os.rename(path .. '.tmp', path)
 end
 
 -- Gemeinsame Sperre fuer WLAN-Eingriffe, dieselbe Datei wie in
@@ -246,6 +304,17 @@ if has_default_gw4() then
 else
 	if gwoffcount >= gwoffmaxcount then
 		status = 'offline'
+		-- Die erste Minute dieses Ausfalls, die als offline gilt: einmal
+		-- zaehlen und gwoffcount ueber die Schwelle heben, damit die folgenden
+		-- Minuten desselben Ausfalls nicht erneut zaehlen. Mit Gateway faellt er
+		-- oben wieder auf 0. Funktioniert auch bei gwofflinemaxcount = 0.
+		if gwoffcount == gwoffmaxcount then
+			count_event(tmp_gwlosses)
+			gwoffcount = gwoffcount + 1
+			gwoffstate_file = io.open(tmp_gwoffstate, 'w')
+			gwoffstate_file:write(tostring(gwoffcount))
+			gwoffstate_file:close()
+		end
 	else
 		gwoffcount = gwoffcount + 1
 		gwoffstate_file = io.open(tmp_gwoffstate, 'w')
@@ -332,6 +401,10 @@ elseif status == 'offline' then
 				-- save does not commit
 				uci:save('wireless')
 			end
+			-- Gezaehlt wird die Entscheidung. Scheitert wifi_reconf, traegt der
+			-- uci-Delta die Offline-SSID trotzdem, und dieser Zweig laeuft fuer
+			-- denselben Ausfall nicht noch einmal - also genau einmal je Ausfall.
+			count_event(tmp_switches)
 			log("reconfiguring wifi to offline ssid")
 			if not wifi_reconf() then
 				-- Der uci-Delta traegt die Offline-SSID schon, angewendet ist

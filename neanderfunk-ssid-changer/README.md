@@ -146,3 +146,25 @@ gegriffen, obwohl `tq_limit_enabled=1` auf den Knoten gesetzt ist - ein Knoten
 mit schlechtem, aber vorhandenem Gateway wechselte nie auf die Offline-SSID.
 An zwei Geraeten gemessen. Mit einfachen Anfuehrungszeichen kommt der Wert
 korrekt heraus (255 bzw. 254).
+
+## Zustandsdateien in /tmp
+
+Alles nur im RAM, bis zum naechsten Boot. Die Namen der drei aelteren Dateien
+fuehren in die Irre - sie klingen nach Summen, sind aber keine:
+
+| Datei | Inhalt |
+|---|---|
+| `ssid-changer-count` | Minuten, die im laufenden Fenster (`switch_timeframe`) als offline galten. An jeder Fenstergrenze auf 0 oder 1 gesetzt, mit Gateway sofort 0 - bei `switch_timeframe = 2` also 0 bis 2. |
+| `ssid-changer-gwofflinecount` | Entprellung: Minuten in Folge ohne Gateway, bis `gwofflinemaxcount`; erst danach gilt der Knoten als offline. Nach dem gezaehlten Ausfall `gwofflinemaxcount + 1`, mit Gateway sofort 0. |
+| `ssid-changer-offline` | 0/1: galt der Knoten am letzten Fensterwechsel als offline. Nur Diagnose - sagt nicht, ob die Offline-SSID geschaltet hat. |
+| `ssid-changer-offline-switches` | **Zaehler seit Boot:** wie oft die Offline-SSID geschaltet wurde. Gezaehlt wird die Entscheidung, einmal je Ausfall, auch wenn `wifi reconf` gerade gesperrt war. |
+| `ssid-changer-gateway-losses` | **Zaehler seit Boot:** wie oft das Gateway verloren ging - nach der Entprellung; ein Wackler unter `gwofflinemaxcount` Minuten zaehlt nicht. |
+
+Die beiden Zaehler legt das Skript beim ersten Lauf mit 0 an; die Statusseite
+erkennt daran, dass das Paket sie fuehrt. Geschrieben werden sie ueber eine
+Nebendatei und `rename`, damit ein Abbruch sie nicht leert.
+
+Die Umschaltentscheidungen sind dadurch unveraendert: auf einem Pruefstand, der
+das Skript Minute fuer Minute durch Ausfaelle, einen kurzen Wackler, einen
+gesperrten `wifi reconf` und `gwofflinemaxcount = 0` schickt, entscheidet es
+Minute fuer Minute wie vorher; hinzu kommen nur die Zaehler.
