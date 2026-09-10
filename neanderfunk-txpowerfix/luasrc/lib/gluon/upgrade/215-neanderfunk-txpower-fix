@@ -30,6 +30,21 @@ local uci = require('simple-uci').cursor()
 local wireless = require 'gluon.wireless'
 local iwinfo = require 'iwinfo'
 
+--- Gluons Kanal-Erhalt. Mit gesetztem gluon.wireless.preserve_channels laesst
+--- 200-wireless Kanal, Kanalliste und htmode bei Updates stehen (set_channels()
+--- kehrt sofort zurueck, get_htmode() gibt den vorhandenen Wert zurueck). Dann
+--- darf auch dieses Skript die Breite nicht neu setzen, sonst waere sie nach
+--- jedem Update wieder die breiteste - Gluons Doku verspricht das Gegenteil
+--- ("the channel width will not be reset"). Die Country bleibt: sie folgt aus
+--- den Kanaelen, und die bleiben ja erhalten.
+---
+--- Gesetzt wird der Schalter bei Neuinstallationen von
+--- neanderfunk-preserve-wifichannel. Das hebt ihn nach einem Site- oder
+--- Domainwechsel auch fuer genau einen Lauf auf, damit 200-wireless die Kanaele
+--- der neuen Site eintraegt. In diesem Lauf sieht dieses Skript ihn als 0 und
+--- setzt die Breite wie nach jeder Neukonfiguration.
+local preserve_channels = uci:get_bool('gluon', 'wireless', 'preserve_channels')
+
 --- log to stdout (visible during a manual gluon-reconfigure run) and syslog
 local function log(message)
 	print(message)
@@ -211,9 +226,11 @@ local htmode24, htmode50
 
 if interface24 then
 	uci:set('wireless', interface24, 'country', country)
-	htmode24 = best_htmode(interface24, HTMODES_24)
-	if htmode24 then
-		uci:set('wireless', interface24, 'htmode', htmode24)
+	if not preserve_channels then
+		htmode24 = best_htmode(interface24, HTMODES_24)
+		if htmode24 then
+			uci:set('wireless', interface24, 'htmode', htmode24)
+		end
 	end
 end
 
@@ -221,7 +238,7 @@ if interface50 then
 	uci:set('wireless', interface50, 'country', country)
 	-- Bei "auto" und im Outdoor-Modus waehlt Gluon Kanal und Breite selbst
 	-- (outdoor_<radio>_htmode), dort wird nichts angefasst.
-	if channel50 ~= 'auto' and uci:get('gluon', 'wireless', 'outdoor') ~= '1' then
+	if not preserve_channels and channel50 ~= 'auto' and uci:get('gluon', 'wireless', 'outdoor') ~= '1' then
 		htmode50 = best_htmode(interface50, HTMODES_50)
 		if htmode50 then
 			uci:set('wireless', interface50, 'htmode', htmode50)
@@ -232,8 +249,9 @@ end
 uci:save('wireless')
 
 log(string.format(
-	"applied: country=%s 2.4GHz(%s)=htmode:%s 5GHz(%s)=htmode:%s txpower:%s",
+	"applied: country=%s 2.4GHz(%s)=htmode:%s 5GHz(%s)=htmode:%s txpower:%s%s",
 	tostring(country),
 	tostring(interface24), tostring(htmode24 or uci:get('wireless', tostring(interface24), 'htmode')),
 	tostring(interface50), tostring(htmode50 or uci:get('wireless', tostring(interface50), 'htmode')),
-	txpower_state))
+	txpower_state,
+	preserve_channels and ' (htmode kept, gluon.wireless.preserve_channels=1)' or ''))
