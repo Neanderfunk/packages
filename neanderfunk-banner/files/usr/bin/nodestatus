@@ -251,7 +251,15 @@ local sname = site_name
 local room = 80 - COLS[3]
 if vlen(sname) > room then sname = sname:gsub('%s*%b()$', '') end
 if vlen(sname) > room then sname = sname:gsub('^Freifunk ', '') end
-row('Domain', site_code .. (domain and (' / ' .. domain) or ''), cut(sname, room), '')
+-- Nodeplacer (serverseitiger Domainwechsel): NP:1 an, NP:0 aus, nichts wenn
+-- das Paket fehlt. Wie auf der Karte aus respondd, sonst aus uci.
+local np
+if nodeinfo.software and nodeinfo.software.nodeplacer then
+	np = nodeinfo.software.nodeplacer.enabled and 1 or 0
+elseif uci:get('nodeplacer', 'settings') then
+	np = uci:get('nodeplacer', 'settings', 'disable') == '1' and 0 or 1
+end
+row('Domain', site_code .. (domain and (' / ' .. domain) or '') .. (np and ('  NP:' .. np) or ''), cut(sname, room), '')
 
 row('Firmw.', readline('/lib/gluon/release') or '?',
 	'Gluon ' .. (readline('/lib/gluon/gluon-version') or '?'),
@@ -553,15 +561,20 @@ row('Clients', 'lokal ' .. (cl.total or '?') .. (wired and ('  Kabel ' .. wired)
 -- Offline-SSID (neanderfunk-ssid-changer): jetzt / Wechsel seit Boot / Gateway-Verluste
 local sc_now = readline('/tmp/ssid-changer-offline')
 local essid = sh('iwinfo client0 info'):match('ESSID: "([^"]*)"') or sh('iwinfo client1 info'):match('ESSID: "([^"]*)"')
-if sc_now or essid then
+-- preserve_channels: "fest" = Kanal, Kanalliste und Breite bleiben bei Updates
+-- stehen, "aus Site" = Gluon setzt sie bei jedem Update auf die Site-Werte.
+local pc = uci:get('gluon', 'wireless', 'preserve_channels')
+local pctxt = pc and ('Kanal ' .. (uci:get_bool('gluon', 'wireless', 'preserve_channels') and 'fest' or 'aus Site')) or ''
+
+if sc_now or essid or pc then
 	local sc = ''
 	if sc_now then
-		sc = string.format('Offline-SSID %s  %s/%s/%s',
+		sc = string.format('Offline %s %s/%s/%s',
 			sc_now == '1' and c('red', 'AKTIV') or 'nein',
 			sc_now, readline('/tmp/ssid-changer-offline-switches') or '-',
 			readline('/tmp/ssid-changer-gateway-losses') or '-')
 	end
-	row('SSID', essid or '', sc, '')
+	row('SSID', essid or '', sc, pctxt)
 	if sc_now == '1' then warn('red', 'Offline-SSID ist aktiv') end
 end
 
