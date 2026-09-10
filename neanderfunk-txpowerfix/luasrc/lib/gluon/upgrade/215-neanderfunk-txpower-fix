@@ -1,82 +1,85 @@
 #!/usr/bin/lua
 
-local uci = require("simple-uci").cursor()
+-- neanderfunk-txpowerfix
+--
+-- Leitet aus den konfigurierten Kanaelen eine regulatorische Country ab
+-- (DE/JP/TW/US) und setzt je Radio den breitesten HT-Modus, den die Hardware
+-- anbietet. Eine Sendeleistung setzt das Skript nicht mehr, bestehende werden
+-- entfernt - siehe preserve_txpower weiter unten. Der Paketname ist geblieben,
+-- damit nebenan in image-customization.lua nichts nachgezogen werden muss.
+--
+-- Nur Config, kein Radio-Betrieb: kein "wifi reconf", kein iwinfo als
+-- Kommando, kein sleep. Das Skript laeuft bei jedem gluon-reconfigure mit, auch
+-- beim "Speichern & Neustarten" im Config-Mode, und dort bleibt dem ganzen Lauf
+-- keine Minute: uhttpd setzt fuer den CGI-Prozess einmal script_timeout (60 s)
+-- und verlaengert ihn nie. Laeuft er ab, wird der CGI abgeschossen, bevor
+-- wizard.lua zum Reboot kommt - der Browser zeigt "Bad Gateway", der Knoten
+-- startet nicht neu. Die fruehere Fassung brauchte allein fuer ihre festen
+-- Wartezeiten 85 s (4x 20 s um jeden iwinfo-Aufruf plus sleep 5), am
+-- 2026-09-10 auf einem Xiaomi 4A Gigabit genau so nachgestellt.
+--
+-- Die Radios neu zu starten war dabei auch nie noetig. Im Config-Mode folgt
+-- der Reboot direkt, beim ersten Boot nach einem sysupgrade laufen die Radios
+-- zu diesem Zeitpunkt noch gar nicht. Uebernommen wird die Config ohnehin beim
+-- naechsten Start.
+--
+-- Geschrieben wird nur mit uci:save(), committet wird von Gluons 998-commit am
+-- Ende des Laufs, zusammen mit allen anderen Upgrade-Skripten.
 
---- log to stdout (visible during a live gluon-reconfigure run) and syslog
+local uci = require('simple-uci').cursor()
+local wireless = require 'gluon.wireless'
+local iwinfo = require 'iwinfo'
+
+--- log to stdout (visible during a manual gluon-reconfigure run) and syslog
 local function log(message)
 	print(message)
-	os.execute('logger -s -t "neanderfunk-txpowerfix" -p 5 "' .. message .. '" 2>/dev/null')
+	os.execute('logger -t "neanderfunk-txpowerfix" -p 5 "' .. message .. '" 2>/dev/null')
 end
 
---- wrapper for calling systemcommands
-local function cmd(_command)
-	local f = io.popen(_command)
-	local l = f:read("*a")
-	f:close()
-	return l
+--- Keine Sendeleistung festschreiben, bestehende entfernen.
+---
+--- Ohne txpower in uci sendet ein Radio mit dem Maximum aus Regdomain, Kanal
+--- und Hardware. cfg80211 rechnet je Kanal
+---     max_power = min(Hardware-Limit, Limit der Regdomain)
+--- (net/wireless/reg.c), und mac80211 zieht eine Vorgabe nur ueber min() heran
+--- (__ieee80211_recalc_txpower, net/mac80211/iface.c). Ein gesetzter Wert kann
+--- die Leistung also nur senken, nie heben - und er bleibt stehen, wenn der
+--- Kanal spaeter wechselt (auto, DFS-Ausweichen) und dort mehr erlaubt waere.
+---
+--- Genau so hat die fruehere Fassung gearbeitet: sie las mit
+--- "iwinfo txpowerlist" dasselbe max_power aus und schrieb es fest. Im
+--- Config-Mode las sie dabei die falsche Regdomain - dort gilt die der Site
+--- (S20network macht "iw reg set" mit site.regdom), die hier gewaehlte Country
+--- steht nur in uci. Am 2026-09-10 auf neun Testknoten nachgesehen: 7 von 17
+--- Radios lagen 3 bis 7 dB unter dem Wert, den der Kernel ohne Vorgabe nimmt.
+---
+--- Wer eine Sendeleistung bewusst gesetzt hat (Erweiterte Einstellungen) und
+--- sie ueber Updates behalten will:
+---     uci set gluon.wireless.preserve_txpower='1' ; uci commit gluon
+--- Der Schalter liegt absichtlich neben Gluons preserve_channels. Die Sektion
+--- legt Gluons 190-preserve-wireless-channels bei jedem Lauf an; es setzt nur
+--- preserve_channels und laesst andere Optionen der Sektion stehen.
+if uci:get('gluon', 'wireless') and uci:get('gluon', 'wireless', 'preserve_txpower') == nil then
+	-- sichtbar machen, was gilt: "uci show gluon.wireless" zeigt den Schalter
+	-- dann neben preserve_channels
+	uci:set('gluon', 'wireless', 'preserve_txpower', false)
+	uci:save('gluon')
 end
 
---- like cmd(), but for iwinfo/iw calls that can hang on some chipsets when
---- the radio is already up and meshing (this runs on every gluon-reconfigure,
---- not just once, so a live mesh radio is the normal case, not an edge case):
---- runs the command in the background and force-kills it after timeout_secs
---- if it hasn't finished on its own. Returns two values: a status ("OK" if
---- the command finished by itself, "TIMEOUT" if it had to be killed) and
---- whatever it managed to write to the temp file. The status matters
---- because an empty result can also legitimately mean "command finished
---- fine, there's just no matching line" (e.g. no txpower list for this
---- combination) rather than a hang - those two cases need different
---- handling by the caller.
-local function cmd_safe(_command, timeout_secs)
-	local tmp = "/tmp/txpowerfix.out"
-	local wrapped = string.format(
-		'(%s) >%s 2>/dev/null & p=$!; sleep %d; ' ..
-		'if kill -0 $p 2>/dev/null; then kill -9 $p 2>/dev/null; echo TIMEOUT; else echo OK; fi; ' ..
-		'cat %s 2>/dev/null; rm -f %s',
-		_command, tmp, timeout_secs, tmp, tmp)
-	local result = cmd(wrapped)
-	local status, rest = result:match('^(%a+)\n(.*)$')
-	return status or 'OK', rest or ''
-end
-
---- an empty txpowerlist result after a genuine timeout means the measurement
---- is actually stuck (or the tool hung) - that aborts the whole run rather
---- than committing a half-applied change. An empty result that finished on
---- its own just means this device/driver has no matching txpower entry for
---- the current settings, which is a legitimate outcome: log it and leave
---- txpower unset for this interface instead of aborting.
-local function txpower_or_skip(interface)
-	local status, t = cmd_safe(
-		'iwinfo ' .. interface .. ' txpowerlist|grep mW|tr -d \'*\'|tail -n 1| awk \'{print $1}\'', 20)
-	local maximumTxPowerDb = tonumber((t:gsub("\n", "")))
-	if maximumTxPowerDb then
-		return maximumTxPowerDb
+local txpower_state = 'preserved'
+if not uci:get_bool('gluon', 'wireless', 'preserve_txpower') then
+	txpower_state = 'unset'
+	local pinned = {}
+	uci:foreach('wireless', 'wifi-device', function(section)
+		if section.txpower then
+			pinned[section['.name']] = section.txpower
+		end
+	end)
+	for radio, txpower in pairs(pinned) do
+		log(radio .. ": removing pinned txpower " .. txpower .. " dBm")
+		uci:delete('wireless', radio, 'txpower')
 	end
-	if status == 'TIMEOUT' then
-		log(interface .. ": txpowerlist timed out after 20s, aborting")
-		os.exit(1)
-	end
-	log(interface .. ": no txpowerlist entry available, leaving txpower unset")
-	return nil
-end
-
---- same OK/TIMEOUT distinction as txpower_or_skip, but an empty htmodelist
---- match was already a legitimate, expected outcome even before that (no
---- HT/VHT/HE mode matches the filter for this device/regulatory-domain
---- combination) - so both cases just log and keep the HT20 default instead
---- of aborting; only the log message differs.
-local function htmode_or_default(interface, grep_pattern)
-	local status, VHT = cmd_safe(
-		'iwinfo ' .. interface .. ' htmodelist|xargs -n1|grep -v "+"|grep -e "' .. grep_pattern .. '"|tail -n1|tr -d "\n"', 20)
-	if VHT ~= '' and (string.match(VHT, 'HT') or string.match(VHT, 'HE')) then
-		return VHT
-	end
-	if status == 'TIMEOUT' then
-		log(interface .. ": htmodelist timed out after 20s, keeping HT20")
-	else
-		log(interface .. ": no htmode beyond HT20 found, keeping HT20")
-	end
-	return nil
+	uci:save('wireless')
 end
 
 --- Which radio is 2.4 GHz, which is 5 GHz?
@@ -164,73 +167,73 @@ if interface24 and interface50 then
 end
 log("chosen regulatory country=" .. tostring(country))
 
---- set HT-modes (1st pass)
-local htmode24, htmode50, txpower24, txpower50 = nil, nil, nil, nil
+--- Den breitesten HT-Modus aus einer Vorzugsliste, den die Hardware kann.
+---
+--- Frueher lief dafuer "iwinfo <radio> htmodelist | xargs | grep | tail" als
+--- Kommando, mit 20 s fester Wartezeit drumherum, und vorher ein "wifi reconf".
+--- Die Liste ist aber ein statisches Merkmal der wiphy, beim Laden des Treibers
+--- registriert: sie haengt weder von Country noch von Kanal ab, noch davon, ob
+--- ein Interface laeuft. Gluons 200-wireless fragt im selben Lauf genauso ab,
+--- ueber das iwinfo-Binding im eigenen Prozess - kein fork, keine Pipe.
+---
+--- Die Vorzugslisten bilden das alte "tail -n1" genau nach. iwinfo zaehlt die
+--- Modi in der Reihenfolge HT20, HT40, VHT20, VHT40, VHT80, VHT80_80, VHT160,
+--- NOHT, HE20, HE40, HE80, HE80_80, HE160 (neuere Staende danach EHT) auf, und
+--- der letzte Treffer des grep gewann. EHT steht vorn fuer den Fall, dass ein
+--- neueres iwinfo es liefert; ein aelteres kennt den Schluessel nicht, dann
+--- ist er nil und wird uebersprungen.
+---
+--- Kann die Hardware nichts davon oder ist die phy nicht zu finden, bleibt der
+--- Modus stehen, den Gluons 200-wireless gesetzt hat. Die fruehere Fassung
+--- setzte fuer 2.4 GHz vorab hart HT20 und nagelte ein HE-faehiges Radio dann
+--- darauf fest, wenn die Abfrage scheiterte.
+local HTMODES_24 = { 'EHT20', 'HE20', 'VHT20', 'HT20' }
+local HTMODES_50 = { 'EHT80', 'EHT40', 'HE80', 'HE40', 'VHT80', 'VHT40', 'HT40' }
+
+local function best_htmode(radio, preferred)
+	local phy = wireless.find_phy(uci:get_all('wireless', radio))
+	if not phy then
+		return nil
+	end
+	local modes = iwinfo.nl80211.htmodelist(phy)
+	if not modes then
+		return nil
+	end
+	for _, mode in ipairs(preferred) do
+		if modes[mode] then
+			return mode
+		end
+	end
+	return nil
+end
+
+local htmode24, htmode50
 
 if interface24 then
 	uci:set('wireless', interface24, 'country', country)
-	uci:save('wireless')
-	uci:commit('wireless')
-	cmd('/sbin/wifi reconf')
-	htmode24 = 'HT20'
-	uci:set('wireless', interface24, 'htmode', htmode24)
-	local VHT = htmode_or_default(interface24, '20')
-	if VHT then
-		htmode24 = VHT
+	htmode24 = best_htmode(interface24, HTMODES_24)
+	if htmode24 then
 		uci:set('wireless', interface24, 'htmode', htmode24)
 	end
 end
+
 if interface50 then
-	-- an "interface50 == 'radio0' or 'radio1'" guard used to sit here. It was a
-	-- sanity check on the hand-rolled detection above and would have skipped a
-	-- third radio outright, so it is gone with that detection.
-	if channel50 ~= 'auto' and uci:get('gluon', 'wireless', 'outdoor') ~= '1' then  --- don't do if outdoor is enabled
-		uci:set('wireless', interface50, 'country', country)
-		uci:save('wireless')
-		uci:commit('wireless')
-		cmd('/sbin/wifi reconf')
-		local VHT = htmode_or_default(interface50, '80\\|40')
-		if VHT then
-			htmode50 = VHT
+	uci:set('wireless', interface50, 'country', country)
+	-- Bei "auto" und im Outdoor-Modus waehlt Gluon Kanal und Breite selbst
+	-- (outdoor_<radio>_htmode), dort wird nichts angefasst.
+	if channel50 ~= 'auto' and uci:get('gluon', 'wireless', 'outdoor') ~= '1' then
+		htmode50 = best_htmode(interface50, HTMODES_50)
+		if htmode50 then
 			uci:set('wireless', interface50, 'htmode', htmode50)
 		end
 	end
 end
+
 uci:save('wireless')
-uci:commit('wireless')
-
---- restart with new ht modes
-cmd('/sbin/wifi reconf')
-cmd('sleep 5')
-
---- 2.4G
-if interface24 then
-	txpower24 = txpower_or_skip(interface24)
-	if txpower24 then
-		uci:set('wireless', interface24, 'txpower', txpower24)
-	end
-end
-
---- 5G
-if interface50 then
-	if channel50 ~= 'auto' and uci:get('gluon', 'wireless', 'outdoor') ~= '1' then  --- don't do if outdoor is enabled
-		txpower50 = txpower_or_skip(interface50)
-		if txpower50 then
-			uci:set('wireless', interface50, 'txpower', txpower50)
-		end
-	else -- outdoors
-		uci:set('wireless', interface50, 'country', country)
-		uci:delete('wireless', interface50, 'txpower')
-	end
-end
-
---- restart stuff
-uci:save('wireless')
-uci:commit('wireless')
-cmd('/sbin/wifi reconf')
 
 log(string.format(
-	"applied: country=%s 2.4GHz(%s)=htmode:%s,txpower:%s 5GHz(%s)=htmode:%s,txpower:%s",
+	"applied: country=%s 2.4GHz(%s)=htmode:%s 5GHz(%s)=htmode:%s txpower:%s",
 	tostring(country),
-	tostring(interface24), tostring(htmode24), tostring(txpower24),
-	tostring(interface50), tostring(htmode50), tostring(txpower50)))
+	tostring(interface24), tostring(htmode24 or uci:get('wireless', tostring(interface24), 'htmode')),
+	tostring(interface50), tostring(htmode50 or uci:get('wireless', tostring(interface50), 'htmode')),
+	txpower_state))
