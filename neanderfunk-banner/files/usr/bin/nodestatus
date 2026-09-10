@@ -420,6 +420,81 @@ do
 	if ok and type(data) == 'table' then board = data end
 end
 
+-- Rollen jenseits der drei Gluon-Gruppen: weitere interface-Sektionen in
+-- gluon (etwa iface_client) und eigene Mesh-Ports in network (proto
+-- gluon_wired mit gluon_preserve=1) - so richtet die Werkstatt-Anleitung
+-- "LAN-Ports trennen" einzelne Ports ein. Sie stehen als eigene Zeilen da,
+-- ihre Ports fallen aus der LAN-/WAN-Gruppe heraus.
+local function resolve_ports(name)
+	local t = {}
+	if type(name) == 'table' then name = join(name) end
+	if type(name) ~= 'string' then return t end
+	if name:sub(1, 1) == '/' then
+		name = readline('/lib/gluon/core/sysconfig/' .. name:sub(2) .. '_ifname') or ''
+	end
+	for p in name:gmatch('%S+') do table.insert(t, p) end
+	return t
+end
+
+local extra_groups, used_by, taken = {}, {}, {}
+local function use(ports, sec)
+	for _, p in ipairs(ports) do
+		used_by[p] = used_by[p] or {}
+		table.insert(used_by[p], sec)
+	end
+end
+uci:foreach('gluon', 'interface', function(s)
+	local sec = s['.name']
+	local ports = resolve_ports(s.name)
+	local r = aslist(s.role)
+	if #r > 0 then use(ports, sec) end
+	if sec ~= 'iface_wan' and sec ~= 'iface_lan' and sec ~= 'iface_single' and #ports > 0 then
+		table.insert(extra_groups, { role = #r > 0 and join(r, '+') or nil, devs = ports })
+		for _, p in ipairs(ports) do taken[p] = true end
+	end
+end)
+uci:foreach('network', 'interface', function(s)
+	if s.gluon_preserve == '1' and s.proto == 'gluon_wired' then
+		local ports = resolve_ports(s.ifname or s.device)
+		if #ports > 0 then
+			table.insert(extra_groups, { role = 'mesh', devs = ports })
+			use(ports, s['.name'])
+			for _, p in ipairs(ports) do taken[p] = true end
+		end
+	end
+end)
+
+-- Ein Port in mehreren Sektionen mit Rolle: Gluon und netifd nehmen dann
+-- eine davon, welche, ist nicht festgelegt.
+do
+	local dup = {}
+	for p, secs in pairs(used_by) do
+		if #secs > 1 then table.insert(dup, p .. ' (' .. join(secs, ', ') .. ')') end
+	end
+	table.sort(dup)
+	for _, d in ipairs(dup) do warn('red', 'Port in mehreren Rollen: ' .. d) end
+end
+
+-- Board-Ports einer Gruppe ohne die, die eine eigene Zeile haben
+local function group_devs(net)
+	local devs = {}
+	for _, d in ipairs(net.ports or (net.device and { net.device }) or {}) do
+		if not taken[d] then table.insert(devs, d) end
+	end
+	return devs
+end
+
+-- Zeilen-Label einer Zusatzgruppe: WAN, wenn alle Ports WAN-Ports sind
+local function extra_label(g)
+	local wan = {}
+	local net = board.network and board.network.wan
+	for _, d in ipairs((net and (net.ports or (net.device and { net.device }))) or {}) do wan[d] = true end
+	for _, d in ipairs(g.devs) do
+		if not wan[d] then return 'LAN' end
+	end
+	return 'WAN'
+end
+
 local function speedtxt(speed, duplex)
 	speed = tonumber(speed)
 	if not speed or speed <= 0 then return 'up' end
@@ -465,7 +540,7 @@ local function port_cells(role)
 		if st == nil then return end
 		table.insert(cells, name .. ':' .. ((st == '?' and c('dim', '?')) or (st and c('green', st)) or c('dim', '-')))
 	end
-	local devs = net.ports or (net.device and { net.device }) or {}
+	local devs = group_devs(net)
 	-- swconfig: das Device ist ein VLAN auf dem Switch (eth0.1), die Ports
 	-- selbst sieht man nur ueber swconfig.
 	local swp = (#devs == 1 and devs[1]:find('%.') and exists('/sbin/swconfig')) and switch_ports(role)
@@ -475,6 +550,17 @@ local function port_cells(role)
 		end
 	else
 		for _, d in ipairs(devs) do add(d, devstate(d)) end
+	end
+	return cells
+end
+
+local function dev_cells(devs)
+	local cells = {}
+	for _, d in ipairs(devs) do
+		local st = devstate(d)
+		if st ~= nil then
+			table.insert(cells, d .. ':' .. ((st == '?' and c('dim', '?')) or (st and c('green', st)) or c('dim', '-')))
+		end
 	end
 	return cells
 end
@@ -554,6 +640,9 @@ end
 if has_wifi then
 	local groups = single_role and { { 'Port', single_role, port_cells('lan') } }
 		or { { 'WAN', wan_role, wc }, { 'LAN', lan_role, port_cells('lan') } }
+	for _, g in ipairs(extra_groups) do
+		table.insert(groups, { extra_label(g), g.role, dev_cells(g.devs) })
+	end
 	for _, g in ipairs(groups) do
 		local label, role, cells = g[1], g[2], g[3]
 		if cells and #cells > 0 then
@@ -571,18 +660,19 @@ local wan_mesh = wan_role and wan_role:find('mesh')
 
 -- Mehrere Rollen auf einem Interface (etwa uplink+mesh) sind moeglich, aber
 -- selten gewollt.
-for _, sec in ipairs({ 'iface_wan', 'iface_lan', 'iface_single' }) do
-	local r = aslist(uci:get('gluon', sec, 'role'))
+uci:foreach('gluon', 'interface', function(s)
+	local r = aslist(s.role)
 	if #r > 1 then
-		warn('yellow', 'Interface ' .. (uci:get('gluon', sec, 'name') or sec) .. ' hat mehrere Rollen: ' .. join(r, '+'))
+		warn('yellow', 'Interface ' .. (s.name or s['.name']) .. ' hat mehrere Rollen: ' .. join(r, '+'))
 	end
-end
+end)
 
 
 -- Port-Tabelle fuer Geraete ohne WLAN: je Port Link, Traffic seit Boot und
 -- Fehler, je Rollengruppe Mesh und Nachbarn. Nachbarn gibt es nur je Gruppe:
 -- mehrere Mesh-Ports fasst Gluon zu einer Bridge zusammen, batman sieht nur
--- die Bridge und weiss nicht, an welchem Port ein Nachbar haengt.
+-- die Bridge und weiss nicht, an welchem Port ein Nachbar haengt. Eigene
+-- Mesh-Ports (siehe extra_groups) sind je eine Gruppe, dort also je Port.
 local function human(n)
 	n = tonumber(n)
 	if not n then return '-' end
@@ -599,7 +689,8 @@ local function port_table(wiredmesh, detail)
 	local function add_group(label, role, boardkey)
 		local net = board.network and board.network[boardkey]
 		if not net then return end
-		local devs = net.ports or (net.device and { net.device }) or {}
+		local devs = group_devs(net)
+		if #devs == 0 then return end
 		table.insert(groups, { label = label, role = role or '', devs = devs, bat = {} })
 	end
 	if single_role then
@@ -607,6 +698,9 @@ local function port_table(wiredmesh, detail)
 	else
 		add_group('WAN', wan_role, 'wan')
 		add_group('LAN', lan_role, 'lan')
+	end
+	for _, g in ipairs(extra_groups) do
+		table.insert(groups, { label = extra_label(g), role = g.role or '', devs = g.devs, bat = {} })
 	end
 	if #groups == 0 then return false end
 
