@@ -219,6 +219,15 @@ local domain = uci:get('gluon', 'core', 'domain')
 
 local node_id = nodeinfo.node_id or ''
 
+-- Radios gleich hier: ohne WLAN (x86, reine LAN-Geraete) fallen alle
+-- WLAN-Teile weg - SSID-Zeile, WLAN-Clients, wifi-fallback, Radio-Tabelle.
+local radios = {}
+uci:foreach('wireless', 'wifi-device', function(s)
+	table.insert(radios, s['.name'])
+end)
+table.sort(radios)
+local has_wifi = #radios > 0
+
 -- Kerne: fuer die Einordnung der Load
 local nproc = nodeinfo.hardware and tonumber(nodeinfo.hardware.nproc)
 if not nproc then
@@ -310,7 +319,7 @@ local au_branch = uci:get('autoupdater', 'settings', 'branch') or '?'
 local au_sigs = uci:get('autoupdater', au_branch, 'good_signatures') or '?'
 local au_fallback = uci:get('autoupdater-wifi-fallback', 'settings', 'enabled')
 row('Update', au_enabled and (c('green', 'an') .. '  ' .. au_branch .. '  min ' .. au_sigs .. ' Sig') or c('yellow', 'AUS'),
-	au_fallback and ('wifi-fallback ' .. (au_fallback == '1' and 'an' or 'aus')) or '',
+	(has_wifi and au_fallback) and ('wifi-fallback ' .. (au_fallback == '1' and 'an' or 'aus')) or '',
 	'')
 if not au_enabled then warn('yellow', 'Autoupdater ist abgeschaltet') end
 
@@ -554,8 +563,8 @@ for l in sh('batctl tg'):gmatch('[^\n]+') do
 	if l:match('^%s*%*') and l:match('%[[^%]]*W[^%]]*%]') then meshclients = meshclients + 1 end
 end
 
-row('Clients', 'lokal ' .. (cl.total or '?') .. (wired and ('  Kabel ' .. wired) or ''),
-	'WLAN 2G ' .. (cl.wifi24 or '?') .. '  5G ' .. (cl.wifi5 or '?'),
+row('Clients', 'lokal ' .. (cl.total or '?') .. ((has_wifi and wired) and ('  Kabel ' .. wired) or ''),
+	has_wifi and ('WLAN 2G ' .. (cl.wifi24 or '?') .. '  5G ' .. (cl.wifi5 or '?')) or '',
 	'im Mesh ' .. meshclients)
 
 -- Offline-SSID (neanderfunk-ssid-changer): jetzt / Wechsel seit Boot / Gateway-Verluste
@@ -566,7 +575,7 @@ local essid = sh('iwinfo client0 info'):match('ESSID: "([^"]*)"') or sh('iwinfo 
 local pc = uci:get('gluon', 'wireless', 'preserve_channels')
 local pctxt = pc and ('Kanal ' .. (uci:get_bool('gluon', 'wireless', 'preserve_channels') and 'fest' or 'aus Site')) or ''
 
-if sc_now or essid or pc then
+if has_wifi then
 	local sc = ''
 	if sc_now then
 		sc = string.format('Offline %s %s/%s/%s',
@@ -585,17 +594,11 @@ end
 local RCOLS = { 0, 8,   13,   22,    29,  36,    44, 49,  55,     63 }
 local any_uci_tx = false
 
-local radios = {}
-uci:foreach('wireless', 'wifi-device', function(s)
-	table.insert(radios, s['.name'])
-end)
-table.sort(radios)
-
 -- Die Regdomain steht links in der Kopfzeile: sie bestimmt die Grenzen der
 -- ganzen Tabelle (Kanaele, TX/max).
 local regdom
 for _, r in ipairs(radios) do regdom = regdom or uci:get('wireless', r, 'country') end
-if #radios > 0 then
+if has_wifi then
 	place(RCOLS, { c('bold', regdom or '??'), c('dim', 'Band'), c('dim', 'Kanal'), c('dim', 'Breite'), c('dim', 'Mode'),
 		c('dim', 'TX/max'), c('dim', 'AP'), c('dim', 'Mesh'), c('dim', 'Clients'), c('dim', 'Nachbarn') })
 end
@@ -703,7 +706,12 @@ if #wiredmesh > 0 then
 		if h then hi = hi and math.max(hi, h) or h end
 	end
 	local nb = n == 0 and c('dim', '0') or (lo == hi and string.format('%d TQ%d', n, lo) or string.format('%d TQ%d-%d', n, lo, hi))
-	place(RCOLS, { c('bold', 'Kabel'), join(wiredmesh, ','), '', '', '', '', '', c('green', 'an'), '', nb })
+	if has_wifi then
+		place(RCOLS, { c('bold', 'Kabel'), join(wiredmesh, ','), '', '', '', '', '', c('green', 'an'), '', nb })
+	else
+		-- ohne Radio-Tabelle keine Spaltenkoepfe: selbsterklaerend in einer Zeile
+		row('Mesh', 'Kabel ' .. join(wiredmesh, ','), nb .. (n == 1 and ' Nachbar' or ' Nachbarn'), '')
+	end
 end
 
 if outdoor or any_uci_tx then
