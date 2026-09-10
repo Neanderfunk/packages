@@ -92,7 +92,8 @@ Makes `wifi24.preserve_channels` from the site.conf the default for Gluon's uci
 option `gluon.wireless.preserve_channels` - Gluon itself never read the site
 key. Sets it where it is missing (on fresh installs once the config mode wizard
 is done), leaves an existing 0 or 1 alone, and applies the site's channels once
-after a site or domain switch. See [](neanderfunk-preserve-wifichannel/README.md)
+after a site or domain switch, the 5 GHz channels once after an outdoor switch.
+See [](neanderfunk-preserve-wifichannel/README.md)
 
 ### neanderfunk-ssid-changer
 
