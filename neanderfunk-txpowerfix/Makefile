@@ -20,9 +20,10 @@ define Package/$(PKG_NAME)/description
   gluon-reconfigure upgrade script, including the one triggered by the config
   mode's "Save & restart", and only writes config: no wifi restart, no iwinfo
   command, no sleep - uhttpd kills the config-mode CGI after 60 s.
-  It no longer pins txpower and removes existing pins: without one the kernel
-  already uses min(hardware, regulatory limit) for the current channel. To keep
-  a deliberately set txpower across updates:
+  It no longer pins txpower and removes existing pins once per node (marked in
+  sysconfig, later values are left alone): without one the kernel already uses
+  min(hardware, regulatory limit) for the current channel. To keep a txpower
+  set before that one-time cleanup:
     uci set gluon.wireless.preserve_txpower='1'
   With gluon.wireless.preserve_channels set, htmode is left alone.
 endef

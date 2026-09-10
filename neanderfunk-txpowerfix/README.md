@@ -26,8 +26,8 @@ Domainwechsel.
   Outdoor-Modus aus ist. Gelesen ueber das iwinfo-Lua-Binding
   (`iwinfo.nl80211.htmodelist(phy)`) im eigenen Prozess, genauso wie Gluons
   `200-wireless`. Scheitert die Abfrage, bleibt Gluons Wert stehen.
-* **txpower**: wird entfernt, sofern `gluon.wireless.preserve_txpower` nicht
-  gesetzt ist.
+* **txpower**: wird **einmal je Knoten** entfernt, sofern
+  `gluon.wireless.preserve_txpower` nicht gesetzt ist; danach nie wieder.
 * **`gluon.wireless.preserve_channels`**: steht der Schalter, bleibt htmode
   unangetastet - sonst waere die Breite nach jedem Update wieder die breiteste,
   entgegen Gluons Zusage ("the channel width will not be reset"). Die Country
@@ -64,19 +64,35 @@ mt7915, mt7603, mt76x2, ath9k, ath10k):
 * Die beiden Radios ohne `txpower` in uci sendeten exakt mit diesem Wert.
 * 7 der 17 Radios waren 3 bis 7 dB **darunter** festgeschrieben.
 
-Bestehende Werte behalten
--------------------------
+Einmaliges Aufraeumen
+---------------------
 
-Wer eine Sendeleistung bewusst gesetzt hat (Erweiterte Einstellungen) und sie
-ueber Updates behalten will:
+Festgeschriebene Werte werden **einmal je Knoten** entfernt, beim ersten Lauf
+dieser Fassung. Danach steht in `/lib/gluon/core/sysconfig/` der Vermerk
+`neanderfunk_txpowerfix_unpinned`, und `txpower` wird nie wieder angefasst.
+Das Skript setzt selbst keine Sendeleistung mehr - jeder spaetere Wert kommt
+von jemandem, der ihn bewusst gesetzt hat, und bleibt, auch ueber Updates.
+
+Bei jedem Lauf zu entfernen ginge nicht: seit Gluon 2025.1 loest schon das
+Speichern der Erweiterten Einstellungen einen `gluon-reconfigure` aus, ein
+Domainwechsel tut es in beiden Staenden. Eine dort gesetzte Sendeleistung waere
+sofort wieder weg.
+
+Der Vermerk uebersteht jedes sysupgrade. Bei einer Neuinstallation gibt es
+nichts zu entfernen, dann wird nur vermerkt.
+
+Wer vor diesem einmaligen Lauf bewusst eine Sendeleistung gesetzt hat und sie
+behalten will:
 
 ```
 uci set gluon.wireless.preserve_txpower='1'
 uci commit gluon
 ```
 
-Default ist `0`, das Skript legt die Option sichtbar an, sodass
-`uci show gluon.wireless` sie neben Gluons `preserve_channels` zeigt. Gluons
+Solange der Schalter steht, wird weder aufgeraeumt noch vermerkt; aufgeraeumt
+wird im ersten Lauf ohne ihn. Default ist `0`, das Skript legt die Option
+sichtbar an, sodass `uci show gluon.wireless` sie neben Gluons
+`preserve_channels` zeigt. Gluons
 `190-preserve-wireless-channels` schreibt die Sektion bei jedem Lauf neu, laesst
 andere Optionen darin aber stehen (am Geraet geprueft).
 
