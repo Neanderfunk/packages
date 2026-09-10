@@ -11,6 +11,14 @@
 -- es etwas zu warnen gibt. Farbe nur auf einem Terminal; NO_COLOR schaltet sie
 -- ab, FORCE_COLOR erzwingt sie.
 --
+-- Aufruf:
+--   nodestatus            Uebersicht (so beim Login)
+--   nodestatus details    dazu Nachbarn einzeln, Gateways, Broker, Adressen
+--                         (das ist "nodeinfo")
+--   nodestatus ports      nur die Port-Tabelle ("switch0")
+--   nodestatus ports -v   Port-Tabelle mit MAC, MTU, Bridge, Link-Wechsel,
+--                         Drops je Port ("switchstatus")
+--
 -- Nur lesend: schreibt nichts, weder uci noch Flash.
 --
 -- Fehlt eine Quelle (uci-Schluessel, Datei, Kommando, Modul), heisst das
@@ -141,6 +149,11 @@ local function cut_left(s, n)
 	return '~' .. table.concat(chars, '', #chars - (n - 2))
 end
 
+local MODE = (arg and arg[1]) or ''
+local VERBOSE = arg and arg[2] == '-v'
+-- Im Port-Modus wird alles gesammelt, aber nur die Port-Tabelle ausgegeben.
+local out_on = MODE ~= 'ports'
+
 -- Setzt Zellen an feste Startspalten. Laeuft eine Zelle ueber, bekommt die
 -- naechste nur ein Leerzeichen Abstand - die Zeile verrutscht, der Rest nicht.
 local function place(cols, cells)
@@ -159,7 +172,7 @@ local function place(cols, cells)
 			pos = pos + vlen(cell)
 		end
 	end
-	print(out)
+	if out_on then print(out) end
 end
 
 local COLS = { 0, 8, 32, 56 }
@@ -580,7 +593,7 @@ local function human(n)
 	return (n < 10 and string.format('%.1f', n) or tostring(math.floor(n + 0.5))) .. units[i]
 end
 
-local function port_table(wiredmesh)
+local function port_table(wiredmesh, detail)
 	local TCOLS = { 0, 8, 18, 27, 33, 38, 50, 63 }
 	local groups = {}
 	local function add_group(label, role, boardkey)
@@ -661,11 +674,40 @@ local function port_table(wiredmesh)
 			end
 			place(TCOLS, { i == 1 and c('bold', g.label) or '', cut(d, 9), i == 1 and roletxt(g.role) or '',
 				link, i == 1 and meshcell or '', i == 1 and nbcell or '', rxtx, errs })
+			if detail then
+				-- MAC, MTU, Bridge, Link-Wechsel seit Boot (Wackelkontakt!), Drops
+				local nb = '/sys/class/net/' .. d .. '/'
+				local master = sh('readlink ' .. nb .. 'master'):match('([^/%s]+)%s*$')
+				local changes = tonumber(readline(nb .. 'carrier_changes'))
+				local drops = (tonumber(readline(base .. 'rx_dropped')) or 0) + (tonumber(readline(base .. 'tx_dropped')) or 0)
+				local parts = {}
+				local mac = readline(nb .. 'address')
+				if mac then table.insert(parts, mac) end
+				local mtu = readline(nb .. 'mtu')
+				if mtu then table.insert(parts, 'MTU ' .. mtu) end
+				if master then table.insert(parts, master) end
+				if changes then
+					table.insert(parts, (changes > 10 and c('yellow', 'Wechsel ' .. changes)) or ('Wechsel ' .. changes))
+				end
+				if exists(base .. 'rx_dropped') then table.insert(parts, 'Drops ' .. drops) end
+				if #parts > 0 then place(TCOLS, { '', c('dim', table.concat(parts, '  ')) }) end
+			end
 		end
 		for _, p in ipairs(swp or {}) do
 			local st = swport_state(p.num)
 			local name = (#swp > 1 and ('Port ' .. (p.index or p.num))) or (g.label == 'WAN' and 'Port wan' or 'Port')
-			place(TCOLS, { '', ' ' .. name, '', (st == '?' and c('dim', '?')) or (st and c('green', st)) or c('dim', '-') })
+			local extra = ''
+			if detail and st and st ~= '?' then
+				-- Duplex, Flusskontrolle, Autonegotiation aus swconfig
+				local l = sh('swconfig dev switch0 port ' .. p.num .. ' get link')
+				local f = {}
+				for _, w in ipairs({ 'full%-duplex', 'half%-duplex', 'txflow', 'rxflow', 'auto' }) do
+					local m = l:match(w)
+					if m then table.insert(f, (m:gsub('%-duplex', ''))) end
+				end
+				extra = c('dim', table.concat(f, ' '))
+			end
+			place(TCOLS, { '', ' ' .. name, '', (st == '?' and c('dim', '?')) or (st and c('green', st)) or c('dim', '-'), extra })
 		end
 		if is_uplink(g.role) and (wan_gw or wan_v4 or wan_v6) then
 			row('', wan_gw and ('gw ' .. wan_gw) or '', wan_v4 and ('v4 ' .. wan_v4) or '', '')
@@ -678,6 +720,21 @@ local function port_table(wiredmesh)
 			(k == nil and c('dim', '?')) or (k == 0 and c('dim', '0')) or (l == h and string.format('%d TQ%d', k, l) or string.format('%d TQ%d-%d', k, l, h)), '', '' })
 	end
 	return true
+end
+
+
+if MODE == 'ports' then
+	local wm = {}
+	for name, st in pairs(batif) do
+		if st == 'active' and not name:match('^mesh%d') and name ~= 'mesh-vpn' and name ~= 'primary0' then
+			table.insert(wm, name)
+		end
+	end
+	table.sort(wm)
+	out_on = true
+	uplink_shown = false
+	if not port_table(wm, VERBOSE) then print('Keine Ports in /etc/board.json.') end
+	return
 end
 
 
@@ -1014,6 +1071,79 @@ for name, st in pairs(batif) do
 end
 if batctl_ok and not neigh_unknown and not anyneigh and not vpn_up then
 	warn('red', 'Insel: keine Mesh-Nachbarn und kein VPN')
+end
+
+
+-- --- Details (nodeinfo) -------------------------------------------------------
+
+if MODE == 'details' then
+	local DCOLS = { 0, 8, 18, 37, 44, 52, 60 }
+
+	-- Nachbarn einzeln: je eigenem batman-Interface, mit TQ, Signal (WLAN) und
+	-- wann zuletzt gehoert
+	local nrows = {}
+	for name, st in pairs(batif) do
+		local mac = st == 'active' and name ~= 'primary0' and ifaddr(name)
+		local bat = mac and neigh.batadv and neigh.batadv[mac]
+		for nbmac, v in pairs(bat and bat.neighbours or {}) do
+			local wifi = neigh.wifi and neigh.wifi[mac] and neigh.wifi[mac].neighbours
+			local sig = wifi and wifi[nbmac] and wifi[nbmac].signal
+			table.insert(nrows, { name, nbmac, tonumber(v.tq) or 0, sig, tonumber(v.lastseen) })
+		end
+	end
+	table.sort(nrows, function(a, b) if a[1] ~= b[1] then return a[1] < b[1] end return a[3] > b[3] end)
+	place(DCOLS, { c('bold', 'Nachb.'), c('dim', 'Interface'), c('dim', 'MAC'), c('dim', 'TQ'), c('dim', 'Signal'), c('dim', 'zuletzt') })
+	if #nrows == 0 then row('', c('dim', neigh.batadv and 'keine' or '? (respondd liefert nichts)'), '', '') end
+	for _, r in ipairs(nrows) do
+		local tq = r[3] == 0 and c('dim', 'TQ0') or (r[3] < 100 and c('yellow', 'TQ' .. r[3]) or ('TQ' .. r[3]))
+		-- Signal ab 0 dBm ist physikalisch unmoeglich; ath9k meldet das bei
+		-- manchen Mesh-Nachbarn (WDR3600: +22..+26). Roh, aber als fraglich.
+		local sig = r[4] and ((r[4] >= 0 and c('dim', '+' .. r[4] .. '?')) or (r[4] .. 'dBm')) or ''
+		place(DCOLS, { '', r[1], r[2], tq, sig, r[5] and string.format('%.1fs', r[5]) or '' })
+	end
+
+	-- alle Gateways, der gewaehlte mit *
+	local GCOLS = { 0, 8, 10, 29, 35, 54, 66 }
+	local gws = {}
+	for l in sh('batctl gwl'):gmatch('[^\n]+') do
+		local sel, mac, tq, nh, ifn, bw = l:match('^(%*?)%s*(%x%x:%x%x:%x%x:%x%x:%x%x:%x%x)%s+%(%s*(%d+)%)%s+(%S+)%s+%[%s*([^%]]+)%]:%s*(%S+)')
+		if mac then table.insert(gws, { sel, mac, tq, nh, ifn, bw }) end
+	end
+	place(GCOLS, { c('bold', 'Gatew.'), '', c('dim', 'MAC'), c('dim', 'TQ'), c('dim', 'Next Hop'), c('dim', 'via'), c('dim', 'MBit') })
+	if #gws == 0 then row('', c('dim', batctl_ok and 'keine' or '?'), '', '') end
+	for _, g in ipairs(gws) do
+		place(GCOLS, { '', g[1] == '*' and c('green', '*') or '', g[2], 'TQ' .. g[3], g[4], cut(g[5], 11), g[6] })
+	end
+
+	-- VPN-Broker (tunneldigger): alle konfigurierten, der verbundene mit *
+	if provider == 'tunneldigger' then
+		local BCOLS = { 0, 8, 10, 22, 30 }
+		local hosts, list = {}, {}
+		for _, b in ipairs(aslist(uci:get('tunneldigger', 'mesh_vpn', 'address'))) do
+			local host, port = b:match('^%[?(.-)%]?:(%d+)$')
+			if host then table.insert(list, { host = host, port = port }) table.insert(hosts, host) end
+		end
+		local addrs = resolve_all(hosts)
+		local active_ip = peer:match('^%[?([^%]]+)%]?:%d+$')
+		place(BCOLS, { c('bold', 'Broker'), '', c('dim', 'Name'), c('dim', 'Port'), c('dim', 'Adresse(n)') })
+		for _, b in ipairs(list) do
+			local ips = {}
+			for a in pairs(addrs[b.host] or {}) do table.insert(ips, a) end
+			table.sort(ips)
+			local act = active_ip and ((addrs[b.host] or {})[active_ip] or b.host == active_ip)
+			place(BCOLS, { '', act and c('green', '*') or '', b.host:match('^[^.]+'), b.port,
+				#ips > 0 and table.concat(ips, ' ') or c('dim', '? (DNS)') })
+		end
+	end
+
+	-- Adressen des Knotens (global), je Interface
+	local ACOLS = { 0, 8, 20 }
+	place(ACOLS, { c('bold', 'Adress.'), c('dim', 'Interface'), c('dim', 'Adresse') })
+	for _, ifn in ipairs({ 'br-client', 'local-node', 'br-wan' }) do
+		for fam, a in sh('ip -o addr show dev ' .. ifn):gmatch('(inet6?) (%S+)') do
+			if not a:match('^fe80') then place(ACOLS, { '', ifn, a }) end
+		end
+	end
 end
 
 

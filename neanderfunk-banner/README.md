@@ -36,15 +36,30 @@ actually running, not just what is configured:
 Data comes from respondd (`gluon-neighbour-info`, the same data the map gets),
 `uci`, `batctl`, `iwinfo`, `ubus` and `/sys`. It only reads, never writes.
 
-It also installs a few standalone helper commands:
+It also installs these commands (all listed by `help`):
 
 - `nodestatus` (alias `status`) - the overview above, on demand.
-- `nodeinfo` - the same status summary in more detail, plus fastd/tunneldigger
-  key info, batman neighbour counts and node location.
-- `help` - a cheat sheet of useful commands (autoupdater, batctl, iw, ...).
-- `switch0` / `switchstatus` - short/verbose ethernet switch port status.
-- `v4up` - forces a DHCP request on the client bridge if no IPv4 default
-  route is reachable via the mesh VPN.
+  `nodestatus details` adds every mesh neighbour with TQ and signal, all
+  gateways, the VPN brokers with the connected one marked, and the node's
+  addresses; `nodestatus ports [-v]` prints just the port table.
+- `nodeinfo` - `nodestatus details`.
+- `switch0` (alias `ports`) - the port table on any device, swconfig or DSA.
+- `switchstatus` - the port table with MAC, MTU, bridge, link changes since
+  boot and drops per port; `-r` shows the raw swconfig output.
+- `lanrole` / `wanrole` - show or set `gluon.iface_<lan|wan>.role`, checked
+  like Gluon's Advanced Settings (client only alone, uplink+mesh allowed).
+  Removing the last uplink or a mesh role asks first (`-y` to skip).
+- `reconf` - `gluon-reconfigure` and then reboot, detached in the background
+  (survives the SSH session ending); log in `/tmp/reconf.log`, no reboot if
+  the reconfigure fails.
+- `v4up` - fetches IPv4 via DHCP from the mesh on `br-client`. Refused if the
+  uplink already has IPv4: a second default route would pull the tunnel into
+  the mesh and, without another uplink there, cut the node off.
+- `help` - cheat sheet.
+
+Read-only aliases in the profile: `gwl`, `nb`, `gwtr` (batman traceroute to
+the selected gateway), `wlc` (wifi clients), `myip`, `logf`, `logerr`,
+`vpnlog`, `ports`.
 
 Create a file `modules` with the following content in your `./gluon/site/`
 directory and add these lines:

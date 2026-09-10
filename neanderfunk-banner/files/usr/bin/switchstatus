@@ -1,3 +1,9 @@
 #!/bin/sh
-echo switchstatus eth:
-swconfig dev switch0 show 
+# switchstatus - Port-Tabelle mit Details je Port: MAC, MTU, Bridge,
+# Link-Wechsel seit Boot, Drops; bei swconfig Duplex, Flusskontrolle, auto.
+# Die rohe Switch-Ausgabe gibt es mit "switchstatus -r" (nur swconfig).
+if [ "$1" = "-r" ]; then
+	command -v swconfig >/dev/null || { echo "Kein swconfig-Switch (DSA) - siehe switchstatus ohne -r." >&2; exit 1; }
+	exec swconfig dev switch0 show
+fi
+exec /usr/bin/nodestatus ports -v

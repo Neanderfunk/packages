@@ -18,9 +18,19 @@ else
 	[ -f /etc/banner ] && cat /etc/banner
 fi
 
+# Kurzbefehle, alle nur lesend - siehe "help". Die schreibenden (lanrole,
+# wanrole, reconf, v4up) sind eigene Skripte mit Pruefungen.
 alias cd..='cd ..'
-alias myip='ip addr show br-client; echo "from ssh: $SSH_CONNECTION"'
 alias status='nodestatus'
+alias ports='nodestatus ports'
+alias myip='ip -o addr show dev br-client | awk "{print \$4}"; echo "SSH von: ${SSH_CONNECTION%% *}"'
+alias gwl='batctl gwl'
+alias nb='batctl n'
+alias gwtr='batctl tr $(batctl gwl -H | awk "/^\*/{print \$2}")'
+alias wlc='for i in client0 client1 owe0 owe1; do [ -d /sys/class/net/$i ] && { echo "== $i"; iwinfo $i assoclist; }; done'
+alias logf='logread -f'
+alias logerr='logread | grep -iE "err|fail|warn|crit" | tail -n 40'
+alias vpnlog='logread | grep -iE "tunneldigger|fastd|wireguard|wg[0-9]" | tail -n 40'
 
 case "$-" in
 	*i*)

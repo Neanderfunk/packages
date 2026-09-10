@@ -1,0 +1,120 @@
+#!/bin/sh
+# portrole - zeigt oder setzt die Gluon-Rolle eines Interfaces.
+#
+#   lanrole                  aktuelle Rollen aller Interfaces zeigen
+#   lanrole mesh             LAN auf Mesh
+#   wanrole uplink mesh      WAN auf Uplink und Mesh (Mesh-on-WAN)
+#   lanrole none             LAN ohne Rolle
+#   ... -y                   ohne Rueckfrage, auch bei riskanten Wechseln
+#
+# Rollen wie in Gluons Erweiterten Einstellungen: uplink, mesh, client;
+# client nur allein, uplink+mesh geht. Geschrieben wird gluon.iface_<if>.role,
+# wirksam erst nach gluon-reconfigure und Neustart - dafuer gibt es "reconf".
+# Auf Geraeten mit nur einem Port gibt es nur iface_single.
+
+NAME=${0##*/}
+IF=${NAME%role}
+case "$IF" in
+	lan|wan|single) ;;
+	*) IF=$1; shift ;;
+esac
+case "$IF" in
+	lan|wan|single) ;;
+	*) echo "Aufruf: lanrole|wanrole [uplink|mesh|client|none ...] [-y]" >&2; exit 1 ;;
+esac
+
+YES=0
+ROLES=
+for a in "$@"; do
+	case "$a" in
+		-y) YES=1 ;;
+		*) ROLES="$ROLES $(echo "$a" | tr ',+' '  ')" ;;
+	esac
+done
+
+show() {
+	for s in iface_wan iface_lan iface_single; do
+		uci -q get gluon.$s >/dev/null || continue
+		printf '%-7s %s\n' "${s#iface_}" "$(uci -q get gluon.$s.role || echo '(keine)')"
+	done
+}
+
+SEC=iface_$IF
+if ! uci -q get gluon.$SEC >/dev/null; then
+	if uci -q get gluon.iface_single >/dev/null; then
+		echo "Geraet mit nur einem Port: es gibt nur iface_single."
+		SEC=iface_single
+		IF=single
+	else
+		echo "gluon.$SEC gibt es nicht." >&2
+		exit 1
+	fi
+fi
+
+if [ -z "$(echo $ROLES)" ]; then
+	show
+	exit 0
+fi
+
+# pruefen und normalisieren (Reihenfolge wie in Gluon: uplink mesh client)
+NEW=
+NONE=0
+for r in $ROLES; do
+	case "$r" in
+		uplink|mesh|client) ;;
+		none) NONE=1; continue ;;
+		*) echo "Unbekannte Rolle: $r (erlaubt: uplink, mesh, client, none)" >&2; exit 1 ;;
+	esac
+done
+for r in uplink mesh client; do
+	case " $ROLES " in *" $r "*) NEW="$NEW $r" ;; esac
+done
+NEW=$(echo $NEW)
+if [ $NONE = 1 ] && [ -n "$NEW" ]; then
+	echo "none laesst sich nicht mit anderen Rollen kombinieren." >&2; exit 1
+fi
+case " $NEW " in
+	*" client "*) [ "$NEW" = client ] || { echo "client laesst sich nicht mit uplink oder mesh kombinieren." >&2; exit 1; } ;;
+esac
+
+CUR=$(uci -q get gluon.$SEC.role)
+if [ "$NEW" = "$CUR" ]; then
+	echo "$IF: unveraendert ($CUR)"
+	exit 0
+fi
+
+# riskant: danach hat kein Interface mehr uplink, oder dieses verliert mesh
+RISK=
+case " $CUR " in
+	*" uplink "*)
+		case " $NEW " in *" uplink "*) ;; *)
+			OTHER=0
+			for s in iface_wan iface_lan iface_single; do
+				[ $s = $SEC ] && continue
+				case " $(uci -q get gluon.$s.role) " in *" uplink "*) OTHER=1 ;; esac
+			done
+			[ $OTHER = 0 ] && RISK="danach hat KEIN Interface mehr die Rolle uplink - der Knoten verliert seinen Uplink"
+		;; esac ;;
+esac
+case " $CUR " in
+	*" mesh "*) case " $NEW " in *" mesh "*) ;; *) RISK="${RISK:+$RISK; }$IF verliert die Rolle mesh - Nachbarn ueber Kabel sind dann weg" ;; esac ;;
+esac
+
+echo "$IF: ${CUR:-(keine)} -> ${NEW:-(keine)}"
+if [ -n "$RISK" ] && [ $YES = 0 ]; then
+	echo "Achtung: $RISK." >&2
+	echo "Wer ueber diesen Weg verbunden ist, ist nach reconf draussen." >&2
+	if [ -t 0 ]; then
+		printf 'Trotzdem setzen? [j/N] '
+		read -r ANTWORT
+		case "$ANTWORT" in j|J|ja|Ja) ;; *) echo "Nichts geaendert."; exit 1 ;; esac
+	else
+		echo "Nicht interaktiv: mit -y bestaetigen. Nichts geaendert." >&2
+		exit 1
+	fi
+fi
+
+uci -q delete gluon.$SEC.role
+for r in $NEW; do uci add_list gluon.$SEC.role=$r; done
+uci commit gluon
+echo "Gesetzt. Wirksam nach gluon-reconfigure und Neustart: reconf"

@@ -1,18 +1,37 @@
-echo " autoupdater -f                    // Firmware-Update erzwingen
- logread      // logread -f        // syslog Ausgabe auf Konsole
- ping 8.8.8.8                      // google-DNS wenn IPv4 lokal 
- ip a s                            // alle IPs anzeigen
- ip r s t all                      // gesamte Routingtabelle
- traceroute -n 10.155.0.254        // Traceroute via IP zu einem gateway
- batctl gwl                        // batman-gateways inkl. Gewaehltes
- batctl -m bat0 tr 10.155.0.254    // Traceroute via batman-adv
- batctl o                          // batman Domain-Nachbarn anzeigen
- batctl tl |grep W |wc -l          // batman Clients zählen
- batctl if                         // baman interfaces anzeigen
- brctl show                        // alle bridges anzeigen
- iwinfo                            // wlan-paramter anzeigen
- iw dev client0 station dump       // WLAN Nachbarn mit Details
- status / nodestatus               // Statusuebersicht wie beim Login
- nodeinfo                          // diverse infos ausgegeben
- v4up                              // ipv4 holen, wenn kein vpnuplink"
- switchstatus  // switch0          // show port status of eth ifs 
+#!/bin/sh
+# help - Spickzettel fuer die Kommandozeile eines Gluon-Knotens
+cat <<'HILFE'
+Status
+  status / nodestatus   Uebersicht wie beim Login
+  nodeinfo              dazu Nachbarn einzeln, Gateways, VPN-Broker, Adressen
+  switch0 / ports       Port-Tabelle (auch DSA): Link, Rolle, Mesh, Traffic
+  switchstatus [-r]     Ports ausfuehrlich: MAC, MTU, Link-Wechsel, Drops;
+                        -r: rohe swconfig-Ausgabe
+Mesh (batman-adv)
+  gwl                   Gateways, der gewaehlte mit *       (batctl gwl)
+  nb                    direkte Nachbarn je Interface       (batctl n)
+  batctl o              alle Knoten der Domain mit Weg und TQ
+  batctl if             batman-Interfaces
+  gwtr                  batman-Traceroute zum gewaehlten Gateway
+  batctl tl | tg        Clients lokal | im ganzen Mesh
+WLAN
+  wlc                   verbundene WLAN-Clients je Interface
+  iwinfo                Radios und Interfaces, Kanal, Sendeleistung
+Netz
+  myip                  Adressen im Client-Netz, eigene SSH-Verbindung
+  ip a / ip r s t all   alle Adressen / alle Routing-Tabellen
+  brctl show            Bridges
+  ping6 / traceroute6   IPv6 zuerst - IPv4 hat ein Knoten oft nur ueber WAN
+Logs
+  logf                  Syslog laufend                      (logread -f)
+  logerr                letzte Fehler und Warnungen im Syslog
+  vpnlog                letzte Meldungen des VPN (tunneldigger, fastd, wg)
+Firmware
+  autoupdater -n        pruefen und laden, aber NICHT flashen
+  autoupdater -f        Update erzwingen
+Eingriffe (schreiben, wirksam nach "reconf")
+  lanrole [rolle]       LAN-Rolle zeigen/setzen: uplink, mesh, client, none
+  wanrole [rolle]       WAN-Rolle zeigen/setzen, z.B. "wanrole uplink mesh"
+  reconf                gluon-reconfigure + Neustart im Hintergrund
+  v4up                  IPv4 per DHCP aus dem Mesh - nur ohne IPv4 am Uplink
+HILFE

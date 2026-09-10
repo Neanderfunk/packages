@@ -1,0 +1,29 @@
+#!/bin/sh
+# reconf - gluon-reconfigure und danach Neustart, sofort im Hintergrund.
+#
+# Laeuft abgekoppelt (start-stop-daemon), ein Abbruch der SSH-Sitzung
+# stoert also nicht. Schlaegt gluon-reconfigure fehl, gibt es KEINEN Neustart
+# - das Log sagt dann, warum: /tmp/reconf.log (im RAM, ueberlebt den Neustart
+# nicht; bei Erfolg steht danach ohnehin alles in logread).
+
+LOG=/tmp/reconf.log
+RUN=${RECONF_DRY:+echo}
+
+cat > /tmp/reconf.sh <<SKRIPT
+#!/bin/sh
+{
+	echo "reconf gestartet: \$(date)"
+	if $RUN gluon-reconfigure; then
+		echo "gluon-reconfigure fertig, Neustart: \$(date)"
+		sync
+		$RUN reboot
+	else
+		echo "gluon-reconfigure FEHLGESCHLAGEN (\$?) - kein Neustart"
+	fi
+} > $LOG 2>&1
+SKRIPT
+chmod 700 /tmp/reconf.sh
+
+start-stop-daemon -S -b -x /tmp/reconf.sh || { echo "reconf: konnte nicht starten." >&2; exit 1; }
+echo "gluon-reconfigure laeuft im Hintergrund, danach Neustart."
+echo "Log: $LOG  (tail -f $LOG)"

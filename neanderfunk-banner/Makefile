@@ -28,8 +28,11 @@ define Package/$(PKG_NAME)/description
 	profile first and then, in interactive shells only, nodestatus: an
 	80-column overview of what is actually running - node, firmware, ports,
 	VPN, gateway, clients, radios (live channel, width, mode, tx power) and
-	mesh neighbours - followed by warnings. Also installs a few admin
-	shortcuts: nodestatus, nodeinfo, help, switch0, switchstatus, v4up.
+	mesh neighbours - followed by warnings. Also installs admin commands:
+	nodestatus, nodeinfo (details), switch0/switchstatus (port table, also
+	on DSA), lanrole/wanrole (show or set the Gluon interface role),
+	reconf (gluon-reconfigure and reboot in the background), v4up (IPv4
+	via the mesh, refused if the uplink has IPv4), help.
 endef
 
 define Build/Prepare
