@@ -128,6 +128,8 @@ Einschränkungen
   VLAN für den ganzen Switch; dieselbe VLAN-ID mit verschiedenen Rollen auf
   verschiedenen Ports wäre dort gar nicht abbildbar, und alles andere hieße, die
   Switch-VLANs selbst zu verwalten.
+  Welche Feldgeräte das betrifft (rund die Hälfte, und 2025.1 ändert daran
+  nichts): `docs/feldgeraete-dsa-swconfig.md` im Feed.
 * **Am Gerät mit Gluon 2025.1 noch nicht geprüft**, insbesondere: ob ein
   VLAN-Unterinterface auf einem DSA-Port, der zugleich (ungetaggt) in einer
   Bridge steckt, bei `mt7530`/`qca8k` sauber durchgereicht wird, und ob
