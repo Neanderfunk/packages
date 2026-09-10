@@ -66,9 +66,10 @@ configurable in config mode. See [](neanderfunk-ssid-changer/README.md)
 
 ### neanderfunk-txpowerfix
 
-Fixes txpower on some wifi nodes since OpenWrt chaos calmer by setting the 
-country code to 00/BO so it can be set to higher values than the incorrectly
-configured german code allows. See [](neanderfunk-txpowerfix/README.md)
+Sets a regulatory country (DE/JP/TW/US) matching the configured channels and
+the widest HT mode per radio. No longer pins txpower and removes existing pins
+(keep them with `gluon.wireless.preserve_txpower=1`). Config only, no wifi
+restart. See [](neanderfunk-txpowerfix/README.md)
 
 
 ### neanderfunk-weeklyreboot

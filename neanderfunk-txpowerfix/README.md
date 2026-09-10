@@ -1,61 +1,113 @@
 neanderfunk-txpowerfix
-================
+======================
 
-Up to OpenWRT BarrierBreaker, the wifi stack did take automatically the
-highest available txpower. 
+Setzt je Radio eine regulatorische Country, die zu den konfigurierten Kanaelen
+passt (DE/JP/TW/US), und den breitesten HT-Modus, den die Hardware anbietet.
+**Eine Sendeleistung setzt es nicht mehr, bestehende werden entfernt** - siehe
+unten. Der Paketname ist geblieben, damit nebenan in `image-customization.lua`
+nichts nachgezogen werden muss.
 
-introduction with ChaosCalmer, OpenWRT does take into account the antenna
-gain, stored as value in the ART partition of the SPI flash. 
-for numerous reasons the values are wrong calculated or just
-over-optimistic, as a result, the available "on air" is for many devices
-lower than the goal of 20dBm/100mW. 
-by consequence meshlinks tend to degrade "from green to red" when upgrading
-from gluon 2015.x to 2016.x
+Herkunft: Mit Chaos Calmer (2016) sendeten viele Geraete spuerbar schwaecher als
+unter Barrier Breaker, Mesh-Links kippten beim Update von Gluon 2015.x auf
+2016.x "von gruen nach rot". Das Paket war der Workaround dafuer (eulenfunk,
+abgeleitet von ffho; Diskussion im Freifunk-Forum, Thread "TX-Powerfix Script",
+2016).
 
-This runs as a `/lib/gluon/upgrade/` script, i.e. every time `gluon-reconfigure`
-runs: on every firmware upgrade, on leaving setup mode, and on a domain switch -
-not just once. Whether the workaround actually helps is chipset-dependent and
-there's no reliable way to detect that up front, so re-running it on every
-upgrade is intentional (it used to run exactly once via a self-deleting
-`/etc/init.d` script gated on setup-mode, which - besides being duplicated
-logic in two separate files - had a broken guard and so it could get
-re-triggered on any upgrade anyway; this is the same effect, done on purpose
-and in one place).
+Was es tut
+----------
 
-For each present radio it derives a regulatory country (DE/JP/TW/US, from the
-configured 2.4/5GHz channels), applies it, and re-queries the highest available
-htmode and txpower under that country via `iwinfo`, storing the result in
-`/etc/config/wireless`.
+Laeuft als `/lib/gluon/upgrade/`-Skript, also bei jedem `gluon-reconfigure`:
+bei jedem Firmware-Update, beim Verlassen des Config-Mode und beim
+Domainwechsel.
 
-Since `iwinfo`/`iw` are known to hang on some chipsets when the radio is
-already up and meshing (which is the normal case here, since this now runs on
-every upgrade of an already-configured node), every such call is run
-backgrounded with a 20-second watchdog that `kill -9`'s it if it hasn't
-finished by itself. An empty result is handled differently depending on why
-it's empty: if the process had to be killed, that's a genuine hang and the
-whole run aborts rather than committing a half-applied change; if the process
-finished on its own with nothing to show (e.g. no txpower/htmode entry for
-this device and channel), that's a legitimate outcome - it's logged and that
-one value (txpower or htmode) is just left unset/at its HT20 default instead
-of aborting. Progress and the final applied country/htmode/txpower values are
-logged via `logger` (visible in `logread` and during a live
-`gluon-reconfigure`/setup-mode run). Note: BusyBox's `timeout` applet is not
-available on all targets, so the watchdog is implemented manually
-(background + `sleep` + `kill -0`/`kill -9`), not via `timeout`.
+* **Country** je Radio aus den Kanaelen (Logik unveraendert).
+* **htmode**: fuer 2,4 GHz der beste 20-MHz-Modus, fuer 5 GHz der breiteste
+  80/40-MHz-Modus - bei 5 GHz nur, wenn der Kanal nicht `auto` ist und der
+  Outdoor-Modus aus ist. Gelesen ueber das iwinfo-Lua-Binding
+  (`iwinfo.nl80211.htmodelist(phy)`) im eigenen Prozess, genauso wie Gluons
+  `200-wireless`. Scheitert die Abfrage, bleibt Gluons Wert stehen.
+* **txpower**: wird entfernt, sofern `gluon.wireless.preserve_txpower` nicht
+  gesetzt ist.
 
-(pull requests wellcome)
+Es schreibt nur Config (`uci:save()`, committet wird von Gluons `998-commit`).
+Kein `wifi reconf`, kein `iwinfo` als Kommando, kein `sleep`. Laufzeit auf einem
+TL-WDR3600: 150 ms.
 
+Warum keine Sendeleistung mehr
+------------------------------
 
-To use the script in your firmware:
+Ohne `txpower` in uci sendet ein Radio bereits mit dem Maximum aus Regdomain,
+Kanal und Hardware:
+
+* cfg80211 rechnet beim Anwenden der Regdomain je Kanal
+  `max_power = min(Hardware-Limit, Regdomain-Limit)` (`net/wireless/reg.c`).
+* mac80211 nimmt diesen Wert und zieht eine Vorgabe nur ueber `min()` heran
+  (`__ieee80211_recalc_txpower` in `net/mac80211/iface.c`).
+
+Ein gesetzter Wert kann die Leistung also nur **senken**, nie heben. Und er
+bleibt stehen, wenn der Kanal spaeter wechselt (`auto`, DFS-Ausweichen) und dort
+mehr erlaubt waere. Die fruehere Fassung las mit `iwinfo txpowerlist` genau
+dieses `max_power` aus und fror es ein. Im Config-Mode las sie dabei sogar die
+falsche Regdomain: dort gilt die der Site (`S20network` macht `iw reg set` mit
+`site.regdom`), die gewaehlte Country steht nur in uci, weil kein hostapd laeuft.
+
+Nachgesehen am 2026-09-10 auf neun Testknoten, 17 Radios (mt7986, mt7981,
+mt7915, mt7603, mt76x2, ath9k, ath10k):
+
+* Der Wert aus `iw phy phyN info` war in allen 17 Radios identisch mit dem, was
+  `iwinfo txpowerlist` liefert.
+* Die beiden Radios ohne `txpower` in uci sendeten exakt mit diesem Wert.
+* 7 der 17 Radios waren 3 bis 7 dB **darunter** festgeschrieben.
+
+Bestehende Werte behalten
+-------------------------
+
+Wer eine Sendeleistung bewusst gesetzt hat (Erweiterte Einstellungen) und sie
+ueber Updates behalten will:
 
 ```
-GLUON_SITE_FEEDS="eulenfunk"
-PACKAGES_EULENFUNK_REPO=https://github.com/eulenfunk/packages.git
-PACKAGES_EULENFUNK_COMMIT=*/missing/*
-PACKAGES_EULENFUNK_BRANCH=v2018.1.x
+uci set gluon.wireless.preserve_txpower='1'
+uci commit gluon
 ```
 
-With this done you can add the package `neanderfunk-txpowerfix` to your `site.mk`
+Default ist `0`, das Skript legt die Option sichtbar an, sodass
+`uci show gluon.wireless` sie neben Gluons `preserve_channels` zeigt. Gluons
+`190-preserve-wireless-channels` schreibt die Sektion bei jedem Lauf neu, laesst
+andere Optionen darin aber stehen (am Geraet geprueft).
+
+Warum kein Radio-Betrieb mehr
+-----------------------------
+
+Beim "Speichern & Neustarten" im Config-Mode laeuft `gluon-reconfigure` im
+CGI-Prozess von uhttpd. uhttpd setzt dafuer einmal `script_timeout` (60 s) und
+verlaengert ihn nie. Ist er abgelaufen, wird der CGI abgeschossen, bevor
+`wizard.lua` zum Reboot kommt: der Browser zeigt "Bad Gateway", der Knoten
+startet nicht neu, erst ein Stromzyklus hilft.
+
+Die fruehere Fassung brauchte allein fuer ihre festen Wartezeiten 85 s - um
+jeden `iwinfo`-Aufruf lief ein `sleep 20`, das auch dann ausgesessen wurde, wenn
+`iwinfo` nach Millisekunden fertig war, dazu ein `sleep 5` und vier
+`wifi reconf`. Am 2026-09-10 auf einem Xiaomi 4A Gigabit genau so nachgestellt,
+und mit `uhttpd -t 300` gegengeprueft: dann startete er neu.
+
+Noetig war der Radio-Betrieb dabei nie. Die htmode-Liste ist ein statisches
+Merkmal der wiphy, unabhaengig von Country, Kanal und laufenden Interfaces. Und
+uebernommen wird die Config ohnehin erst beim naechsten Start der Radios - im
+Config-Mode folgt der Reboot direkt, beim ersten Boot nach einem sysupgrade
+laufen die Radios noch gar nicht.
+
+Einbindung
+----------
+
+```
+GLUON_SITE_FEEDS="neanderfunk ..."
+PACKAGES_NEANDERFUNK_REPO=https://github.com/Neanderfunk/packages.git
+PACKAGES_NEANDERFUNK_BRANCH=v2023.2.x
+PACKAGES_NEANDERFUNK_COMMIT=<commit>
+```
+
+Danach `neanderfunk-txpowerfix` in `image-customization.lua` bzw. `site.mk`
+aufnehmen.
 
 Radio-Erkennung (Stand 2026-09-06)
 ----------------------------------
