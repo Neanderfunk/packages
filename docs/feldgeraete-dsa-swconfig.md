@@ -104,10 +104,29 @@ Das Paket gibt es nur für Gluon 2025.1 (Branch `v2025.1.x`).
 Auf swconfig-Geräten leistet das Paket also nichts über Gluons eigene Seite
 „Netzwerk" hinaus; die Seite „Ports" sagt das dort ausdrücklich.
 
-**Denkbar, nicht gebaut:** Rollen je Port auch hinter swconfig, indem das Paket
-jedem LAN-Port ein eigenes Switch-VLAN gibt (`eth0.1`, `eth0.3`, `eth0.4` …).
-Dann hätte jeder Port ein eigenes Netdev, und die Isolation zwischen Mesh-Ports
-fände in der Software-Bridge statt, auf 2023.2 wie auf 2025.1. Der Preis: das
-Paket müsste die `switch_vlan`-Sektionen nach jedem `config_generate` selbst neu
-schreiben, die Portnummern je Board aus `board.json` holen, und getaggte VLANs
-wären nur mit switchweit eindeutigen IDs möglich.
+**Denkbar, nicht gebaut** (Vorüberlegung 2026-09-10, zurückgestellt bis 2023.2
+fertig ist): Rollen je Port auch hinter swconfig, indem jeder LAN-Port ein
+eigenes, ungetaggtes Switch-VLAN bekommt (`eth0.1`, `eth0.N` …).
+
+*Wozu:* Hinter swconfig flutet der Switch des Uplink-Routers VLAN 1 in Hardware.
+Die Knoten an `lan1`–`lan4` hören die OGMs der anderen direkt und sehen sich als
+Nachbarn, auf der Karte stehen dann Mesh-Links, die es physisch nicht gibt. Mit
+einem VLAN je Port geht jeder Port nur über die CPU, der Router isoliert in der
+Software-Bridge, übrig bleibt der tatsächlich verkabelte Stern. Kosten: praktisch
+keine, denn zwischen den LAN-Ports fließt keine echte Payload - der Verkehr geht
+ohnehin WAN ↔ LAN*n* über batman-adv und damit über die CPU.
+
+*Wie:* Gluon macht es selbst schon vor: `115-swconfig` schreibt bei UniFi AC Pro
+und AC Mesh Pro bei jedem Reconfigure die `switch_vlan`-Sektionen neu, nach
+`config_generate` und vor dem Mesh-Aufbau. Ein eigenes Skript danach ersetzt nur
+das LAN-VLAN, das WAN-VLAN bleibt unangetastet. `isolate` wirkt dann in Software,
+also ohne Hilfe des Switch-Treibers.
+
+*Realistische Kandidaten:* Archer C7 v2/v4/v5, A7 v5, C5 v1 (136 Knoten).
+C7 v4/v5 und A7 v5 haben einen CPU-Port (`0@eth0`, WAN teilt den Link) und
+Label-Indizes in `board.json` (`"2:lan:1"`); C7 v2 und C5 v1 haben LAN auf
+`0@eth1`, WAN auf `6@eth0`, aber keine Indizes (`"2:lan"`) - welcher
+Switch-Port welches Gehäuselabel ist, muss man dort am Gerät nachsehen.
+
+Getaggte VLANs je Port hinter swconfig: zu kompliziert (VLAN-IDs gelten
+switchweit), bleibt draußen.
