@@ -45,6 +45,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/klog.h>
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
@@ -198,8 +199,57 @@ static long long get_boot_disk_bytes(void) {
 }
 
 /*
- * Groesse des Dauerspeichers in Bytes:
- *  - MTD (die meisten Router): das groesste Partitionsende (offset + size),
+ * Groesse der Flash-Chips laut Kernel beim Proben, in Bytes; 0 wenn nicht
+ * gefunden. Die Chipgroesse steht nirgends in sysfs, und die MTD-Partitionen
+ * decken den Chip nicht immer ab: der Cudy WR3000S hat 128 MiB SPI-NAND,
+ * OpenWrt legt aber nur Partitionen bis knapp 70 MiB an. Erkannt werden
+ *   spi-nor spi0.0: w25q128 (16384 Kbytes)
+ *   spi-nand spi0.0: 128 MiB, block size: ...
+ *   nand: 128 MiB, SLC, erase size: ...
+ * Bei mehreren Chips zaehlt der groesste.
+ */
+static long long get_flash_chip_bytes(void) {
+	int len = klogctl(10, NULL, 0);		/* SYSLOG_ACTION_SIZE_BUFFER */
+	if (len <= 0)
+		return 0;
+	char *buf = malloc(len + 1);
+	if (!buf)
+		return 0;
+	len = klogctl(3, buf, len);		/* SYSLOG_ACTION_READ_ALL */
+	if (len <= 0) {
+		free(buf);
+		return 0;
+	}
+	buf[len] = 0;
+
+	long long best = 0;
+	for (char *line = strtok(buf, "\n"); line; line = strtok(NULL, "\n")) {
+		long long v = 0;
+		char *p;
+		if ((strstr(line, "spi-nor") || strstr(line, "m25p80")) && (p = strstr(line, " Kbytes)"))) {
+			while (p > line && p[-1] >= '0' && p[-1] <= '9')
+				p--;
+			v = atoll(p) * 1024;
+		} else if ((p = strstr(line, "spi-nand")) || (p = strstr(line, "nand: "))) {
+			char *mib = strstr(p, " MiB,");
+			if (mib) {
+				while (mib > p && mib[-1] >= '0' && mib[-1] <= '9')
+					mib--;
+				v = atoll(mib) * 1024 * 1024;
+			}
+		}
+		if (v > best)
+			best = v;
+	}
+	free(buf);
+	return best;
+}
+
+/*
+ * Groesse des Dauerspeichers in Bytes - der Hardware im Geraet, nicht was
+ * das OS davon nutzt (Entscheidungsgrundlage, wie "capable" ein Geraet ist):
+ *  - die Flash-Chips laut Kernel (siehe oben),
+ *  - sonst MTD: das groesste Partitionsende (offset + size),
  *    wie statuspage-hwdetails.patch - nicht die Summe, weil Verkettungen wie
  *    "ubi" auf der COVR-X1860 bereits gezaehlte Bereiche noch einmal enthalten.
  *  - sonst (x86, virtio, SATA, eMMC): der Boot-Datentraeger, siehe oben. Das
@@ -208,8 +258,11 @@ static long long get_boot_disk_bytes(void) {
  *  - unbekannt: 0.
  */
 static long long get_flash_bytes(void) {
-	long long total = 0;
+	long long total = get_flash_chip_bytes();
 	char path[64];
+
+	if (total > 0)
+		return total;
 
 	for (int i = 0; ; i++) {
 		long long size, offset = 0;
@@ -264,15 +317,28 @@ static bool get_preserve_channels(void) {
 	return ret;
 }
 
+/*
+ * Statisch nach dem Boot: einmal ermitteln, danach nur noch kopieren. Schon
+ * beim Laden des Moduls, also kurz nach dem Boot - dann steht die
+ * Probe-Meldung des Flash-Chips sicher noch im Kernel-Puffer.
+ */
+static struct json_object *hardware_cache;
+
+static void build_hardware_cache(void) {
+	if (hardware_cache)
+		return;
+	hardware_cache = json_object_new_object();
+	json_object_object_add(hardware_cache, "cpu_model", get_cpu_model());
+	json_object_object_add(hardware_cache, "flash", json_object_new_int64(get_flash_bytes()));
+	json_object_object_add(hardware_cache, "bios", get_bios());
+}
+
+__attribute__((constructor)) static void module_init(void) {
+	build_hardware_cache();
+}
+
 static struct json_object * respondd_provider_nodeinfo(void) {
-	/* statisch nach dem Boot: einmal ermitteln, danach nur noch kopieren */
-	static struct json_object *hardware_cache;
-	if (!hardware_cache) {
-		hardware_cache = json_object_new_object();
-		json_object_object_add(hardware_cache, "cpu_model", get_cpu_model());
-		json_object_object_add(hardware_cache, "flash", json_object_new_int64(get_flash_bytes()));
-		json_object_object_add(hardware_cache, "bios", get_bios());
-	}
+	build_hardware_cache();
 	struct json_object *hardware = NULL;
 	if (json_object_deep_copy(hardware_cache, &hardware, NULL))
 		hardware = json_object_new_object();
