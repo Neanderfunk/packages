@@ -145,6 +145,7 @@ Produktiv-respondd unberührt:
 | grw-cudyWR3000Sv1 (MT7981, aarch64) | `wan`, `lan1`–`lan4`; Conduit `eth0` (2500) ausgeblendet; `cpu_model` leer |
 | dias-WR3600-test (ath79, mips, swconfig) | `ethernet` leer |
 | dias-x86-64-test (QEMU) | `eth0`/`eth1` ohne Geschwindigkeit (virtio), BIOS SeaBIOS |
+| dias-futrotest (FUTRO S550, echte x86-Hardware) | `flash` 1018773504 = die ~1-GB-Flash-Disk `sda`, nicht das 126-MB-Image; CPU „Mobile AMD Sempron 2100+“, BIOS Phoenix 6.00; `eth1` (r8169) 1000/full, `eth0` (tg3) ohne Link; ioctl liefert echte Masken |
 
 10 statistics-Abfragen samt `gluon-neighbour-info`-Prozessstart brauchten auf
 den MIPS-Knoten zusammen unter 0,1 s.
