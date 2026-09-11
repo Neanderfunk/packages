@@ -1,0 +1,28 @@
+#!/usr/bin/lua
+
+-- ap-timer schaltet die Client-APs nur als uci-Delta (uci:save, kein commit):
+-- nach einem Neustart sind sie also wieder so, wie im Flash steht.
+--
+-- gluon-reconfigure macht aber als Erstes (001-reset-uci) ein "uci commit"
+-- ueber alles, und 320-gluon-client-bridge-wireless uebernimmt "disabled" vom
+-- bestehenden client_radio*. Ein Reconfigure in der Aus-Zeit - von Hand, per
+-- reconf oder "Speichern & Neustarten" im Config-Mode - schrieb das Aus damit
+-- fest: nach jedem Neustart blieb das Client-WLAN aus bis zum naechsten
+-- Einschalttermin, und mit abgeschaltetem Timer fuer immer.
+--
+-- Deshalb hier, vor 001, die eigenen Laufzeit-Aenderungen verwerfen. Danach
+-- verhaelt sich ein Reconfigure in der Aus-Zeit wie ein Neustart in der
+-- Aus-Zeit: das Client-WLAN ist an bis zum naechsten Aus-Termin.
+--
+-- Nur bei aktivem Timer. Wer dann von Hand client_radioN.disabled setzt, ohne
+-- zu committen, verliert das beim Reconfigure - "uci commit wireless" vorher.
+
+local uci = require('simple-uci').cursor()
+
+if not uci:get_bool('ap-timer', 'settings', 'enabled') then
+	os.exit(0)
+end
+
+for _, radio in ipairs({ 'client_radio0', 'client_radio1' }) do
+	os.execute('uci -q revert wireless.' .. radio .. '.disabled')
+end
