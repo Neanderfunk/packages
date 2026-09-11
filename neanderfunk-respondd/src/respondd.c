@@ -208,7 +208,7 @@ static long long get_boot_disk_bytes(void) {
  *   nand: 128 MiB, SLC, erase size: ...
  * Bei mehreren Chips zaehlt der groesste.
  */
-static long long get_flash_chip_bytes(void) {
+static long long read_flash_chip_from_klog(void) {
 	int len = klogctl(10, NULL, 0);		/* SYSLOG_ACTION_SIZE_BUFFER */
 	if (len <= 0)
 		return 0;
@@ -243,6 +243,34 @@ static long long get_flash_chip_bytes(void) {
 	}
 	free(buf);
 	return best;
+}
+
+/*
+ * Die Probe-Meldung steht nur kurz nach dem Boot sicher im Kernel-Puffer.
+ * Startet respondd spaeter neu (Absturz, Paketupdate), kann sie verschwunden
+ * sein, und der Wert fiele still auf das Partitionsende zurueck (Cudy: 128 ->
+ * 70 MiB). Deshalb wird der gefundene Wert in /tmp (RAM, bis zum Reboot)
+ * abgelegt und beim naechsten Laden zuerst dort nachgesehen. Vorschlag der
+ * Firmware-Session.
+ */
+#define FLASH_CHIP_CACHE "/tmp/neanderfunk-respondd-flash"
+
+static long long get_flash_chip_bytes(void) {
+	long long v;
+	if (read_ll(FLASH_CHIP_CACHE, &v) && v > 0)
+		return v;
+
+	v = read_flash_chip_from_klog();
+	if (v > 0) {
+		FILE *f = fopen(FLASH_CHIP_CACHE ".new", "w");
+		if (f) {
+			bool ok = fprintf(f, "%lld\n", v) > 0;
+			ok = !fclose(f) && ok;
+			if (!ok || rename(FLASH_CHIP_CACHE ".new", FLASH_CHIP_CACHE))
+				unlink(FLASH_CHIP_CACHE ".new");
+		}
+	}
+	return v;
 }
 
 /*
