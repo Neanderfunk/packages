@@ -57,7 +57,9 @@ fehlt (Paket nicht installiert).
   nutzt (Entscheidungsgrundlage, wie „capable“ ein Gerät ist):
   1. die Größe der Flash-Chips laut Probe-Meldung des Treibers
      (`spi-nor … (16384 Kbytes)`, `spi-nand … 128 MiB`, `nand: 128 MiB`),
-     einmal beim Laden des Moduls aus dem Kernel-Puffer gelesen. Sysfs kennt
+     einmal beim Laden des Moduls aus dem Kernel-Puffer gelesen und in
+     `/tmp/neanderfunk-respondd-flash` gemerkt - startet respondd Tage
+     später neu, kann die Meldung aus dem Puffer verschwunden sein. Sysfs kennt
      die Chipgröße nicht, und die Partitionen decken den Chip nicht immer ab:
      der Cudy WR3000S hat 128 MiB, partitioniert sind knapp 70;
   2. sonst MTD: das größte Partitionsende (`offset + size`), nicht die Summe
