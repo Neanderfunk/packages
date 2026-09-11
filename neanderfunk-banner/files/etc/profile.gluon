@@ -32,8 +32,45 @@ alias logf='logread -f'
 alias logerr='logread | grep -iE "err|fail|warn|crit" | tail -n 40'
 alias vpnlog='logread | grep -iE "tunneldigger|fastd|wireguard|wg[0-9]" | tail -n 40'
 
+# uci commit ohne Paketnamen (oder "uci commit wireless") schreibt auch
+# Aenderungen ins Flash, die nur zur Laufzeit im uci-Delta stehen sollen: die
+# Offline-SSID des ssid-changers (samt abgeschaltetem OWE) und das Abschalten
+# der Client-APs durch ap-timer. Die haengen danach bei jedem Boot fest.
+# In interaktiven Shells verweigert diese Huelle das dann; gezielt
+# committen (uci commit gluon) geht immer, "command uci commit" erzwingt es.
+# Skripte sind nicht betroffen, sie sehen die Funktion nicht.
+nf_uci_guard() {
+	local prefix rt
+	prefix=$(command uci -q get ssid-changer.settings.prefix || echo FF_Offline_)
+	rt=$(command uci -q changes wireless | grep -E "^wireless\.client_radio[0-9]+\.ssid='$prefix")
+	if [ -n "$rt" ]; then
+		rt="$rt
+$(command uci -q changes wireless | grep -E '^wireless\.owe_radio[0-9]+\.disabled=')"
+	fi
+	if [ "$(command uci -q get ap-timer.settings.enabled)" = 1 ]; then
+		rt="$rt
+$(command uci -q changes wireless | grep -E '^wireless\.client_radio[0-9]+\.disabled=')"
+	fi
+	echo "$rt" | grep -v '^$'
+}
+
 case "$-" in
 	*i*)
+		uci() {
+			if [ "$1" = commit ] && { [ -z "$2" ] || [ "$2" = wireless ]; }; then
+				local rt
+				rt=$(nf_uci_guard)
+				if [ -n "$rt" ]; then
+					echo "uci commit${2:+ $2}: nicht ausgefuehrt - wireless enthaelt Laufzeit-Aenderungen" >&2
+					echo "(ssid-changer/ap-timer), die so ins Flash kaemen und nach jedem Boot festhingen:" >&2
+					echo "$rt" | sed 's/^/  /' >&2
+					echo "Gezielt committen, z.B.:  uci commit gluon" >&2
+					echo "Trotzdem alles schreiben: command uci commit${2:+ $2}" >&2
+					return 1
+				fi
+			fi
+			command uci "$@"
+		}
 		[ -z "$FAILSAFE" ] && [ -x /usr/bin/nodestatus ] && /usr/bin/nodestatus
 		;;
 esac
