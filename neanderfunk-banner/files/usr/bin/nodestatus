@@ -1037,6 +1037,23 @@ if has_wifi then
 	end
 	row('SSID', essid or '', sc, pctxt)
 	if sc_now == '1' then warn('red', 'Offline-SSID ist aktiv') end
+
+	-- Die Offline-SSID gehoert nur in den uci-Delta. Steht sie in
+	-- /etc/config/wireless, hat ein "uci commit" waehrend der Offline-Phase
+	-- sie mitgeschrieben; sie bleibt dann nach jedem Neustart stehen, bis
+	-- gluon-reconfigure client_radio* aus der Site neu anlegt.
+	if uci:get('ssid-changer', 'settings') then
+		local prefix = uci:get('ssid-changer', 'settings', 'prefix') or 'FF_Offline_'
+		local stored = false
+		for s in (readfile('/etc/config/wireless') or ''):gmatch("option ssid '([^']*)'") do
+			if s:sub(1, #prefix) == prefix then stored = true end
+		end
+		if stored then
+			warn('red', 'Offline-SSID steht fest in /etc/config/wireless (uci commit waehrend offline?) - reconf behebt es')
+		elseif essid and essid:sub(1, #prefix) == prefix and sc_now ~= '1' then
+			warn('red', 'Offline-SSID wird gesendet, obwohl der ssid-changer online meldet')
+		end
+	end
 end
 
 
