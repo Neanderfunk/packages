@@ -53,11 +53,15 @@ fehlt (Paket nicht installiert).
 - `cpu_model`: `/proc/cpuinfo` „model name“ (x86, manche ARM), sonst
   „cpu model“ (MIPS). Die aarch64-Targets (MT7981 u. a.) haben keines von
   beiden: `""`.
-- `flash` in Bytes, wie `statuspage-hwdetails.patch`: bei MTD das größte
-  Partitionsende (`offset + size`), nicht die Summe - Verkettungen wie „ubi“
+- `flash` in Bytes: bei MTD das größte Partitionsende (`offset + size`),
+  wie `statuspage-hwdetails.patch` - nicht die Summe, Verkettungen wie „ubi“
   auf der COVR-X1860 enthalten bereits gezählte Bereiche. Ohne MTD (x86,
-  eMMC) das größte Blockgerät aus `/proc/partitions` außer `loop*`/`ram*`.
-  Unbekannt: `0`.
+  eMMC) die Platte, von der gebootet wurde (das Blockgerät hinter `/rom`,
+  bei einer Partition deren Platte); Rückfall das größte Blockgerät aus
+  `/proc/partitions` außer `loop*`/`ram*`. Unbekannt: `0`.
+  Auf x86 ist das die Größe der Platte bzw. virtuellen Disk, **nicht des
+  Images**: eine 1-GiB-Disk mit 126-MB-Image ergibt 1 GiB. `nodestatus`
+  zeigt unter „Flash“ dagegen belegt/gesamt des Overlays - ein anderer Wert.
 - `bios`: DMI, nur x86; sonst leere Strings.
 
 ### statistics
