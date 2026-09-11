@@ -27,6 +27,9 @@ actually running, not just what is configured:
 - clients (local, per band, mesh-wide), SSID and offline-SSID counters
 - a radio table with the live channel, width, HT mode and tx power per radio
   (from `iwinfo`), AP and mesh state, clients and mesh neighbours with TQ
+- a warning when a radio's channel differs from the firmware (site.conf /
+  domain, as Gluon's `200-wireless` would set it) while `preserve_channels`
+  is off - the next update would reset it
 - on devices without wifi (x86, ERX, ...) a port table in its place: per port
   link, traffic since boot and error counters, per role group mesh state and
   neighbours; on swconfig switches the real link per switch port.
