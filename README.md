@@ -9,6 +9,9 @@ Which devices in the field drive their LAN ports via DSA and which via swconfig,
 and whether Gluon 2025.1 changes that:
 [docs/feldgeraete-dsa-swconfig.md](docs/feldgeraete-dsa-swconfig.md).
 
+Flash and RAM of the devices in the field, grouped by how soon a Gluon
+release may drop them: [docs/feldgeraete-flash-ram.md](docs/feldgeraete-flash-ram.md).
+
 ### neanderfunk-respondd ###
 
 respondd module in C that adds `neanderfunk` to nodeinfo (CPU model, flash
