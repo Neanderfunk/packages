@@ -1166,6 +1166,45 @@ for _, radio in ipairs(has_wifi and radios or {}) do
 	end
 end
 
+-- Kanaele gegen die Firmware: Gluons 200-wireless setzt bei jedem
+-- gluon-reconfigure - also bei jedem Update - channel und channels aus
+-- site.conf/Domain (/lib/gluon/site.json, /lib/gluon/domains/), 5 GHz im
+-- Outdoor-Modus auf auto mit outdoor_chanlist. Ausser preserve_channels ist
+-- gesetzt, dann bleibt alles stehen. Ohne preserve_channels ist also jede
+-- Abweichung beim naechsten Update weg - auch ein von Hand gesetztes auto.
+if has_wifi and not uci:get_bool('gluon', 'wireless', 'preserve_channels') then
+	local ok, site = pcall(require, 'gluon.site')
+	local outdoor_on = uci:get_bool('gluon', 'wireless', 'outdoor')
+	local diffs = {}
+	for _, radio in ipairs(ok and radios or {}) do
+		local band = uci:get('wireless', radio, 'band')
+		local cfg = (band == '2g' and site.wifi24) or (band == '5g' and site.wifi5) or nil
+		if cfg then
+			local want_ch, want_list
+			if band == '5g' and outdoor_on then
+				want_ch, want_list = 'auto', cfg.outdoor_chanlist()
+			else
+				want_ch = cfg.channel()
+			end
+			local have_ch = uci:get('wireless', radio, 'channel')
+			local have_list = uci:get('wireless', radio, 'channels')
+			if type(have_list) == 'table' then have_list = join(have_list) end
+			if want_ch ~= nil and (tostring(want_ch) ~= tostring(have_ch)
+					or tostring(want_list or '') ~= tostring(have_list or '')) then
+				local function txt(ch, list)
+					return tostring(ch or '?') .. ((list and list ~= '') and (' [' .. list .. ']') or '')
+				end
+				table.insert(diffs, (band == '2g' and '2G ' or '5G ') .. txt(have_ch, have_list)
+					.. ' statt ' .. txt(want_ch, want_list))
+			end
+		end
+	end
+	if #diffs > 0 then
+		warn('yellow', 'WLAN-Kanal anders als in der Firmware (' .. join(diffs, ', ')
+			.. ') - naechstes Update setzt zurueck; halten: preserve_channels=1')
+	end
+end
+
 -- Mesh ueber Kabel: alle aktiven batman-Interfaces ausser WLAN, VPN, primary
 local wiredmesh = {}
 for name, st in pairs(batif) do
