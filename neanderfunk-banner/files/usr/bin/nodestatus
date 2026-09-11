@@ -475,6 +475,29 @@ do
 	for _, d in ipairs(dup) do warn('red', 'Port in mehreren Rollen: ' .. d) end
 end
 
+-- Interne Links zwischen SoC und Switch sind keine Buchsen: der DSA-Conduit
+-- (nur er hat /sys/class/net/<if>/dsa) und bei swconfig der CPU-Port, den
+-- board.json unter switch.<name>.ports[].device fuehrt. Die Board-Rollen
+-- nennen sie nie; steht einer in einer Rollen-Sektion, ist das eine
+-- Fehlkonfiguration - die Rolle trifft dann den Link zu allen Ports.
+-- Regeln aus der Statusseite (patches/statuspage-ethlinks.patch, 4355a30).
+local cpu_ports = {}
+for _, sw in pairs(type(board.switch) == 'table' and board.switch or {}) do
+	for _, p in ipairs(type(sw) == 'table' and type(sw.ports) == 'table' and sw.ports or {}) do
+		if type(p) == 'table' and p.device then cpu_ports[p.device] = true end
+	end
+end
+do
+	local bad = {}
+	for p, secs in pairs(used_by) do
+		if exists('/sys/class/net/' .. p .. '/dsa/tagging') or cpu_ports[p] then
+			table.insert(bad, p .. ' (' .. join(secs, ', ') .. ')')
+		end
+	end
+	table.sort(bad)
+	for _, b in ipairs(bad) do warn('red', 'interner CPU-Port mit Rolle, keine Buchse: ' .. b) end
+end
+
 -- Board-Ports einer Gruppe ohne die, die eine eigene Zeile haben
 local function group_devs(net)
 	local devs = {}
