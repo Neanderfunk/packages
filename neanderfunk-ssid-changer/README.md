@@ -40,6 +40,19 @@ The parameter `first` defines a learning phase after reboot (in minutes)
 during which the SSID may be changed to the Offline-SSID **every
 minute**.
 
+The Offline-SSID only ever lives in the uncommitted uci delta (`uci save`,
+reverted with `uci revert`); nothing is written to flash. A **manual
+`uci commit` during the offline phase** writes it into `/etc/config/wireless`
+anyway, and the revert then lands on the Offline-SSID again. The script
+notices this, puts the site SSID back as a delta (per band, like Gluon's
+`320-gluon-client-bridge-wireless`) and logs
+`offline ssid is stored in /etc/config/wireless`; `gluon-reconfigure` fixes
+the stored config for good. A `gluon-reconfigure` or sysupgrade during the
+offline phase is harmless: 320 recreates `client_radio*` with the site SSID.
+With `neanderfunk-banner`, a bare `uci commit` in an interactive shell is
+refused while such a delta is pending, and `nodestatus` warns about a stored
+Offline-SSID.
+
 # site.conf
 
 Adapt and add this block to your `site.conf`:
