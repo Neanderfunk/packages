@@ -1201,7 +1201,8 @@ if has_wifi and not uci:get_bool('gluon', 'wireless', 'preserve_channels') then
 	end
 	if #diffs > 0 then
 		warn('yellow', 'WLAN-Kanal anders als in der Firmware (' .. join(diffs, ', ')
-			.. ') - naechstes Update setzt zurueck; halten: preserve_channels=1')
+			.. '), Update setzt zurueck. Behalten mit:'
+			.. '\n  uci set gluon.wireless.preserve_channels=1; uci commit gluon')
 	end
 end
 
