@@ -9,6 +9,14 @@ Which devices in the field drive their LAN ports via DSA and which via swconfig,
 and whether Gluon 2025.1 changes that:
 [docs/feldgeraete-dsa-swconfig.md](docs/feldgeraete-dsa-swconfig.md).
 
+### neanderfunk-respondd ###
+
+respondd module in C that adds `neanderfunk` to nodeinfo (CPU model, flash
+size, BIOS, preserve_channels) and statistics (live channel, HT mode, SSID,
+tx power per radio; offline-SSID counters; link, speed, duplex and a
+damaged-cable hint per ethernet port) - the values the status page shows on
+top of Gluon's respondd. See [](neanderfunk-respondd/README.md).
+
 ### neanderfunk-wifi-blackout ###
 
 detects a wifi blackout - the radios are up, but not a single station is
