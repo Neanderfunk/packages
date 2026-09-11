@@ -67,6 +67,13 @@ Read-only aliases in the profile: `gwl`, `nb`, `gwtr` (batman traceroute to
 the selected gateway), `wlc` (wifi clients), `myip`, `logf`, `logerr`,
 `vpnlog`, `ports`.
 
+`uci` guard (interactive shells only): a bare `uci commit` or
+`uci commit wireless` is refused while `wireless` carries runtime-only changes
+- the ssid-changer's Offline-SSID (with OWE switched off) or, with ap-timer
+enabled, client APs switched off. Committed like that they would stick after
+every reboot. `uci commit <package>` always works; `command uci commit`
+forces it. Scripts are not affected.
+
 Create a file `modules` with the following content in your `./gluon/site/`
 directory and add these lines:
 
