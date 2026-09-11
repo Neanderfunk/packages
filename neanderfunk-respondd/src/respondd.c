@@ -36,6 +36,7 @@
 #include <respondd.h>
 
 #include <dirent.h>
+#include <limits.h>
 #include <errno.h>
 #include <net/if.h>
 #include <stdbool.h>
@@ -153,11 +154,58 @@ static struct json_object * get_bios(void) {
 }
 
 /*
- * Groesse des Dauerspeichers in Bytes, wie statuspage-hwdetails.patch:
- * bei MTD das groesste Partitionsende (offset + size) - nicht die Summe, weil
- * Verkettungen wie "ubi" auf der COVR-X1860 bereits gezaehlte Bereiche noch
- * einmal enthalten. Ohne MTD (x86, virtio, SATA, eMMC) das groesste
- * Blockgeraet aus /proc/partitions ausser loop* und ram*. Unbekannt: 0.
+ * Groesse des Datentraegers, von dem gebootet wurde: das Blockgeraet hinter
+ * /rom (squashfs), bei einer Partition deren Platte. Bytes, 0 wenn unbekannt.
+ * Das ist die Groesse der Platte bzw. virtuellen Disk, nicht die des Images:
+ * eine 1-GiB-Disk mit 126-MB-Image ergibt 1 GiB.
+ */
+static long long get_boot_disk_bytes(void) {
+	char line[512], devno[32] = "";
+	FILE *f = fopen("/proc/self/mountinfo", "r");
+	if (!f)
+		return 0;
+	while (fgets(line, sizeof(line), f)) {
+		char mnt[64], dev[32];
+		/* <id> <parent> <major:minor> <root> <mountpoint> ... */
+		if (sscanf(line, "%*s %*s %31s %*s %63s", dev, mnt) == 2 && !strcmp(mnt, "/rom")) {
+			snprintf(devno, sizeof(devno), "%s", dev);
+			break;
+		}
+	}
+	fclose(f);
+	if (!devno[0] || !strncmp(devno, "0:", 2))
+		return 0;
+
+	char link[64], path[PATH_MAX], sizefile[PATH_MAX + 16];
+	snprintf(link, sizeof(link), "/sys/dev/block/%s", devno);
+	if (!realpath(link, path))
+		return 0;
+
+	/* Partition: die Platte ist das Verzeichnis darueber */
+	snprintf(sizefile, sizeof(sizefile), "%s/partition", path);
+	if (exists(sizefile)) {
+		char *slash = strrchr(path, '/');
+		if (!slash)
+			return 0;
+		*slash = 0;
+	}
+
+	long long sectors;
+	snprintf(sizefile, sizeof(sizefile), "%s/size", path);
+	if (!read_ll(sizefile, &sectors) || sectors <= 0)
+		return 0;
+	return sectors * 512;
+}
+
+/*
+ * Groesse des Dauerspeichers in Bytes:
+ *  - MTD (die meisten Router): das groesste Partitionsende (offset + size),
+ *    wie statuspage-hwdetails.patch - nicht die Summe, weil Verkettungen wie
+ *    "ubi" auf der COVR-X1860 bereits gezaehlte Bereiche noch einmal enthalten.
+ *  - sonst (x86, virtio, SATA, eMMC): der Boot-Datentraeger, siehe oben. Das
+ *    groesste Blockgeraet, wie im Patch, koennte eine zweite Platte oder ein
+ *    USB-Stick sein; es bleibt nur der Rueckfall.
+ *  - unbekannt: 0.
  */
 static long long get_flash_bytes(void) {
 	long long total = 0;
@@ -174,6 +222,10 @@ static long long get_flash_bytes(void) {
 		if (offset + size > total)
 			total = offset + size;
 	}
+	if (total > 0)
+		return total;
+
+	total = get_boot_disk_bytes();
 	if (total > 0)
 		return total;
 
