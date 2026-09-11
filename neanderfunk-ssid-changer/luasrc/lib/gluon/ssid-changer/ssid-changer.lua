@@ -339,13 +339,59 @@ local function offline_ssid_is_configured()
 	return false
 end
 
+-- Die Offline-SSID lebt nur im uci-Delta (uci:save, kein commit), zurueck geht
+-- es mit uci:revert. Committet aber jemand anderes waehrend der Offline-Phase
+-- - ein "uci commit" von Hand reicht -, steht sie in /etc/config/wireless.
+-- Dann fuehrt der revert wieder zu ihr: der Knoten blieb auf der Offline-SSID,
+-- und dieser Zweig lief jede Minute erneut samt "wifi reconf" (am 11.09.2026
+-- auf dias-mi4a-test2 beobachtet). Ein gluon-reconfigure heilt das, weil
+-- 320-gluon-client-bridge-wireless client_radio* mit der Site-SSID neu anlegt.
+--
+-- Bis dahin setzt das hier die Site-SSID als Delta, genauso wie 320 es tut
+-- (config.ap.ssid() je Band), und OWE wieder auf den Zustand des Client-APs.
+-- Kein commit: Flash wird nur bei Eingriffen und Updates geschrieben.
+local tmp_poisoned = '/tmp/ssid-changer-offline-ssid-committed'
+
+local function repair_committed_offline_ssid()
+	local ok, wireless = pcall(require, 'gluon.wireless')
+	if not ok then return false end
+	local repaired = false
+	wireless.foreach_radio(uci, function(radio, index, config)
+		local name = 'client_' .. radio['.name']
+		if uci:get('wireless', name, 'ssid') ~= offline_ssid then return end
+		local ssid = config.ap.ssid()
+		if not ssid then return end
+		uci:set('wireless', name, 'ssid', ssid)
+		local owe = 'owe_' .. radio['.name']
+		if uci:get('wireless', owe) then
+			uci:set('wireless', owe, 'disabled', uci:get_bool('wireless', name, 'disabled'))
+		end
+		repaired = true
+	end)
+	if repaired then uci:save('wireless') end
+	return repaired
+end
+
 if status == 'online' then
 	log_debug("node is online")
 	-- only revert and reconf if we were offline in the current monitoring timeframe or before
 	-- to reduce impact
-	if off_count > 0 or offline_ssid_is_configured() then
+	-- Einmal festgestellt, dass die Offline-SSID gespeichert ist und sich nicht
+	-- per Delta ersetzen liess (keine Site-SSID): dann nicht jede Minute
+	-- erneut reverten und WLAN neu aufsetzen.
+	local stuck = io.open(tmp_poisoned) ~= nil and offline_ssid_is_configured()
+	if off_count > 0 or (offline_ssid_is_configured() and not stuck) then
 		log("reverting offline ssid back to default wireless config")
 		uci:revert('wireless')
+		if offline_ssid_is_configured() then
+			local f = io.open(tmp_poisoned, 'w')
+			if f then f:close() end
+			if repair_committed_offline_ssid() then
+				log("offline ssid is stored in /etc/config/wireless (uci commit while offline?) - site ssid set for runtime, gluon-reconfigure fixes it for good")
+			else
+				log("offline ssid is stored in /etc/config/wireless and no site ssid to put back - leaving it, gluon-reconfigure fixes it")
+			end
+		end
 		if not wifi_reconf() then
 			-- Hier NICHT aufraeumen. Der revert hat den uci-Delta bereits
 			-- verworfen, offline_ssid_is_configured() sieht die Offline-SSID
