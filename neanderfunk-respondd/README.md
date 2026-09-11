@@ -53,12 +53,19 @@ fehlt (Paket nicht installiert).
 - `cpu_model`: `/proc/cpuinfo` „model name“ (x86, manche ARM), sonst
   „cpu model“ (MIPS). Die aarch64-Targets (MT7981 u. a.) haben keines von
   beiden: `""`.
-- `flash` in Bytes: bei MTD das größte Partitionsende (`offset + size`),
-  wie `statuspage-hwdetails.patch` - nicht die Summe, Verkettungen wie „ubi“
-  auf der COVR-X1860 enthalten bereits gezählte Bereiche. Ohne MTD (x86,
-  eMMC) die Platte, von der gebootet wurde (das Blockgerät hinter `/rom`,
-  bei einer Partition deren Platte); Rückfall das größte Blockgerät aus
-  `/proc/partitions` außer `loop*`/`ram*`. Unbekannt: `0`.
+- `flash` in Bytes - die **Hardware im Gerät**, nicht was das OS davon
+  nutzt (Entscheidungsgrundlage, wie „capable“ ein Gerät ist):
+  1. die Größe der Flash-Chips laut Probe-Meldung des Treibers
+     (`spi-nor … (16384 Kbytes)`, `spi-nand … 128 MiB`, `nand: 128 MiB`),
+     einmal beim Laden des Moduls aus dem Kernel-Puffer gelesen. Sysfs kennt
+     die Chipgröße nicht, und die Partitionen decken den Chip nicht immer ab:
+     der Cudy WR3000S hat 128 MiB, partitioniert sind knapp 70;
+  2. sonst MTD: das größte Partitionsende (`offset + size`), nicht die Summe
+     - Verkettungen wie „ubi“ enthalten bereits gezählte Bereiche;
+  3. ohne MTD (x86, eMMC) die Platte, von der gebootet wurde (das Blockgerät
+     hinter `/rom`, bei einer Partition deren Platte); Rückfall das größte
+     Blockgerät aus `/proc/partitions` außer `loop*`/`ram*`.
+  Unbekannt: `0`.
   Auf x86 ist das die Größe der Platte bzw. virtuellen Disk, **nicht des
   Images**: eine 1-GiB-Disk mit 126-MB-Image ergibt 1 GiB. `nodestatus`
   zeigt unter „Flash“ dagegen belegt/gesamt des Overlays - ein anderer Wert.
