@@ -32,7 +32,8 @@
 #     losgeloest von der Sitzung, denn "wifi down"/"Netz aus" kappt SSH ueber
 #     WLAN oder Mesh. Log in /tmp/flash.log und im Syslog (Tag flash); bricht
 #     sysupgrade ab, stellt abort.d Netz und Dienste wieder her.
-#     FLASH_HOOKS=1 erzwingt diesen Weg, FLASH_HOOKS=0 schaltet ihn ab.
+#     --hooks erzwingt diesen Weg, --no-hooks schaltet ihn ab (beliebige
+#     Stelle, gehen nicht an sysupgrade; gleichwertig FLASH_HOOKS=1/0).
 # Optionen nach der URL gehen unveraendert an sysupgrade, und zwar VOR die
 # Datei, wie sysupgrade es erwartet (z.B. -n, -F, -v).
 
@@ -42,7 +43,7 @@ LOWMEM_AFTER_KB=16384	# MemAvailable mit dem Image in /tmp
 LOG=/tmp/flash.log
 
 usage() {
-	echo "Aufruf: flash <url|verzeichnis-url|datei> [sysupgrade-optionen]" >&2
+	echo "Aufruf: flash <url|verzeichnis-url|datei> [--hooks|--no-hooks] [sysupgrade-optionen]" >&2
 	echo "  z.B.  flash http://server/pfad/sysupgrade/ -n" >&2
 	exit 1
 }
@@ -62,7 +63,30 @@ mem_avail() {
 
 say() {
 	echo "flash: $*"
-	logger -t flash "$*"
+	logger -t flash -- "$*"
+}
+
+# Auch am Ende von "sysupgrade -h" in der interaktiven Shell (profile.gluon).
+help() {
+	cat <<'EOF_HELP'
+flash / sysupgrade in der interaktiven Shell (neanderfunk-banner):
+
+  sysupgrade <url|verzeichnis-url|datei> [--hooks|--no-hooks] [optionen]
+  flash      <url|verzeichnis-url|datei> [--hooks|--no-hooks] [optionen]
+
+  - https:// wird zu http:// (nicht jeder Knoten kann TLS)
+  - URL auf ein Verzeichnis (z.B. .../sysupgrade/): sucht das Image fuer
+    dieses Geraet im Manifest (sha256 wird verglichen), sonst in der
+    Verzeichnisliste
+  - zeigt Groesse, freien RAM und sha256, prueft vorher mit sysupgrade -T
+  - Optionen duerfen auch hinter dem Image stehen (-n, -F, -v ...)
+  - wenig RAM (unter 32 MB frei): haelt die Dienste an wie der Autoupdater,
+    der Rest laeuft ohne Sitzung - die Verbindung bricht ab.
+    Log: /tmp/flash.log, logread -e flash
+  - --hooks erzwingt das, --no-hooks schaltet es ab
+  - flash geht auch ohne Login-Shell: ssh knoten flash <url>
+  - das Original ohne all das: command sysupgrade ... (oder /sbin/sysupgrade)
+EOF_HELP
 }
 
 # Zweiter Teil, losgeloest von der Sitzung (siehe unten): upgrade.d und
@@ -88,7 +112,7 @@ stopped=''
 stop_services() {
 	[ -n "$stopped" ] && return
 	if [ "${FLASH_HOOKS:-auto}" = 1 ]; then
-		say "FLASH_HOOKS=1: halte Dienste an wie der Autoupdater (download.d)"
+		say "mit --hooks: halte Dienste an wie der Autoupdater (download.d)"
 	else
 		say "wenig RAM ($(mem_avail) KiB verfuegbar): halte Dienste an wie der Autoupdater (download.d)"
 	fi
@@ -152,6 +176,22 @@ find_image() {
 	return 1
 }
 
+# --hooks / --no-hooks gehoeren flash, nicht sysupgrade (das bricht bei
+# unbekannten Optionen ab): herausnehmen, egal wo sie stehen.
+i=0
+for a in "$@"; do
+	i=$((i + 1))
+	[ "$i" -eq 1 ] && set --
+	case "$a" in
+		--hooks) FLASH_HOOKS=1 ;;
+		--no-hooks) FLASH_HOOKS=0 ;;
+		*) set -- "$@" "$a" ;;
+	esac
+done
+
+case "$1" in
+	-h|--help) help; exit 0 ;;
+esac
 [ -n "$1" ] || usage
 src="$1"
 shift

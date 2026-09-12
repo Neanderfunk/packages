@@ -34,7 +34,9 @@ Firmware
                         Optionen auch hinter der URL, z.B. -n ohne Konfig.
                         wenig RAM: Dienste aus wie der Autoupdater, Rest
                         ohne Sitzung (Log /tmp/flash.log, logread -e flash)
+                        --hooks / --no-hooks erzwingt das bzw. schaltet es ab
   flash <url> [opt]     dasselbe als Befehl, auch "ssh knoten flash <url>"
+                        alles im Detail: flash -h bzw. sysupgrade -h
 Eingriffe (schreiben, wirksam nach "reconf")
   lanrole [rolle]       LAN-Rolle zeigen/setzen: uplink, mesh, client, none
   wanrole [rolle]       WAN-Rolle zeigen/setzen, z.B. "wanrole uplink mesh"

@@ -82,8 +82,11 @@ It also installs these commands (all listed by `help`):
   mesh. Without that, stage2 starves on 64 MB devices (Archer C25: the wifi
   drivers keep their RX buffers until the watchdog resets, nothing flashed).
   Log in `/tmp/flash.log` and syslog (`logread -e flash`); if sysupgrade
-  returns, `abort.d` brings network and services back. `FLASH_HOOKS=1`
-  forces this path, `FLASH_HOOKS=0` disables it. In interactive shells plain
+  returns, `abort.d` brings network and services back. `--hooks` forces
+  this path, `--no-hooks` disables it (anywhere on the command line, not
+  passed to sysupgrade; also via `FLASH_HOOKS=1`/`0`). `flash -h` explains
+  all of this; in interactive shells `sysupgrade -h` prints OpenWrt's help
+  followed by the same text. In interactive shells plain
   `sysupgrade <url>` does the same (see below); `flash` is for
   `ssh node flash <url>`.
 - `help` - cheat sheet.

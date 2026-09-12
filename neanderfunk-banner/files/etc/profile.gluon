@@ -87,13 +87,19 @@ case "$-" in
 		# /sbin/sysupgrade) bleibt es beim Original; "command sysupgrade"
 		# erzwingt das auch hier.
 		sysupgrade() {
-			local a i=0 pos=0 skip='' url=''
+			local a i=0 pos=0 skip='' url='' rc
 			for a in "$@"; do
 				i=$((i + 1))
 				if [ -n "$skip" ]; then skip=''; continue; fi
 				case "$a" in
 					-f|-b|-r|--create-backup|--restore-backup) skip=1 ;;
-					-h|--help) break ;;
+					-h|--help)
+						# die Hilfe des Originals, dahinter was flash dazutut
+						command sysupgrade "$@"
+						rc=$?
+						[ -x /usr/bin/flash ] && { echo; /usr/bin/flash -h; }
+						return $rc
+						;;
 					-*) ;;
 					http://*|https://*) pos=$i; break ;;
 					*) [ -f "$a" ] && pos=$i; break ;;
