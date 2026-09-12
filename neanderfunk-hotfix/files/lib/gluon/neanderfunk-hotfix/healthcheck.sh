@@ -137,8 +137,25 @@ check_disabled tunneldigger || {
 true; }
 
 
+# Laeuft ein Dienst mit genau diesem Prozessnamen? Bewusst ohne den
+# Ahnen-Ausschluss von nf_running: der gilt dem Fall, dass ein Skript sich
+# selbst findet. Hier gesucht werden Dienste (respondd, dropbear), die nie so
+# heissen wie dieses Skript - und dropbear ist, wenn jemand healthcheck.sh
+# per SSH von Hand startet, ein Vorfahr der eigenen Prozesskette. nf_running
+# blendete ihn dann aus, und der Knoten startete mit "[dropbear] dropbear not
+# running" neu (WDR3600, 12.09.2026, beim Testen). Aus Cron fiel das nie auf.
+daemon_running() {
+  local p c
+  for p in /proc/[0-9]* ; do
+    [ -r "$p/comm" ] || continue
+    read -r c < "$p/comm" 2>/dev/null || continue
+    [ "$c" = "$1" ] && return 0
+  done
+  return 1
+}
+
 reboot_when_not_running() {
-  (nf_running "$1" || sleep 20 ; nf_running "$1" || now_reboot "[$1] $1 not running") &> /dev/null
+  (daemon_running "$1" || sleep 20 ; daemon_running "$1" || now_reboot "[$1] $1 not running") &> /dev/null
 }
 
 # check if 5min load >2 (panic reboot)
