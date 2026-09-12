@@ -70,11 +70,12 @@ Read-only aliases in the profile: `gwl`, `nb`, `gwtr` (batman traceroute to
 the selected gateway), `wlc` (wifi clients), `myip`, `logf`, `logerr`,
 `vpnlog`, `ports`.
 
-`uci` guard (interactive shells only): a bare `uci commit` or
-`uci commit wireless` is refused while `wireless` carries runtime-only changes
-- the ssid-changer's Offline-SSID (with OWE switched off) or, with ap-timer
-enabled, client APs switched off. Committed like that they would stick after
-every reboot. `uci commit <package>` always works; `command uci commit`
+`uci` guard (interactive shells only): a bare `uci commit`, `uci commit
+wireless` or `uci commit autoupdater` is refused while runtime-only changes
+are pending - the ssid-changer's Offline-SSID (with OWE switched off), with
+ap-timer enabled client APs switched off, and during a nodeplacer firmware
+move the autoupdater branch it overrides. Committed like that they would
+stick. `uci commit <package>` always works; `command uci commit`
 forces it. Scripts are not affected.
 
 Create a file `modules` with the following content in your `./gluon/site/`
