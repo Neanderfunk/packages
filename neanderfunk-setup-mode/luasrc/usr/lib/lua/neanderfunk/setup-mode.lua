@@ -600,6 +600,17 @@ function M.run(http, renderer, scan)
 	local page = build(renderer, scan)
 	local state = {}
 
+	-- A "Save & restart" is already running or done: with the firmware's
+	-- wizard-save-lock patch, wizard.lua then waits for it and returns an
+	-- empty form with the reboot template instead of the wizard. Show the
+	-- reboot page - for a GET, and above all for a second POST (double tap),
+	-- which must not write the advanced forms again. Without the patch the
+	-- template is never the reboot one at this point.
+	if page.wizard.template == 'wizard/reboot' then
+		renderer.render_layout(PKG .. '/reboot', {wizard = page.wizard}, PKG, {hidenav = true})
+		return
+	end
+
 	if http:getenv('REQUEST_METHOD') == 'POST' then
 		state = submit(http, page)
 		if state.done then
