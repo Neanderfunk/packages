@@ -83,11 +83,28 @@ wifistatus="$(wifi status 2>/dev/null)"
 # das schliesst die OWE-Interfaces ein, die der ssid-changer waehrend einer
 # Offline-Phase deaktiviert (er setzt nur uci save, und ein uci get sieht den
 # Delta, also stimmt das auch dann).
-for section in $(uci show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.]*\)\.mode='ap'$/\1/p") ; do
-	ifname="$(uci -q get wireless."$section".ifname)"
-	[ -n "$ifname" ] || continue
-	[ "$(uci -q get wireless."$section".disabled)" = "1" ] && continue
-	radio="$(uci -q get wireless."$section".device)"
+# wireless einmal je Lauf, Werte per nf_uci_get (common.sh) statt uci get je
+# Sektion. "uci show" sieht Laufzeit-Deltas genauso wie "uci get".
+NF_UCI_wireless="$(uci -q show wireless 2>/dev/null)"
+aps=''
+set -f ; oldifs="$IFS" ; IFS='
+'
+for l in $NF_UCI_wireless ; do
+	case "$l" in
+		wireless.*.mode=\'ap\')
+			l="${l#wireless.}"
+			aps="$aps ${l%%.*}"
+			;;
+	esac
+done
+IFS="$oldifs" ; set +f
+
+for section in $aps ; do
+	nf_uci_get "$NF_UCI_wireless" "wireless.$section.ifname" || continue
+	ifname="$NF_VAL"
+	nf_uci_get "$NF_UCI_wireless" "wireless.$section.disabled" && [ "$NF_VAL" = "1" ] && continue
+	nf_uci_get "$NF_UCI_wireless" "wireless.$section.device"
+	radio="$NF_VAL"
 
 	# Ist das Radio ueberhaupt in Betrieb? Ohne diese Abfrage wuerde Pruefung 1
 	# unten auf einem Knoten, dessen Radio abgeschaltet ist, das fehlende
@@ -100,10 +117,15 @@ for section in $(uci show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.]*\)\
 	# netifd nicht kennt, ist kein hostapd-Problem; dafuer sind die
 	# bsses- und mesh_neighbours-Checks in neanderfunk-linkcheck da.
 	[ -n "$radio" ] || continue
-	[ "$(uci -q get wireless."$radio".disabled)" = "1" ] && continue
-	rup="$(printf '%s' "$wifistatus" | jsonfilter -e "@[\"$radio\"].up" 2>/dev/null)"
+	nf_uci_get "$NF_UCI_wireless" "wireless.$radio.disabled" && [ "$NF_VAL" = "1" ] && continue
+	# Drei Felder des Radios aus "wifi status" mit einem jsonfilter statt
+	# dreimal printf|jsonfilter. Im Zuweisungsmodus gibt jsonfilter
+	# Wahrheitswerte als 1/0 aus (nicht true/false), fehlende Pfade laesst
+	# es weg - deshalb vorbelegen.
+	rup='' ; rdis='' ; pending=''
+	eval "$(jsonfilter -s "$wifistatus" -e "rup=@[\"$radio\"].up" -e "rdis=@[\"$radio\"].disabled" -e "pending=@[\"$radio\"].pending" 2>/dev/null)"
 	[ -n "$rup" ] || continue
-	[ "$(printf '%s' "$wifistatus" | jsonfilter -e "@[\"$radio\"].disabled" 2>/dev/null)" = "true" ] && continue
+	[ "$rdis" = "1" ] && continue
 
 	# --- 1) kennt der globale hostapd dieses BSS, und laeuft es? ------------
 	#
@@ -119,7 +141,7 @@ for section in $(uci show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.]*\)\
 	if [ -z "$raw" ] ; then
 		state='no-ubus-object'
 	else
-		state="$(printf '%s' "$raw" | jsonfilter -e '@.status' 2>/dev/null)"
+		state="$(jsonfilter -s "$raw" -e '@.status' 2>/dev/null)"
 		[ -n "$state" ] || state='no-status'
 	fi
 	case "$state" in
@@ -146,8 +168,8 @@ for section in $(uci show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.]*\)\
 	# Feld ist damit exakt, und nicht mehr davon abhaengig, wie viele Zeilen
 	# netifd je Radio ausgibt.
 	sema="/tmp/hotfix.wifipending"
-	pending="$(printf '%s' "$wifistatus" | jsonfilter -e "@[\"$radio\"].pending" 2>/dev/null)"
-	if [ "$rup" = "false" ] && [ "$pending" = "true" ] ; then
+	# pending kommt aus dem jsonfilter oben (1/0)
+	if [ "$rup" = "0" ] && [ "$pending" = "1" ] ; then
 		if [ "$(strike "$sema.fail.$radio")" -ge 3 ] ; then
 			logger -t "$HOTFIX_TAG" -p 5 "[hostapd_pids] hostapd down and pending on $radio"
 			restart_wifi && unstrike "$sema.fail.$radio"
@@ -162,8 +184,11 @@ for section in $(uci show wireless 2>/dev/null | sed -n "s/^wireless\.\([^.]*\)\
 	# oben, sendet aber nichts Brauchbares.
 	sema="/tmp/hotfix.channelunknown"
 	iwstat="$(iwinfo "$ifname" info 2>/dev/null)"
-	if printf '%s\n' "$iwstat" | grep -qi "Mode: Master" ; then
-		if printf '%s\n' "$iwstat" | grep -qi "Channel: unknown" ; then
+	# case statt printf|grep -qi; iwinfo schreibt es genau so
+	case "$iwstat" in *"Mode: Master"*) master=1 ;; *) master='' ;; esac
+	if [ -n "$master" ] ; then
+		case "$iwstat" in *"Channel: unknown"*) chanunknown=1 ;; *) chanunknown='' ;; esac
+		if [ -n "$chanunknown" ] ; then
 			if [ "$(strike "$sema.fail.$ifname")" -ge 3 ] ; then
 				logger -t "$HOTFIX_TAG" -p 5 "[hostapd_pids] channel unknown on $ifname"
 				restart_wifi && unstrike "$sema.fail.$ifname"
