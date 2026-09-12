@@ -187,7 +187,14 @@ Zeile mit derselben Node-ID zu wiederholen ist kein Fortsetzungsmechanismus
 
 Genau eine Datei pro Mirror fuer die ganze Community, bei Neanderfunk also
 eine zentrale Datei fuer alle 40+ Domains (D-010). Alle Knoten schauen in
-dieselbe Datei. 404 heisst "nichts zu tun" und ist der Normalfall.
+dieselbe Datei. 404 heisst "nichts zu tun" und ist der Normalfall; ebenso
+eine Antwort ohne Zeile `---`, etwa die HTML-Seite eines Servers, der jeden
+Pfad mit 200 beantwortet (D-043).
+
+Ohne `mirrors` in der site.conf (D-042) sucht der Knoten auf den Mirrors
+seines Autoupdater-Branches, also neben dem Firmware-Manifest:
+`<autoupdater-mirror>/nodeplacer.manifest` - dann je Branch-Verzeichnis eine
+Datei (bei Neanderfunk je Domain).
 
 ## Pflege von Hand (D-017)
 

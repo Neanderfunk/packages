@@ -181,8 +181,10 @@ static void load_pubkeys(struct settings *settings, const char **pubkeys_str, si
 
 /* The autoupdater branch section the node is currently running, or NULL */
 static struct uci_section * autoupdater_branch(struct uci_context *ctx, const char **branch_name) {
-	struct uci_package *ap;
-	if (uci_load(ctx, "autoupdater", &ap) != UCI_OK)
+	/* May be called twice on the same context (mirrors, then keys and
+	 * threshold); a second uci_load() of a loaded package fails. */
+	struct uci_package *ap = uci_lookup_package(ctx, "autoupdater");
+	if (!ap && uci_load(ctx, "autoupdater", &ap) != UCI_OK)
 		return NULL;
 
 	struct uci_section *as = uci_lookup_section(ctx, ap, "settings");
@@ -222,8 +224,17 @@ static void load_settings(struct settings *settings) {
 
 	if (settings->n_mirrors == 0) {
 		settings->mirrors = load_string_list(ctx, s, "mirror", &settings->n_mirrors);
+		/* Default (D-042): without mirrors in the site configuration the
+		 * manifest is looked for next to the firmware manifest, on the
+		 * mirrors of the autoupdater branch this node is running - the
+		 * same branch the keys and the threshold default to (D-031). */
 		if (settings->n_mirrors == 0) {
-			fputs("nodeplacer-fetch: error: no mirrors configured\n", stderr);
+			struct uci_section *bs = autoupdater_branch(ctx, NULL);
+			if (bs)
+				settings->mirrors = load_string_list(ctx, bs, "mirror", &settings->n_mirrors);
+		}
+		if (settings->n_mirrors == 0) {
+			fputs("nodeplacer-fetch: error: no mirrors configured, and the autoupdater branch has none either\n", stderr);
 			exit(EXIT_CONFIG);
 		}
 	}
@@ -342,6 +353,17 @@ static enum exit_code fetch(const char *mirror, const struct settings *s) {
 	if (ctx.ptr != ctx.buf) {
 		*ctx.ptr = '\0';
 		parse_line(ctx.buf, m, MAX_BODY_BYTES);
+	}
+
+	/* No "---" at all: whatever came back is not a manifest. Some web
+	 * servers answer every path with 200 and an HTML page (catch-all), so
+	 * a mirror without a manifest can look like one that has a bad one.
+	 * Treat it as absent - quiet, and on to the next mirror - instead of
+	 * as rejected, which would be logged on every run. A real manifest
+	 * without signatures still has the separator and is rejected below. */
+	if (!m->sep_found) {
+		fprintf(stderr, "nodeplacer-fetch: warning: %s is not a manifest (no \"---\" line)\n", url);
+		goto out;
 	}
 
 	/* Check manifest signatures */

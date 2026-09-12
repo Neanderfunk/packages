@@ -20,6 +20,8 @@ local state = require 'nodeplacer.state'
 local FETCH = '/usr/sbin/nodeplacer-fetch'
 local BODY_FILE = '/tmp/nodeplacer.body'
 local LOCKFILE = '/var/lock/nodeplacer.lock'
+-- names the autoupdater branch section whose uci delta this run overrides
+local OVERRIDE_MARKER = '/tmp/nodeplacer.autoupdater-override'
 
 local MAX_ATTEMPTS = 3
 local ATTEMPT_WINDOW = 7 * 86400 -- seconds, rolling (D-012)
@@ -82,9 +84,15 @@ if unistd.access('/var/gluon/setup-mode') == 0 then
 	os.exit(0)
 end
 
+-- Without mirrors in the site configuration the manifest is looked for on
+-- the mirrors of the autoupdater branch this node is running (D-042);
+-- nodeplacer-fetch does that fallback itself.
 if not uci:get('nodeplacer', 'settings', 'mirror') then
-	log('no mirrors configured')
-	os.exit(1)
+	local branch = uci:get('autoupdater', 'settings', 'branch')
+	if not (branch and uci:get('autoupdater', branch, 'mirror')) then
+		log('no mirrors configured, and the autoupdater branch has none either')
+		os.exit(1)
+	end
 end
 
 -- Never interfere with a running update. The autoupdater keeps its flock
@@ -260,8 +268,20 @@ elseif entry.method == 'firmware' then
 	-- attempt, or a -n run, which must never leave a trace, cannot affect
 	-- the node's regular, cron-triggered autoupdater before the next
 	-- reboot (D-012).
+	-- Until then the override lives in the delta only. Anyone committing
+	-- in the meantime - a bare "uci commit", "uci commit autoupdater", or a
+	-- gluon-reconfigure, whose 001-reset-uci commits everything first -
+	-- would store it on flash (D-041). The marker tells 000-nodeplacer
+	-- which section to drop before that happens.
 	local function restore()
 		uci:revert('autoupdater', branch)
+		os.remove(OVERRIDE_MARKER)
+	end
+
+	local mf = io.open(OVERRIDE_MARKER, 'w')
+	if mf then
+		mf:write(branch, '\n')
+		mf:close()
 	end
 
 	if not have_branch then
