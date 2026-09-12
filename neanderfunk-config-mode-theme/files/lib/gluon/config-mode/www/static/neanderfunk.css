@@ -46,11 +46,14 @@ h2 { font-size: 24px; line-height: 1.2; letter-spacing: -.015em; margin: 0 0 12p
 	padding: 18px 24px; background: var(--surface); border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; color: var(--ink); text-decoration: none; }
+/* The site name can be long; from its full width as flex basis the menu
+   would drop to a line of its own. A fixed basis lets the name wrap. */
+.app-header > .brand { flex: 1 1 18rem; }
 .brand:hover { color: var(--ink); }
 .brand .logo { flex: none; height: 54px; width: auto; aspect-ratio: 76.8 / 54.9; color: var(--ink); }
 .brand-name { display: block; font-size: 19px; font-weight: 700; letter-spacing: -.01em; line-height: 1.15; }
 .brand-sub { display: block; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
-.head-right { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 13px; }
+.head-right { flex: 0 1 auto; justify-content: flex-end; margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 13px; }
 .device {
 	display: inline-flex; flex-wrap: wrap; gap: 4px 10px; align-items: center;
 	padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px;
