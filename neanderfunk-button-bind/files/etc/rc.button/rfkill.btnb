@@ -27,7 +27,19 @@ fi
 # Guarded: 888-neanderfunk-button-bind only saves it if the target shipped one,
 # so on a target without an rfkill handler this would otherwise call a
 # non-existent file on every button press.
-[ -x /etc/rc.button/rfkill.owrt ] && /etc/rc.button/rfkill.owrt
+#
+# OpenWrt's handler ends in "uci commit wireless", which would also write the
+# runtime-only changes other packages keep in the uci delta: the offline SSID
+# of neanderfunk-ssid-changer (client_radioN.ssid, owe_radioN.disabled) and the
+# client APs switched off by neanderfunk-ap-timer (client_radioN.disabled).
+# Stored like that they stick after every reboot. So drop exactly those before
+# handing over; if the node is still offline, the ssid-changer puts the
+# offline SSID back within a minute.
+if [ -x /etc/rc.button/rfkill.owrt ]; then
+	uci -q changes wireless | sed -n "s/^\(wireless\.\(client_radio[0-9]*\.\(ssid\|disabled\)\|owe_radio[0-9]*\.disabled\)\)=.*/\1/p" |
+		sort -u | while read -r opt; do uci -q revert "$opt"; done
+	/etc/rc.button/rfkill.owrt
+fi
 ;;
 esac
 exit 0
