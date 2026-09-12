@@ -5,6 +5,10 @@ Kodiert Statusinformationen eines Gluon-Knotens in die Beacons der
 Client-WLANs. Auslesbar mit der App
 [NodeMonitor](https://github.com/freifunk-darmstadt/NodeMonitor).
 
+Wie das technisch funktioniert – Vendor-Element im Beacon, Empfang ohne
+Assoziierung, Android-API der App: [HOW-IT-WORKS.md](HOW-IT-WORKS.md)
+(English).
+
 Fork von `ffda-node-whisperer` aus den
 [community-packages](https://github.com/freifunk-gluon/community-packages),
 Branch `v2023.2.x`, Stand `91e5fa8a`. Der eigentliche Quelltext kommt
