@@ -13,7 +13,7 @@
  * Nicht hier hinein: Adressen aus dem Uplink-/WAN-Netz des Aufstellers.
  * respondd ist meshweit abfragbar und landet auf oeffentlichen Karten.
  *
- * Drei Klassen, nach wie schnell sich ein Wert aendert (Tabelle in der README):
+ * Klassen, nach wie schnell sich ein Wert aendert (Tabelle in der README):
  *
  *   statisch nach dem Boot  CPU-Modell, BIOS, Flash-Groesse, swconfig-CPU-Ports.
  *                           Einmal gelesen und im Modul gehalten - der
@@ -23,6 +23,9 @@
  *                           Mesh. Aendert sich durch ACS, ssid-changer,
  *                           Eingriffe. WIRELESS_TTL Sekunden gecacht.
  *                           Steht in statistics.
+ *   langsam                 Speicherdruck (MemAvailable, Refaults, Forks,
+ *                           zram): Zaehler fuer Raten ueber Minuten.
+ *                           SYSTEM_TTL Sekunden gecacht. Steht in statistics.
  *   schnell                 Ethernet je Port (Link, Speed, Duplex) und die
  *                           ssid-changer-Buchfuehrung. Bei jeder Abfrage aus
  *                           sysfs bzw. /tmp; das ioctl fuer "possible" nur,
@@ -92,6 +95,37 @@ static bool read_ll(const char *path, long long *val) {
 		return false;
 	*val = v;
 	return true;
+}
+
+/*
+ * Zahl hinter "<key>" in einer Datei mit Zeilen "<key> <zahl>" (/proc/vmstat,
+ * /proc/stat) oder "<key>: <zahl> kB" (/proc/meminfo). Der Schluessel muss
+ * ganz passen: "workingset_refault" trifft nicht "workingset_refault_file".
+ */
+static bool read_field(const char *path, const char *key, long long *val) {
+	char line[256];
+	size_t klen = strlen(key);
+	bool found = false;
+	FILE *f = fopen(path, "r");
+	if (!f)
+		return false;
+	while (fgets(line, sizeof(line), f)) {
+		if (strncmp(line, key, klen) || (line[klen] != ' ' && line[klen] != ':'))
+			continue;
+		char *p = line + klen;
+		while (*p == ':' || *p == ' ' || *p == '\t')
+			p++;
+		char *end;
+		errno = 0;
+		long long v = strtoll(p, &end, 10);
+		if (!errno && end != p) {
+			*val = v;
+			found = true;
+		}
+		break;
+	}
+	fclose(f);
+	return found;
 }
 
 static bool exists(const char *path) {
@@ -501,6 +535,78 @@ static struct json_object * get_ssid_changer(void) {
 }
 
 
+/* --- statistics: Speicherdruck ------------------------------------------- */
+
+/*
+ * Woran man einen Knoten erkennt, dem der Speicher ausgeht (Archer C25 mit
+ * 64 MB, 12.09.2026): Gluons memory-Werte bzw. das Verhaeltnis daraus bleiben
+ * flach, ob er thrasht oder nicht. Deutlich sind:
+ *  - refault_file: Seiten aus dem Page-Cache, die kurz nach dem Verdraengen
+ *    wieder gebraucht wurden - jeder Programmstart kommt dann aus dem Flash.
+ *    C25 gesund 36 pro Stunde, beim Thrashen tausende pro Minute.
+ *  - forks: Prozessstarts; Skript-Stuerme (modprobe-Sturm, tunneldigger-
+ *    Schleife) liegen bei ~1000 pro Minute.
+ * Beides Zaehler seit dem Boot, die Rate rechnet die Auswertung. Dazu
+ * MemAvailable absolut (das Verhaeltnis taeuscht zwischen 64 und 128 MB) und
+ * zram. Alles kB, wie Gluons memory. Nur /proc und sysfs, und hoechstens
+ * alle SYSTEM_TTL Sekunden: fuer eine Rate ueber Minuten reicht das, die
+ * Statusseite fragt dagegen alle 3 s.
+ */
+#define SYSTEM_TTL 60
+
+static struct json_object * get_zram(void) {
+	long long size = 0, data = 0, ram = 0;
+	char buf[256];
+
+	/* mm_stat: orig_data_size compr_data_size mem_used_total ... (Bytes) */
+	if (read_ll("/sys/block/zram0/disksize", &size) && size > 0 &&
+	    read_line("/sys/block/zram0/mm_stat", buf, sizeof(buf)) &&
+	    sscanf(buf, "%lld %*d %lld", &data, &ram) != 2)
+		data = ram = 0;
+
+	struct json_object *ret = json_object_new_object();
+	json_object_object_add(ret, "size", json_object_new_int64(size / 1024));
+	json_object_object_add(ret, "data", json_object_new_int64(data / 1024));
+	json_object_object_add(ret, "ram", json_object_new_int64(ram / 1024));
+	return ret;
+}
+
+static struct json_object * collect_system(void) {
+	long long avail = 0, refault = 0, forks = 0;
+
+	read_field("/proc/meminfo", "MemAvailable", &avail);
+	/* vor Linux 5.9 hiess es workingset_refault und zaehlte auch Anon-Seiten */
+	if (!read_field("/proc/vmstat", "workingset_refault_file", &refault))
+		read_field("/proc/vmstat", "workingset_refault", &refault);
+	read_field("/proc/stat", "processes", &forks);
+
+	struct json_object *ret = json_object_new_object();
+	json_object_object_add(ret, "mem_available", json_object_new_int64(avail));
+	json_object_object_add(ret, "refault_file", json_object_new_int64(refault));
+	json_object_object_add(ret, "forks", json_object_new_int64(forks));
+	json_object_object_add(ret, "zram", get_zram());
+	return ret;
+}
+
+static struct json_object * get_system(void) {
+	static struct json_object *cache;
+	static time_t stamp;
+	time_t now = now_monotonic();
+
+	if (!cache || now - stamp >= SYSTEM_TTL) {
+		if (cache)
+			json_object_put(cache);
+		cache = collect_system();
+		stamp = now;
+	}
+
+	struct json_object *ret = NULL;
+	if (json_object_deep_copy(cache, &ret, NULL))
+		ret = json_object_new_object();
+	return ret;
+}
+
+
 /* --- statistics: Ethernet ------------------------------------------------- */
 
 /*
@@ -782,6 +888,7 @@ static struct json_object * respondd_provider_statistics(void) {
 		json_object_object_add(nf, "ssid_changer", sc);
 
 	json_object_object_add(nf, "ethernet", get_ethernet());
+	json_object_object_add(nf, "system", get_system());
 
 	struct json_object *ret = json_object_new_object();
 	json_object_object_add(ret, "neanderfunk", nf);

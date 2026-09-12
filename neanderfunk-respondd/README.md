@@ -26,6 +26,7 @@ ab, wie schnell er sich ändert:
 | statisch nach dem Boot | CPU-Modell, BIOS, Flash-Größe; intern die Port-Liste aus `board.json` | `nodeinfo` | einmal gelesen, danach gehalten (der respondd-Prozess lebt so lange wie der Boot) |
 | Konfiguration | `preserve_channels` | `nodeinfo` | bei jeder nodeinfo-Abfrage (die kommt selten) |
 | mittel | je Radio Kanal, HT-Modus, SSID, TX-Leistung, Land, Mesh | `statistics` | 10 s gecacht; ändert sich durch ACS, ssid-changer, Eingriffe |
+| langsam | Speicherdruck: MemAvailable, Refaults, Forks, zram | `statistics` | 60 s gecacht; Zähler für Raten über Minuten, dafür reicht das |
 | schnell | je Ethernet-Port Link, Geschwindigkeit, Duplex; ssid-changer-Zähler | `statistics` | bei jeder Abfrage aus sysfs bzw. `/tmp`; das ioctl für `possible` nur, wenn sich die Geschwindigkeit des Ports geändert hat |
 
 Datenvertrag
@@ -85,7 +86,9 @@ fehlt (Paket nicht installiert).
   "ethernet": {
     "internet": { "carrier": true,  "speed": 1000, "duplex": "full", "possible": 0 },
     "ethernet": { "carrier": false, "speed": 0,    "duplex": "",     "possible": 0 }
-  }
+  },
+  "system": { "mem_available": 2412, "refault_file": 540, "forks": 18969,
+              "zram": { "size": 27648, "data": 1712, "ram": 744 } }
 }
 ```
 
@@ -128,6 +131,26 @@ Felder:
   beschädigten Kabels. Ein echtes 100-MBit-Gerät an einem Gigabit-Port
   bietet kein Gigabit an und ergibt `0`.
 
+**system** - woran man einen Knoten erkennt, dem der Speicher ausgeht. Beim
+Archer C25 (64 MB, 12.09.2026) blieb Gluons `memory` bzw. das Verhältnis
+daraus flach, ob er thrashte oder nicht. Höchstens alle 60 s neu gelesen.
+- `mem_available`: MemAvailable in kB, absolut - das Verhältnis täuscht
+  zwischen 64- und 128-MB-Geräten.
+- `refault_file`: `workingset_refault_file` aus `/proc/vmstat`, Zähler seit
+  dem Boot (vor Linux 5.9 `workingset_refault`). Seiten, die kurz nach dem
+  Verdrängen aus dem Page-Cache wieder gebraucht wurden: jeder Programmstart
+  kommt dann aus dem Flash. Der klarste Trenner - C25 gesund 36 pro Stunde,
+  beim Thrashen tausende pro Minute.
+- `forks`: `processes` aus `/proc/stat`, Prozessstarts seit dem Boot.
+  Skript-Stürme (modprobe-Sturm, tunneldigger-Schleife) liegen bei ~1000 pro
+  Minute.
+- `zram`: `size` (disksize), `data` (unkomprimiert abgelegt), `ram`
+  (tatsächlich belegter RAM), alle kB, aus `/sys/block/zram0`. Ohne zram
+  alles `0`.
+
+Die Raten rechnet die Auswertung aus den Zählern; nach einem Reboot beginnen
+sie bei 0.
+
 Auf **swconfig-Geräten** (TL-WDR3600, Archer C7 …) bleibt `ethernet` leer,
 die echten Ports kennt nur der Switch. Eine zweite Stufe per libsw wäre
 möglich (so wie `nodestatus` `swconfig dev switch0 port N get link` fragt).
@@ -146,6 +169,10 @@ Produktiv-respondd unberührt:
 | dias-WR3600-test (ath79, mips, swconfig) | `ethernet` leer |
 | dias-x86-64-test (QEMU) | `eth0`/`eth1` ohne Geschwindigkeit (virtio), BIOS SeaBIOS |
 | dias-futrotest (FUTRO S550, echte x86-Hardware) | `flash` 1018773504 = die ~1-GB-Flash-Disk `sda`, nicht das 126-MB-Image; CPU „Mobile AMD Sempron 2100+“, BIOS Phoenix 6.00; `eth1` (r8169) 1000/full, `eth0` (tg3) ohne Link; ioctl liefert echte Masken |
+
+Am 12.09.2026 `system` ebenso: WDR3600 (128 MB, ohne zram, Refaults 0) und
+Archer C25 (64 MB, zram 27 MB) - Werte gleich `/proc/meminfo`, `/proc/vmstat`,
+`/proc/stat` und `mm_stat`; zweite Abfrage nach 5 s aus dem Cache.
 
 10 statistics-Abfragen samt `gluon-neighbour-info`-Prozessstart brauchten auf
 den MIPS-Knoten zusammen unter 0,1 s.
