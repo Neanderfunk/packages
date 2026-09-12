@@ -32,6 +32,8 @@ Firmware
   sysupgrade <url> ...  Image laden (https wird http), pruefen, flashen;
                         URL auf ein Verzeichnis: sucht das Image selbst;
                         Optionen auch hinter der URL, z.B. -n ohne Konfig.
+                        wenig RAM: Dienste aus wie der Autoupdater, Rest
+                        ohne Sitzung (Log /tmp/flash.log, logread -e flash)
   flash <url> [opt]     dasselbe als Befehl, auch "ssh knoten flash <url>"
 Eingriffe (schreiben, wirksam nach "reconf")
   lanrole [rolle]       LAN-Rolle zeigen/setzen: uplink, mesh, client, none

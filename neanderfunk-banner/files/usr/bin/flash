@@ -22,12 +22,86 @@
 #     RAM.
 #   - "sysupgrade -T" prueft vorher, ob das Image zu diesem Geraet passt.
 #     Passt es nicht, wird nichts geflasht.
+#   - Bei wenig RAM (MemAvailable unter 32 MB vor dem Download oder unter
+#     16 MB danach) geht flash vor wie der Autoupdater: vorher die Dienste
+#     aus /usr/lib/autoupdater/download.d anhalten (respondd, uhttpd, cron,
+#     micrond ...), zuletzt upgrade.d (wifi down, Netz aus, bat0 weg) und dann
+#     sysupgrade. Sonst verhungert stage2 auf 64-MB-Geraeten: WLAN-Treiber
+#     wie ath10k halten ihre RX-Puffer, bis der Watchdog resettet (Archer C25,
+#     12.09.2026 - nichts geflasht). upgrade.d und sysupgrade laufen dann
+#     losgeloest von der Sitzung, denn "wifi down"/"Netz aus" kappt SSH ueber
+#     WLAN oder Mesh. Log in /tmp/flash.log und im Syslog (Tag flash); bricht
+#     sysupgrade ab, stellt abort.d Netz und Dienste wieder her.
+#     FLASH_HOOKS=1 erzwingt diesen Weg, FLASH_HOOKS=0 schaltet ihn ab.
 # Optionen nach der URL gehen unveraendert an sysupgrade, und zwar VOR die
 # Datei, wie sysupgrade es erwartet (z.B. -n, -F, -v).
+
+HOOKDIR=/usr/lib/autoupdater
+LOWMEM_KB=32768		# MemAvailable vor dem Download
+LOWMEM_AFTER_KB=16384	# MemAvailable mit dem Image in /tmp
+LOG=/tmp/flash.log
 
 usage() {
 	echo "Aufruf: flash <url|verzeichnis-url|datei> [sysupgrade-optionen]" >&2
 	echo "  z.B.  flash http://server/pfad/sysupgrade/ -n" >&2
+	exit 1
+}
+
+# run_hooks <download|upgrade|abort>: die Skripte des Autoupdaters
+run_hooks() {
+	local s
+	for s in "$HOOKDIR/$1.d"/*; do
+		[ -f "$s" ] && [ -x "$s" ] || continue
+		"$s"
+	done
+}
+
+mem_avail() {
+	awk '/^MemAvailable:/ {print $2}' /proc/meminfo
+}
+
+say() {
+	echo "flash: $*"
+	logger -t flash "$*"
+}
+
+# Zweiter Teil, losgeloest von der Sitzung (siehe unten): upgrade.d und
+# sysupgrade. Kommt sysupgrade zurueck, hat es nicht geflasht.
+if [ "$1" = --detached ]; then
+	shift
+	file="$1"
+	shift
+	trap '' HUP PIPE
+	exec >> "$LOG" 2>&1 < /dev/null
+	say "upgrade.d (wifi down, Netz aus), dann sysupgrade $* $file"
+	run_hooks upgrade
+	say "RAM verfuegbar $(mem_avail) KiB"
+	sysupgrade "$@" "$file"
+	say "sysupgrade kam zurueck ($?), nichts geflasht - abort.d: Netz und Dienste wieder an"
+	run_hooks abort
+	exit 1
+fi
+
+# Wenig RAM: die Dienste anhalten wie der Autoupdater vor dem Download.
+# Danach muss jeder Abbruch abort.d laufen lassen (fail).
+stopped=''
+stop_services() {
+	[ -n "$stopped" ] && return
+	if [ "${FLASH_HOOKS:-auto}" = 1 ]; then
+		say "FLASH_HOOKS=1: halte Dienste an wie der Autoupdater (download.d)"
+	else
+		say "wenig RAM ($(mem_avail) KiB verfuegbar): halte Dienste an wie der Autoupdater (download.d)"
+	fi
+	run_hooks download
+	stopped=1
+}
+
+fail() {
+	echo "flash: $*" >&2
+	if [ -n "$stopped" ]; then
+		echo "flash: starte die angehaltenen Dienste wieder (abort.d)" >&2
+		run_hooks abort
+	fi
 	exit 1
 }
 
@@ -91,6 +165,12 @@ case "$src" in
 		;;
 esac
 
+case "${FLASH_HOOKS:-auto}" in
+	1) hooks=1 ;;
+	0) hooks='' ;;
+	*) hooks=''; [ "$(mem_avail)" -lt "$LOWMEM_KB" ] 2>/dev/null && hooks=1 ;;
+esac
+
 case "$src" in
 	http://*)
 		last="${src%/}"
@@ -109,36 +189,56 @@ case "$src" in
 		[ -n "$name" ] || name=sysupgrade.bin
 		file="/tmp/$name"
 		rm -f "$file"
+		[ -n "$hooks" ] && stop_services
 		echo "flash: lade nach $file"
 		if ! wget -O "$file" "$src" ; then
 			rm -f "$file"
-			echo "flash: Download fehlgeschlagen - nichts geflasht." >&2
-			exit 1
+			fail "Download fehlgeschlagen - nichts geflasht."
 		fi
 		;;
 	*)
 		file="$src"
 		[ -f "$file" ] || { echo "flash: $file gibt es nicht." >&2; exit 1; }
+		[ -n "$hooks" ] && stop_services
 		;;
 esac
 
 size=$(wc -c < "$file")
-avail=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+avail=$(mem_avail)
 sha=$(sha256sum "$file" | cut -d' ' -f1)
 echo "flash: $file, $((size / 1024)) KiB, RAM verfuegbar noch ${avail:-?} KiB"
 echo "flash: sha256 $sha"
 
 if [ -n "$want_sha" ] && [ "$sha" != "$want_sha" ] ; then
-	echo "flash: sha256 passt nicht zum Manifest ($want_sha) - nichts geflasht." >&2
-	echo "flash: Die Datei bleibt in $file liegen (RAM, weg nach dem Neustart)." >&2
-	exit 1
+	fail "sha256 passt nicht zum Manifest ($want_sha) - nichts geflasht.
+flash: Die Datei bleibt in $file liegen (RAM, weg nach dem Neustart)."
 fi
 
 if ! sysupgrade -T "$@" "$file" ; then
-	echo "flash: sysupgrade -T lehnt das Image ab - nichts geflasht." >&2
-	echo "flash: Die Datei bleibt in $file liegen (RAM, weg nach dem Neustart)." >&2
-	exit 1
+	fail "sysupgrade -T lehnt das Image ab - nichts geflasht.
+flash: Die Datei bleibt in $file liegen (RAM, weg nach dem Neustart)."
 fi
 
-echo "flash: Image passt. sysupgrade $* $file"
-exec sysupgrade "$@" "$file"
+# Erst mit dem Image in /tmp knapp geworden: die Dienste jetzt anhalten.
+if [ -z "$hooks" ] && [ "${FLASH_HOOKS:-auto}" != 0 ] && [ "${avail:-0}" -lt "$LOWMEM_AFTER_KB" ] 2>/dev/null; then
+	hooks=1
+	stop_services
+fi
+
+if [ -z "$hooks" ]; then
+	echo "flash: Image passt. sysupgrade $* $file"
+	exec sysupgrade "$@" "$file"
+fi
+
+say "Image passt. Weiter ohne diese Sitzung: gleich gehen WLAN und Netz aus"
+echo "flash: (wie beim Autoupdater), die Verbindung bricht ab. Danach flasht der"
+echo "flash: Knoten und startet neu. Log: $LOG und logread -e flash; bricht"
+echo "flash: sysupgrade ab, kommen Netz und Dienste von selbst wieder."
+: > "$LOG"
+# -b: eigene Session, ueberlebt das Ende der SSH-Sitzung. Mit frischem
+# Pidfile, denn ohne vergleicht start-stop-daemon ueber das Programm, und
+# /bin/sh ist busybox - jede laufende Shell gaelte als "laeuft schon".
+rm -f /tmp/flash.pid
+start-stop-daemon -S -b -m -p /tmp/flash.pid -x /bin/sh -- "$0" --detached "$file" "$@" ||
+	fail "konnte den Rest nicht losgeloest starten - nichts geflasht."
+exit 0

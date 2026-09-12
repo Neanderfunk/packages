@@ -73,8 +73,19 @@ It also installs these commands (all listed by `help`):
   download must then match, else in the server's directory listing, by the
   Gluon image name (`platform_info`). Options after the URL are passed on, in
   front of the file as sysupgrade expects, e.g. `flash <url> -n` to drop the
-  configuration. In interactive shells plain `sysupgrade <url>` does the same
-  (see below); `flash` is for `ssh node flash <url>`.
+  configuration. With little RAM (MemAvailable below 32 MB before the
+  download, or below 16 MB with the image in `/tmp`) it goes the
+  autoupdater's way: first the services in `/usr/lib/autoupdater/download.d`
+  are stopped (respondd, uhttpd, cron, micrond ...), at the end
+  `upgrade.d` (wifi down, network stopped, bat0 removed) and sysupgrade run
+  detached from the session - "wifi down" cuts an SSH session over wifi or
+  mesh. Without that, stage2 starves on 64 MB devices (Archer C25: the wifi
+  drivers keep their RX buffers until the watchdog resets, nothing flashed).
+  Log in `/tmp/flash.log` and syslog (`logread -e flash`); if sysupgrade
+  returns, `abort.d` brings network and services back. `FLASH_HOOKS=1`
+  forces this path, `FLASH_HOOKS=0` disables it. In interactive shells plain
+  `sysupgrade <url>` does the same (see below); `flash` is for
+  `ssh node flash <url>`.
 - `help` - cheat sheet.
 
 Read-only aliases in the profile: `gwl`, `nb`, `gwtr` (batman traceroute to
@@ -90,12 +101,13 @@ stick. `uci commit <package>` always works; `command uci commit`
 forces it. Scripts are not affected.
 
 `sysupgrade` wrapper (interactive shells only): when the image argument is an
-`http://` or `https://` URL (file or directory), the call goes to `flash`,
-with the URL first and all options behind it - so options may also follow
-the URL, which the real sysupgrade silently ignores. The value of `-f`,
-`-b` and `-r` is not taken for the image. Anything else (local file, `-b`,
-`-l`, `-h`, no argument) runs the original unchanged, and so do scripts and
-the autoupdater (`/sbin/sysupgrade`). `command sysupgrade <url>` bypasses the
+`http://` or `https://` URL (file or directory) or an existing file, the call
+goes to `flash` (checks, and the autoupdater's service stops when RAM is
+low), with the image first and all options behind it - so options may also
+follow the image, which the real sysupgrade silently ignores. The value of
+`-f`, `-b` and `-r` is not taken for the image. Anything else (`-b`, `-l`,
+`-h`, no argument) runs the original unchanged, and so do scripts and the
+autoupdater (`/sbin/sysupgrade`). `command sysupgrade <image>` bypasses the
 wrapper.
 
 Create a file `modules` with the following content in your `./gluon/site/`
