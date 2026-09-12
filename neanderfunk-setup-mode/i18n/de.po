@@ -36,8 +36,8 @@ msgstr "Client"
 msgid "collapsed, open only when needed"
 msgstr "eingeklappt, nur bei Bedarf öffnen"
 
-msgid "Firmware upgrade and information stay pages of their own, linked at the top."
-msgstr "Firmware aktualisieren und Informationen bleiben eigene Seiten, sie sind oben verlinkt."
+msgid "Information and firmware upgrade: at the very top right."
+msgstr "Info und Firmware aktualisieren: ganz oben rechts."
 
 msgid "Internet connection"
 msgstr "Internetverbindung"

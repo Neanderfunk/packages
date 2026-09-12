@@ -28,7 +28,7 @@ msgstr ""
 msgid "collapsed, open only when needed"
 msgstr ""
 
-msgid "Firmware upgrade and information stay pages of their own, linked at the top."
+msgid "Information and firmware upgrade: at the very top right."
 msgstr ""
 
 msgid "Internet connection"
