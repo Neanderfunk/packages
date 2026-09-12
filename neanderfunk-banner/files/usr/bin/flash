@@ -1,0 +1,144 @@
+#!/bin/sh
+# flash <url|verzeichnis-url|datei> [sysupgrade-optionen] - Firmware laden und
+# flashen.
+#
+#     flash https://imageslive.ffdus.de/.../gluon-...-sysupgrade.bin
+#     flash https://imageslive.ffdus.de/.../21_dias/sysupgrade/      # sucht selbst
+#     flash http://.../gluon-...-sysupgrade.bin -n     # ohne Konfiguration
+#     flash /tmp/image.bin                             # schon geladen
+#
+# Entspricht "cd /tmp && wget <url> && sysupgrade <optionen> <datei>", mit
+# Pruefungen dazwischen:
+#   - https:// wird zu http://: Die URL kommt meist aus der Zwischenablage,
+#     und nicht jeder Knoten kann TLS (tiny-Geraete haben kein gluon-tls).
+#   - Eine URL ohne Dateinamen (endet auf / oder der letzte Teil hat keinen
+#     Punkt) gilt als Verzeichnis. Dann sucht flash das Image fuer dieses
+#     Geraet selbst: zuerst im Autoupdater-Manifest (<branch>.manifest, die
+#     eingestellte Branch zuerst), das auch die sha256 liefert, gegen die der
+#     Download geprueft wird; sonst in der Verzeichnisliste nach
+#     "-<imagename>-sysupgrade.". Den Image-Namen kennt Gluon
+#     (platform_info, derselbe wie im Manifest).
+#   - Nach dem Laden stehen Groesse, freier RAM und sha256 da - /tmp liegt im
+#     RAM.
+#   - "sysupgrade -T" prueft vorher, ob das Image zu diesem Geraet passt.
+#     Passt es nicht, wird nichts geflasht.
+# Optionen nach der URL gehen unveraendert an sysupgrade, und zwar VOR die
+# Datei, wie sysupgrade es erwartet (z.B. -n, -F, -v).
+
+usage() {
+	echo "Aufruf: flash <url|verzeichnis-url|datei> [sysupgrade-optionen]" >&2
+	echo "  z.B.  flash http://server/pfad/sysupgrade/ -n" >&2
+	exit 1
+}
+
+# find_image <verzeichnis-url>: setzt src (Datei-URL) und want_sha (leer, wenn
+# nur aus der Verzeichnisliste gefunden)
+find_image() {
+	local dir="$1" img br tried=' ' mf=/tmp/flash.manifest line name
+	img="$(lua -e 'print(require("platform_info").get_image_name())' 2>/dev/null)"
+	if [ -z "$img" ] ; then
+		echo "flash: kann den Image-Namen dieses Geraets nicht bestimmen." >&2
+		return 1
+	fi
+	echo "flash: suche das Image fuer $img in $dir/"
+
+	for br in $(uci -q get autoupdater.settings.branch) \
+			$(uci -q show autoupdater | sed -n "s/^autoupdater\.[^.]*\.name='\(.*\)'$/\1/p") \
+			stable beta experimental testing broken nightly ; do
+		case "$tried" in *" $br "*) continue ;; esac
+		tried="$tried$br "
+		rm -f "$mf"
+		wget -q -O "$mf" "$dir/$br.manifest" 2>/dev/null || continue
+		# Manche Server (imageslive) liefern fuer jeden Pfad 200 mit HTML:
+		# ein Manifest ist es nur mit BRANCH-Zeile.
+		grep -q "^BRANCH=" "$mf" || continue
+		line="$(awk -v img="$img" '$1 == img && NF == 5 { print; exit }' "$mf")"
+		[ -n "$line" ] || continue
+		set -- $line
+		src="$dir/$5"
+		want_sha="$3"
+		echo "flash: gefunden in $br.manifest: $5 (Version $2)"
+		rm -f "$mf"
+		return 0
+	done
+	rm -f "$mf"
+
+	# Rueckfall: Verzeichnisliste des Servers
+	if wget -q -O /tmp/flash.index "$dir/" 2>/dev/null ; then
+		name="$(grep -o "[^\"'/<> ]*-$img-sysupgrade\.[^\"'<> ]*" /tmp/flash.index | head -n 1)"
+		rm -f /tmp/flash.index
+		if [ -n "$name" ] ; then
+			src="$dir/$name"
+			want_sha=''
+			echo "flash: gefunden in der Verzeichnisliste: $name (ohne Manifest, keine sha256 zum Vergleich)"
+			return 0
+		fi
+	fi
+	echo "flash: kein Image fuer $img in $dir/ gefunden - nichts geflasht." >&2
+	return 1
+}
+
+[ -n "$1" ] || usage
+src="$1"
+shift
+want_sha=''
+
+case "$src" in
+	-*) usage ;;
+	https://*)
+		src="http://${src#https://}"
+		echo "flash: lade per http statt https: $src"
+		;;
+esac
+
+case "$src" in
+	http://*)
+		last="${src%/}"
+		last="${last##*/}"
+		case "$src" in
+			*/) find_image "${src%/}" || exit 1 ;;
+			*)
+				case "$last" in
+					*.*) ;;
+					*) find_image "$src" || exit 1 ;;
+				esac
+				;;
+		esac
+		name="${src##*/}"
+		name="${name%%\?*}"
+		[ -n "$name" ] || name=sysupgrade.bin
+		file="/tmp/$name"
+		rm -f "$file"
+		echo "flash: lade nach $file"
+		if ! wget -O "$file" "$src" ; then
+			rm -f "$file"
+			echo "flash: Download fehlgeschlagen - nichts geflasht." >&2
+			exit 1
+		fi
+		;;
+	*)
+		file="$src"
+		[ -f "$file" ] || { echo "flash: $file gibt es nicht." >&2; exit 1; }
+		;;
+esac
+
+size=$(wc -c < "$file")
+avail=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+sha=$(sha256sum "$file" | cut -d' ' -f1)
+echo "flash: $file, $((size / 1024)) KiB, RAM verfuegbar noch ${avail:-?} KiB"
+echo "flash: sha256 $sha"
+
+if [ -n "$want_sha" ] && [ "$sha" != "$want_sha" ] ; then
+	echo "flash: sha256 passt nicht zum Manifest ($want_sha) - nichts geflasht." >&2
+	echo "flash: Die Datei bleibt in $file liegen (RAM, weg nach dem Neustart)." >&2
+	exit 1
+fi
+
+if ! sysupgrade -T "$@" "$file" ; then
+	echo "flash: sysupgrade -T lehnt das Image ab - nichts geflasht." >&2
+	echo "flash: Die Datei bleibt in $file liegen (RAM, weg nach dem Neustart)." >&2
+	exit 1
+fi
+
+echo "flash: Image passt. sysupgrade $* $file"
+exec sysupgrade "$@" "$file"

@@ -64,6 +64,16 @@ It also installs these commands (all listed by `help`):
 - `v4up` - fetches IPv4 via DHCP from the mesh on `br-client`. Refused if the
   uplink already has IPv4: a second default route would pull the tunnel into
   the mesh and, without another uplink there, cut the node off.
+- `flash <url|directory-url|file> [sysupgrade options]` - downloads a
+  firmware image to `/tmp` (an `https://` URL is fetched as `http://`, not
+  every node has TLS), shows size, free RAM and sha256, checks it with
+  `sysupgrade -T` and only then runs `sysupgrade`. A URL without a file name
+  (e.g. `.../sysupgrade/`) makes it look for this device's image itself: in
+  the autoupdater manifests there (configured branch first), whose sha256 the
+  download must then match, else in the server's directory listing, by the
+  Gluon image name (`platform_info`). Options after the URL are passed on, in
+  front of the file as sysupgrade expects, e.g. `flash <url> -n` to drop the
+  configuration.
 - `help` - cheat sheet.
 
 Read-only aliases in the profile: `gwl`, `nb`, `gwtr` (batman traceroute to

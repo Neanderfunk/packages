@@ -29,6 +29,9 @@ Logs
 Firmware
   autoupdater -n        pruefen und laden, aber NICHT flashen
   autoupdater -f        Update erzwingen
+  flash <url> [opt]     Image laden (https wird http), pruefen, flashen;
+                        URL auf ein Verzeichnis: sucht das Image selbst;
+                        opt gehen an sysupgrade, z.B. -n ohne Konfiguration
 Eingriffe (schreiben, wirksam nach "reconf")
   lanrole [rolle]       LAN-Rolle zeigen/setzen: uplink, mesh, client, none
   wanrole [rolle]       WAN-Rolle zeigen/setzen, z.B. "wanrole uplink mesh"
