@@ -7,12 +7,15 @@ local s = f:section(Section, nil, "Hat der Router eine Wifi-Taste, so können di
 
 -- Sollen mehrere Taster konfiguriert werden, dann einfach folgendes Schemata vervielfaeltigen:
 
+-- Without a configured function the page shows "no function" (1). The
+-- section is created in this cursor only and written by f:write() - merely
+-- showing the page must not write the flash (on the one-page setup of
+-- neanderfunk-setup-mode every form is loaded on every visit).
 local fct = uci:get('button-bind', 'wifi', 'function')
 if not fct then
 	fct='1'
 	uci:set('button-bind', 'wifi', 'button')
 	uci:set('button-bind', 'wifi', 'function', fct)
-	uci:commit('button-bind')
 end
 
 -- Auf einem Knoten ohne WLAN sind "Wifi an/aus" und "Wifi-Reset" wirkungslos,
