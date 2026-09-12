@@ -20,12 +20,62 @@
 # shared: the two packages are independent and neither may need the other
 # installed.
 
+# --- Konfiguration einmal je Lauf -------------------------------------------
+#
+# Jeder uci-Aufruf ist ein eigener Prozess, und auf Geraeten mit 64 MB kommt
+# jeder Prozessstart aus dem Flash: der Datei-Cache haelt dort nichts ueber eine
+# Minute (Archer C25, 12.09.2026 gemessen - ein Lauf linkcheck.sh startete rund
+# 480 Prozesse und brauchte 25 s, das meiste davon uci, grep, cut, touch, rm).
+#
+# Deshalb holt jedes Skript die Pakete einmal als Text und liest die Werte
+# daraus ohne Unterprozess. nf_uci_get legt das Ergebnis in $NF_VAL ab statt es
+# auszugeben, weil eine Kommandosubstitution $(...) selbst wieder ein Prozess
+# waere. Laufzeit-Deltas (uci set ohne commit) sieht "uci show" genauso wie
+# "uci get" - an der Semantik aendert sich nichts.
+NF_UCI_linkcheck="$(uci -q show linkcheck 2>/dev/null)"
+
+# nf_uci_get <uci-show-Text> <paket.sektion.option>: setzt NF_VAL, Rueckgabe 1
+# wenn die Option fehlt oder leer ist
+nf_uci_get() {
+	local line oldifs="$IFS" noglob=''
+	case "$-" in *f*) noglob=1 ;; esac
+	set -f
+	IFS='
+'
+	NF_VAL=''
+	for line in $1 ; do
+		case "$line" in
+			"$2="*)
+				NF_VAL="${line#*=}"
+				NF_VAL="${NF_VAL#\'}"
+				NF_VAL="${NF_VAL%\'}"
+				break
+				;;
+		esac
+	done
+	IFS="$oldifs"
+	[ -n "$noglob" ] || set +f
+	[ -n "$NF_VAL" ]
+}
+
+# nf_minutes <option> <vorgabe>: linkcheck.settings.<option> als Minutenzahl in
+# NF_VAL, unset oder nicht numerisch ergibt die Vorgabe
+nf_minutes() {
+	nf_uci_get "$NF_UCI_linkcheck" "linkcheck.settings.$1"
+	case "$NF_VAL" in
+		''|*[!0-9]*) NF_VAL="$2" ;;
+	esac
+}
+
+# Sekunden seit dem Boot in NF_UP, ohne sed
+nf_uptime() {
+	read -r NF_UP _ < /proc/uptime
+	NF_UP="${NF_UP%.*}"
+}
+
 # true when the named check is switched off on this node
 check_disabled() {
-	if [ "$(uci -q get linkcheck."$1".disabled)" = "1" ] ; then
-		return 0
-	fi
-	return 1
+	nf_uci_get "$NF_UCI_linkcheck" "linkcheck.$1.disabled" && [ "$NF_VAL" = "1" ]
 }
 
 # true once the node is old enough for a check to ACT on what it found -
@@ -33,12 +83,9 @@ check_disabled() {
 # runs and still logs; see no_action_yet(). Unset or non-numeric falls back to
 # the 60 minutes this used to be hardcoded to.
 uptime_ok() {
-	local m
-	m="$(uci -q get linkcheck.settings.reboot_uptime_min)"
-	case "$m" in
-		''|*[!0-9]*) m=60 ;;
-	esac
-	[ "$(sed 's/\..*//g' /proc/uptime)" -gt "$((m * 60))" ]
+	nf_minutes reboot_uptime_min 60
+	nf_uptime
+	[ "$NF_UP" -gt "$((NF_VAL * 60))" ]
 }
 
 # Minimum uptime in seconds before a check may even run (minutes, default 5):
@@ -46,27 +93,21 @@ uptime_ok() {
 # Right after a boot the network is often not up yet; an anycast ping failing
 # then is not a fault worth reporting. Below this limit nothing runs at all.
 check_uptime_limit() {
-	local m
-	m="$(uci -q get linkcheck.settings.check_uptime_min)"
-	case "$m" in
-		''|*[!0-9]*) m=5 ;;
-	esac
-	echo $((m * 60))
+	nf_minutes check_uptime_min 5
+	echo $((NF_VAL * 60))
 }
 
 # true once the node is old enough for the checks to run at all
 checks_ok() {
-	[ "$(sed 's/\..*//g' /proc/uptime)" -gt "$(check_uptime_limit)" ]
+	nf_minutes check_uptime_min 5
+	nf_uptime
+	[ "$NF_UP" -gt "$((NF_VAL * 60))" ]
 }
 
 # reboot_uptime_limit in minutes, for log messages
 reboot_uptime_min() {
-	local m
-	m="$(uci -q get linkcheck.settings.reboot_uptime_min)"
-	case "$m" in
-		''|*[!0-9]*) m=60 ;;
-	esac
-	echo "$m"
+	nf_minutes reboot_uptime_min 60
+	echo "$NF_VAL"
 }
 
 # Log that a check found something but is not acting on it yet. Between
@@ -84,12 +125,16 @@ no_action_yet() {
 strike() {
 	local n=1
 	while [ -e "$1.$n" ] ; do n=$((n + 1)) ; done
-	touch "$1.$n"
+	: > "$1.$n"
 	echo "$n"
 }
 
+# Nur rm, wenn es ueberhaupt Strikes gibt. Der Normalfall ist "keine", und das
+# bei jedem Lauf und jedem Check - ein rm je Aufruf fuer nichts.
 unstrike() {
-	rm -f "$1".* 2>/dev/null
+	set -- "$1".*
+	[ -e "$1" ] || return 0
+	rm -f "$@" 2>/dev/null
 }
 
 # true while the autoupdater is downloading or flashing.
@@ -162,12 +207,8 @@ autoupdater_running() {
 # Ereignismeldungen - verlorene Nachbarn, fehlende Bridges, WLAN-Neustarts,
 # Reboots - laufen NICHT hierueber. Die muessen jedes Mal ins Log.
 log_heartbeat_limit() {
-	local m
-	m="$(uci -q get linkcheck.settings.log_heartbeat_min)"
-	case "$m" in
-		''|*[!0-9]*) m=60 ;;
-	esac
-	echo $((m * 60))
+	nf_minutes log_heartbeat_min 60
+	echo $((NF_VAL * 60))
 }
 
 log_status() {
@@ -197,7 +238,8 @@ log_status() {
 		case "$old_t" in
 			''|*[!0-9]*) old_t=0 ;;
 		esac
-		[ $((now - old_t)) -lt "$(log_heartbeat_limit)" ] && return 0
+		nf_minutes log_heartbeat_min 60
+		[ $((now - old_t)) -lt $((NF_VAL * 60)) ] && return 0
 	fi
 
 	printf '%s\n%s\n' "$now" "$sig" > "$f"
