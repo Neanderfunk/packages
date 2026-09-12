@@ -96,7 +96,14 @@
 		'remote': function (g) {
 			var ta = g.querySelector('textarea');
 			var n = ta ? ta.value.split('\n').filter(function (l) { return l.trim(); }).length : 0;
-			return n ? fmt(T.keys1, T.keysN, n) : T.keys0;
+			var keys = n ? fmt(T.keys1, T.keysN, n) : T.keys0;
+			var rm = g.querySelector('input[name$=".nf_pwremove"]');
+			var pw = g.querySelector('input[name$=".pw1"]');
+			var st;
+			if (rm && rm.checked) st = T.pwremove;
+			else if (pw && pw.value) st = T.pwnew;
+			else st = rm ? T.pwset : T.pwnone;
+			return keys + ' \u00b7 ' + st;
 		}
 	};
 
@@ -185,9 +192,28 @@
 		if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type !== 'submit') e.preventDefault();
 	});
 
+	/* Password and confirmation: gluon-web-model checks each field for
+	   itself, the comparison only happens on the node. */
+	function mismatches() {
+		var out = [];
+		each('input[name$=".pw2"]', form, function (p2) {
+			var p1 = form.querySelector('input[name="' + p2.name.replace(/pw2$/, 'pw1') + '"]');
+			var err = p2.closest('.row') && p2.closest('.row').querySelector('.err');
+			if (err && !err.hasAttribute('data-text')) err.setAttribute('data-text', err.textContent);
+			if (p1 && p1.value !== p2.value) {
+				if (err) err.textContent = T.pwmismatch;
+				out.push(p2);
+			} else if (err) {
+				err.textContent = err.getAttribute('data-text');
+			}
+		});
+		return out;
+	}
+
 	form.addEventListener('submit', function (e) {
 		var bad = [];
 		each('.gluon-input-invalid', form, function (el) { bad.push(el); });
+		mismatches().forEach(function (el) { if (bad.indexOf(el) < 0) bad.push(el); });
 		if (bad.length) {
 			e.preventDefault();
 			each('.row.invalid', form, function (r) { r.classList.remove('invalid'); });

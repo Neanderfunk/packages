@@ -57,10 +57,21 @@ unter WLAN. Auf der Seite steht es einmal. Die WLAN-Variante bleibt, weil
 HT-Modus und der 5-GHz-Mesh-Schalter an ihr hängen. Auf Outdoor-Geräten
 rückt sie in den Einrichtungsteil, auf allen anderen bleibt sie unter WLAN.
 
+**Passwort:** Auf der Sammelseite bedeutet ein leeres Passwortfeld
+„unverändert“. Zum Löschen gibt es den Schalter „Passwort entfernen“. Er
+erscheint nur, solange ein Passwort gesetzt ist, und blendet die beiden
+Felder aus. Gespeichert führt gluon-web-admin dann wie gewohnt
+`passwd -l root` aus. Ist auch das Feld der SSH-Schlüssel leer, gibt es gar
+keinen Fernzugriff mehr.
+
+**Meldungen:** Unter einem Feld mit Fehler steht, was es erwartet, zum
+Beispiel „Mindestens 12 Zeichen.“, „Keine gültige IPv4-Adresse.“ oder
+„Pflichtfeld, bitte ausfüllen.“. Die Meldung ergibt sich aus dem Datentyp des
+Feldes. Passwort und Bestätigung vergleicht die Seite schon im Browser
+(„Die Passwörter sind nicht gleich.“) und noch einmal auf dem Knoten.
+
 Die alten Adressen unter `admin/` funktionieren weiter und zeigen die
-einzelnen Seiten wie bisher. Das ist der Weg für Sonderfälle, etwa ein
-Passwort zu löschen: Auf der Sammelseite bedeutet ein leeres Passwortfeld
-„unverändert“.
+einzelnen Seiten wie bisher.
 
 Interna, auf die sich das Paket verlässt
 ----------------------------------------

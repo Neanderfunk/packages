@@ -16,7 +16,19 @@ msgstr ""
 msgid "1 SSH key"
 msgstr ""
 
+msgid "A number from %s to %s."
+msgstr ""
+
+msgid "A whole number from %s to %s."
+msgstr ""
+
 msgid "Advanced settings"
+msgstr ""
+
+msgid "At least %s characters."
+msgstr ""
+
+msgid "At most %s characters."
 msgstr ""
 
 msgid "changed"
@@ -37,7 +49,13 @@ msgstr ""
 msgid "Location"
 msgstr ""
 
+msgid "Log in with the SSH keys above only. Without keys there is no remote access at all."
+msgstr ""
+
 msgid "Mesh"
+msgstr ""
+
+msgid "new password"
 msgstr ""
 
 msgid "No changes"
@@ -46,10 +64,22 @@ msgstr ""
 msgid "no client"
 msgstr ""
 
+msgid "no password"
+msgstr ""
+
 msgid "No SSH keys"
 msgstr ""
 
 msgid "Node"
+msgstr ""
+
+msgid "Not a valid IP address."
+msgstr ""
+
+msgid "Not a valid IPv4 address."
+msgstr ""
+
+msgid "Not a valid IPv6 address."
 msgstr ""
 
 msgid "Not everything could be saved, see the marked section. The node was not restarted."
@@ -70,7 +100,22 @@ msgstr ""
 msgid "Outdoor installation"
 msgstr ""
 
+msgid "password set"
+msgstr ""
+
+msgid "password will be removed"
+msgstr ""
+
 msgid "Please check this input."
+msgstr ""
+
+msgid "Please enter a number."
+msgstr ""
+
+msgid "Please enter a whole number."
+msgstr ""
+
+msgid "Remove password"
 msgstr ""
 
 msgid "Save & restart"
@@ -83,6 +128,15 @@ msgid "Setup"
 msgstr ""
 
 msgid "Some fields need a correction, they are marked. Nothing was saved."
+msgstr ""
+
+msgid "The key needs 8 to 63 characters."
+msgstr ""
+
+msgid "The passwords do not match."
+msgstr ""
+
+msgid "This field is required."
 msgstr ""
 
 msgid "This section could not be loaded."

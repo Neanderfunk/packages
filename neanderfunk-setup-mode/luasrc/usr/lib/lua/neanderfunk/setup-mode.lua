@@ -287,6 +287,83 @@ local function retemplate(map)
 end
 
 
+-- The message under a field that failed its check, from what the field
+-- expects. gluon-web-model itself only knows "invalid".
+local function error_text(t, node)
+	if instanceof(node, classes.Flag) then
+		return nil -- a switch cannot be wrong
+	end
+	local dt = node.datatype
+	local name, a, b = (dt or ''):match('^([%w]+)%(([^,%)]+),?([^%)]*)%)$')
+	name = name or dt
+
+	if name == 'minlength' then
+		if tonumber(a) and tonumber(a) <= 1 then
+			return t('This field is required.')
+		end
+		return t('At least %s characters.'):format(a)
+	elseif name == 'maxlength' then
+		return t('At most %s characters.'):format(a)
+	elseif name == 'ipaddr' then
+		return t('Not a valid IP address.')
+	elseif name == 'ip4addr' then
+		return t('Not a valid IPv4 address.')
+	elseif name == 'ip6addr' then
+		return t('Not a valid IPv6 address.')
+	elseif name == 'float' or name == 'ufloat' then
+		return t('Please enter a number.')
+	elseif name == 'integer' or name == 'uinteger' then
+		return t('Please enter a whole number.')
+	elseif name == 'irange' then
+		return t('A whole number from %s to %s.'):format(a, b)
+	elseif name == 'range' then
+		return t('A number from %s to %s.'):format(a, b)
+	elseif name == 'wpakey' then
+		return t('The key needs 8 to 63 characters.')
+	elseif not dt and not node.optional then
+		return t('This field is required.')
+	end
+	return t('Please check this input.')
+end
+
+-- Whether root has a password (gluon-web-admin locks it with passwd -l).
+local function password_is_set()
+	for line in io.lines('/etc/shadow') do
+		local hash = line:match('^root:([^:]*):')
+		if hash then
+			return hash ~= '' and not hash:match('^[!*]')
+		end
+	end
+	return false
+end
+
+-- On the one page an empty password field means "unchanged", so removing a
+-- password needs a switch of its own. It is added to gluon-web-admin's
+-- password form and hides both fields; the form's own write() then does
+-- what it always did with empty fields: passwd -l root. Only offered while
+-- a password is set.
+local function add_password_removal(t, map)
+	local pw1, pw2 = find_option(map, 'pw1'), find_option(map, 'pw2')
+	if not (pw1 and pw2 and pw1.parent == pw2.parent) or not password_is_set() then
+		return
+	end
+
+	local section = pw1.parent
+	local remove = section:option(classes.Flag, 'nf_pwremove', t('Remove password'),
+		t('Log in with the SSH keys above only. Without keys there is no remote access at all.'))
+	remove.default = false
+
+	-- first in the section, above the password fields
+	table.insert(section.children, 1, table.remove(section.children))
+	for i, child in ipairs(section.children) do
+		child.index = i
+	end
+
+	pw1:depends(remove, false)
+	pw2:depends(remove, false)
+end
+
+
 -- Runs fn with commits turned into saves and reconfigure calls skipped, see
 -- the top of this file.
 local function deferred(fn)
@@ -425,8 +502,16 @@ local function build(renderer, scan)
 
 	table.insert(page.maps, wizard)
 	for _, map in ipairs(page.maps) do
+		if map ~= wizard then
+			add_password_removal(t, map)
+		end
 		retemplate(map)
 		snapshot(map)
+		walk(map, function(node)
+			if instanceof(node, classes.AbstractValue) then
+				node.nf_errtext = error_text(t, node)
+			end
+		end)
 	end
 
 	page.text = {
@@ -444,6 +529,11 @@ local function build(renderer, scan)
 		keys0 = t('No SSH keys'),
 		keys1 = t('1 SSH key'),
 		keysN = t('%d SSH keys'),
+		pwset = t('password set'),
+		pwnone = t('no password'),
+		pwnew = t('new password'),
+		pwremove = t('password will be removed'),
+		pwmismatch = t('The passwords do not match.'),
 	}
 
 	return page
@@ -471,6 +561,7 @@ local function submit(http, page)
 		local pw1, pw2 = find_option(map, 'pw1'), find_option(map, 'pw2')
 		if pw1 and pw2 and pw1.data ~= pw2.data then
 			pw2.error = true
+			pw2.nf_errtext = page.text.pwmismatch
 			state.invalid = true
 		end
 	end

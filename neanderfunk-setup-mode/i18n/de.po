@@ -24,8 +24,20 @@ msgstr "1 Änderung, noch nicht gespeichert"
 msgid "1 SSH key"
 msgstr "1 SSH-Schlüssel"
 
+msgid "A number from %s to %s."
+msgstr "Eine Zahl von %s bis %s."
+
+msgid "A whole number from %s to %s."
+msgstr "Eine ganze Zahl von %s bis %s."
+
 msgid "Advanced settings"
 msgstr "Erweiterte Einstellungen"
+
+msgid "At least %s characters."
+msgstr "Mindestens %s Zeichen."
+
+msgid "At most %s characters."
+msgstr "Höchstens %s Zeichen."
 
 msgid "changed"
 msgstr "geändert"
@@ -45,8 +57,14 @@ msgstr "Internetverbindung"
 msgid "Location"
 msgstr "Standort"
 
+msgid "Log in with the SSH keys above only. Without keys there is no remote access at all."
+msgstr "Anmelden dann nur noch mit den SSH-Schlüsseln oben. Ohne Schlüssel gibt es gar keinen Fernzugriff mehr."
+
 msgid "Mesh"
 msgstr "Mesh"
+
+msgid "new password"
+msgstr "neues Passwort"
 
 msgid "No changes"
 msgstr "Keine Änderungen"
@@ -54,11 +72,23 @@ msgstr "Keine Änderungen"
 msgid "no client"
 msgstr "kein Client"
 
+msgid "no password"
+msgstr "kein Passwort"
+
 msgid "No SSH keys"
 msgstr "Keine SSH-Schlüssel"
 
 msgid "Node"
 msgstr "Knoten"
+
+msgid "Not a valid IP address."
+msgstr "Keine gültige IP-Adresse."
+
+msgid "Not a valid IPv4 address."
+msgstr "Keine gültige IPv4-Adresse."
+
+msgid "Not a valid IPv6 address."
+msgstr "Keine gültige IPv6-Adresse."
 
 msgid "Not everything could be saved, see the marked section. The node was not restarted."
 msgstr "Nicht alles ließ sich speichern, siehe den markierten Abschnitt. Der Knoten wurde nicht neu gestartet."
@@ -78,8 +108,23 @@ msgstr "Als eigene Seite öffnen"
 msgid "Outdoor installation"
 msgstr "Außenbereich"
 
+msgid "password set"
+msgstr "Passwort gesetzt"
+
+msgid "password will be removed"
+msgstr "Passwort wird entfernt"
+
 msgid "Please check this input."
 msgstr "Bitte diese Eingabe prüfen."
+
+msgid "Please enter a number."
+msgstr "Bitte eine Zahl eingeben."
+
+msgid "Please enter a whole number."
+msgstr "Bitte eine ganze Zahl eingeben."
+
+msgid "Remove password"
+msgstr "Passwort entfernen"
 
 msgid "Save & restart"
 msgstr "Speichern & Neustarten"
@@ -92,6 +137,15 @@ msgstr "Einrichtung"
 
 msgid "Some fields need a correction, they are marked. Nothing was saved."
 msgstr "Einige Felder brauchen noch eine Korrektur, sie sind markiert. Gespeichert wurde nichts."
+
+msgid "The key needs 8 to 63 characters."
+msgstr "Der Schlüssel braucht 8 bis 63 Zeichen."
+
+msgid "The passwords do not match."
+msgstr "Die Passwörter sind nicht gleich."
+
+msgid "This field is required."
+msgstr "Pflichtfeld, bitte ausfüllen."
 
 msgid "This section could not be loaded."
 msgstr "Dieser Abschnitt ließ sich nicht laden."

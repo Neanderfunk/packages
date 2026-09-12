@@ -8,6 +8,6 @@
 	<div class="ctl">
 		<% include(self.subtemplate) %>
 		<% if desc and not title then %><span class="sub"><%=self.description%></span><% end %>
-		<span class="err"><%:Please check this input.%></span>
+		<span class="err"><% if self.nf_errtext then %><%|self.nf_errtext%><% else %><%:Please check this input.%><% end %></span>
 	</div>
 </div>
