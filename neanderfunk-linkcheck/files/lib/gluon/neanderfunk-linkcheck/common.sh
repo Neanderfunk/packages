@@ -126,7 +126,7 @@ autoupdater_running() {
 # (*/15) und stuendlich ffac-autoupdater-wifi-fallback. Die Einzelinstanz-Locks
 # der einzelnen Skripte (fd 200) verhindern nur, dass ein Skript sich selbst
 # ueberholt - nicht, dass linkcheck ein "wifi down" absetzt, waehrend
-# IfNoWificlient zwischen "wifi config" und "wifi up" steht.
+# IfNoWificlient zwischen "wifi down" und "wifi up" steht.
 #
 # Im Normalbetrieb faellt das nicht auf, weil jede Aktion hinter Arming-Markern
 # und Strikes sitzt. Aber eine echte Stoerung trifft alle Checks gleichzeitig,
