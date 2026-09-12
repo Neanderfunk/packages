@@ -1,1 +1,6 @@
-* * * * * /usr/sbin/ap-timer
+# Start the Lua worker only while the timer is on - it does nothing otherwise,
+# and on most nodes the timer is off. On 64 MB devices (Archer C25) the file
+# cache is too small to keep Lua between two minutes: every start came from
+# flash, 450-900 ms a minute; the uci check costs about 100 ms.
+# (micrond cuts each line at the first hash sign - the command must not use one.)
+* * * * * [ "$(uci -q get ap-timer.settings.enabled)" = 1 ] && /usr/sbin/ap-timer

@@ -34,6 +34,11 @@ Differences to the originals
   used to store "off" for good. This script drops the timer's runtime deltas
   before 001; a reconfigure in the off period now behaves like a reboot in the
   off period (client wifi on until the next off time).
+* The cron entry starts the Lua worker only while `ap-timer.settings.enabled`
+  is 1 (a `uci` check first); the worker does nothing otherwise anyway. On
+  64 MB devices such as the Archer C25 the file cache cannot keep Lua between
+  two minutes, so every start came from flash: 450-900 ms each minute, now
+  about 100 ms for the check.
 
 /etc/config/ap-timer
 --------------------
