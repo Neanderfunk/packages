@@ -47,7 +47,7 @@ h2 { font-size: 24px; line-height: 1.2; letter-spacing: -.015em; margin: 0 0 12p
 }
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; color: var(--ink); text-decoration: none; }
 .brand:hover { color: var(--ink); }
-.brand svg { flex: none; }
+.brand .logo { flex: none; height: 54px; width: auto; aspect-ratio: 76.8 / 54.9; color: var(--ink); }
 .brand-name { display: block; font-size: 19px; font-weight: 700; letter-spacing: -.01em; line-height: 1.15; }
 .brand-sub { display: block; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .head-right { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 13px; }
