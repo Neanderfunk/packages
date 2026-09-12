@@ -33,7 +33,8 @@ define Package/$(PKG_NAME)/description
 	on DSA), lanrole/wanrole (show or set the Gluon interface role),
 	reconf (gluon-reconfigure and reboot in the background), v4up (IPv4
 	via the mesh, refused if the uplink has IPv4), flash (download a firmware
-	image by URL, or find it in a directory URL, check it, sysupgrade), help.
+	image by URL, or find it in a directory URL, check it, sysupgrade; in
+	interactive shells "sysupgrade <url>" does the same), help.
 endef
 
 define Build/Prepare

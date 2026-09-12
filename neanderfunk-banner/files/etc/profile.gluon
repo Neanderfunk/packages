@@ -78,6 +78,37 @@ case "$-" in
 			fi
 			command uci "$@"
 		}
+		# sysupgrade mit einer URL als Image (auch https:// oder nur das
+		# Verzeichnis) geht an flash: laden, Image suchen, sha256 und
+		# sysupgrade -T pruefen. Optionen duerfen dann auch hinter der URL
+		# stehen - das echte sysupgrade ignoriert alles nach dem Image. Ohne URL
+		# und fuer Skripte (Autoupdater: /sbin/sysupgrade) bleibt es beim
+		# Original; "command sysupgrade <url>" erzwingt das auch hier.
+		sysupgrade() {
+			local a i=0 pos=0 skip='' url=''
+			for a in "$@"; do
+				i=$((i + 1))
+				if [ -n "$skip" ]; then skip=''; continue; fi
+				case "$a" in
+					-f|-b|-r|--create-backup|--restore-backup) skip=1 ;;
+					-h|--help) break ;;
+					-*) ;;
+					http://*|https://*) pos=$i; break ;;
+					*) break ;;
+				esac
+			done
+			if [ "$pos" -eq 0 ] || [ ! -x /usr/bin/flash ]; then
+				command sysupgrade "$@"
+				return
+			fi
+			i=0
+			for a in "$@"; do
+				i=$((i + 1))
+				[ "$i" -eq 1 ] && set --
+				if [ "$i" -eq "$pos" ]; then url="$a"; else set -- "$@" "$a"; fi
+			done
+			/usr/bin/flash "$url" "$@"
+		}
 		[ -z "$FAILSAFE" ] && [ -x /usr/bin/nodestatus ] && /usr/bin/nodestatus
 		;;
 esac

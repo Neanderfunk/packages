@@ -73,7 +73,8 @@ It also installs these commands (all listed by `help`):
   download must then match, else in the server's directory listing, by the
   Gluon image name (`platform_info`). Options after the URL are passed on, in
   front of the file as sysupgrade expects, e.g. `flash <url> -n` to drop the
-  configuration.
+  configuration. In interactive shells plain `sysupgrade <url>` does the same
+  (see below); `flash` is for `ssh node flash <url>`.
 - `help` - cheat sheet.
 
 Read-only aliases in the profile: `gwl`, `nb`, `gwtr` (batman traceroute to
@@ -87,6 +88,15 @@ ap-timer enabled client APs switched off, and during a nodeplacer firmware
 move the autoupdater branch it overrides. Committed like that they would
 stick. `uci commit <package>` always works; `command uci commit`
 forces it. Scripts are not affected.
+
+`sysupgrade` wrapper (interactive shells only): when the image argument is an
+`http://` or `https://` URL (file or directory), the call goes to `flash`,
+with the URL first and all options behind it - so options may also follow
+the URL, which the real sysupgrade silently ignores. The value of `-f`,
+`-b` and `-r` is not taken for the image. Anything else (local file, `-b`,
+`-l`, `-h`, no argument) runs the original unchanged, and so do scripts and
+the autoupdater (`/sbin/sysupgrade`). `command sysupgrade <url>` bypasses the
+wrapper.
 
 Create a file `modules` with the following content in your `./gluon/site/`
 directory and add these lines:
