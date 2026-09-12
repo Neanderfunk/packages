@@ -22,7 +22,7 @@ valuecheck ()
 
   if [ ! -f "${pb}.inhood" ] ; then
     # arm only once a real neighbourhood has been seen (>=2) during this runtime
-    [ "${wert}" -gt "1" ] && echo $(date) > "${pb}.inhood"
+    [ "${wert}" -gt "1" ] && : > "${pb}.inhood"
     return
   fi
 
@@ -124,30 +124,44 @@ checks_ok || exit 0
 
 ifnameseparator=','  # charcters like . - # or even : may cause issues
 
+# Einmal je Lauf statt je Abschnitt und Interface, siehe nf_uci_get in common.sh.
+NF_UCI_wireless="$(uci -q show wireless 2>/dev/null)"
+batn="$(batctl n 2>/dev/null)"
+batif="$(batctl if 2>/dev/null)"
+
+# batman-Interfaces aus "batctl if" ("mesh0: active"), ohne cut
+batmeshs=''
+while IFS= read -r l ; do
+  [ -n "$l" ] && batmeshs="$batmeshs ${l%%:*}"
+done <<EOF
+$batif
+EOF
+
+# Verschiedene Nachbar-MACs je Interface aus "batctl n", ein awk fuer alle
+# Interfaces. Frueher je Interface "batctl n|tail|grep|awk|sort|uniq|wc",
+# sieben Prozesse. Die zwei Kopfzeilen fallen weg (NR>2). Der Vergleich ist
+# jetzt exakt: "grep eth0" traf frueher auch "eth0.1".
+batncounts=" $(printf '%s\n' "$batn" | awk 'NR>2 && !s[$1" "$2]++ {c[$1]++} END {for (i in c) printf "%s=%d ", i, c[i]}')"
+
+# Wert <name> aus einer "name=n name=n"-Liste in NF_VAL, 0 wenn nicht drin
+list_count() {
+  case "$1" in
+    *" $2="*) NF_VAL="${1#*" $2="}" ; NF_VAL="${NF_VAL%% *}" ;;
+    *) NF_VAL=0 ;;
+  esac
+}
+
 
 # 1) running over existing batman-interface, looking for direct neighbors
 checkgroup='batadv_neighbours'
 if ! check_disabled "$checkgroup" ; then
-batversion=$(batctl -v |cut -d" " -f 2|grep -o '[0-9]\+'| tr -d '\012\015')
-# an unparsable version must not turn the comparison below into a shell error;
-# everything current is far past that threshold anyway
-case "$batversion" in ''|*[!0-9]*) batversion=999999 ;; esac
 linkname='batadv'
-batmeshs=$(batctl if|cut -d":" -f 1|tr '\n' ' ')
+# (Hier stand eine Weiche fuer batctl-Versionen vor 2016.3, die "batctl -n"
+# statt "batctl n" brauchten. Gluon 2023.2 bringt batman-adv 2023.1 mit.)
 for batm in ${batmeshs}; do
-  # tail -n +3 strips the two header lines, as section 3 already does. Without
-  # it the grep also matched the first one, which names the primary interface
-  # ("MainIF/MAC: primary0/42:6b:..."): primary0 then reported a phantom
-  # neighbour count of 1 - awk pulled the word "adv" out of that header - even
-  # though batctl n lists no neighbour for it at all. It never escalated only
-  # because arming needs >=2 and the phantom count is always exactly 1.
-  if [ "$batversion" -gt 20163 ] ; then
-   result=$(batctl n|tail -n +3|grep ${batm}|awk '{print $2}'|sort|uniq|wc -l)
-  else
-   result=$(batctl -n|tail -n +3|grep ${batm}|awk '{print $2}'|sort|uniq|wc -l)
-  fi
+  list_count "$batncounts" "$batm"
   check=${batm}
-  wert=$result
+  wert=$NF_VAL
   valuecheck ${check}
 done
 fi
@@ -164,7 +178,8 @@ fi
 # the test never matched and the node got scanned anyway. Ask the driver
 # instead, per radio, and keep the target test only as a fallback for when the
 # driver link is not readable (interface down, no sysfs entry).
-gluontarget=$(cat /etc/openwrt_release|grep DISTRIB_TARGET|cut -d"=" -f2|tr -d \'|cut -d/ -f1)
+. /etc/openwrt_release 2>/dev/null
+gluontarget="${DISTRIB_TARGET%%/*}"
 # Is this netdev actually up? uci's "disabled" flag is not enough: on a
 # COVR-X1860 mesh_radio1 has disabled='0' and a netdev, but operstate "down",
 # because radio1 sits on channel "auto" and a mesh interface needs a fixed one.
@@ -174,10 +189,10 @@ gluontarget=$(cat /etc/openwrt_release|grep DISTRIB_TARGET|cut -d"=" -f2|tr -d \
 # operationally up, so this does not hide the case these checks exist for.
 iface_is_up() {
   # $1: ifname
-  case "$(cat "/sys/class/net/$1/operstate" 2>/dev/null)" in
-    up) return 0 ;;
-  esac
-  return 1
+  local st
+  [ -r "/sys/class/net/$1/operstate" ] || return 1
+  read -r st < "/sys/class/net/$1/operstate"
+  [ "$st" = "up" ]
 }
 
 radio_is_wifi6() {
@@ -206,19 +221,23 @@ if ! check_disabled "$checkgroup" ; then
   # bewusst aufgezaehlt statt "alles mit ifname" - wan_radio* (privates WLAN)
   # gehoert nicht in diese Pruefung. Nebenbei traegt das auch Geraete mit mehr
   # als drei Radios, die es ab Gluon 2025.1 geben kann.
-  links=$(uci show wireless 2>/dev/null \
-    | grep -E "^wireless\.(client|owe|mesh|batmesh|ibss)_radio[0-9]+\.ifname=" \
-    | cut -d. -f1-2 | awk '!seen[$0]++')
-  for link in $links; do
-    linkname=$(uci get $link.ifname 2>/dev/null)
-    if [ ! -z "${linkname}" ] ; then
-      linksexist="$linksexist $link"
-     fi
+  set -f ; oldifs="$IFS" ; IFS='
+'
+  for l in $NF_UCI_wireless ; do
+    case "$l" in
+      wireless.client_radio[0-9]*.ifname=*|wireless.owe_radio[0-9]*.ifname=*|wireless.mesh_radio[0-9]*.ifname=*|wireless.batmesh_radio[0-9]*.ifname=*|wireless.ibss_radio[0-9]*.ifname=*)
+        l="${l#wireless.}"
+        linksexist="$linksexist wireless.${l%%.*}"
+        ;;
+    esac
   done
-  # alte scans wegr??umen
-  rm /tmp/linkcheck.iwscan.* 2>/dev/null
+  IFS="$oldifs" ; set +f
+  # alte scans wegraeumen (rm nur, wenn es welche gibt)
+  set -- /tmp/linkcheck.iwscan.*
+  [ -e "$1" ] && rm -f "$@"
   for linkexist in $linksexist; do
-    linkname=$(uci get $linkexist.ifname)
+    nf_uci_get "$NF_UCI_wireless" "$linkexist.ifname" || continue
+    linkname="$NF_VAL"
     if ! iface_is_up "${linkname}" ; then
       continue
      fi
@@ -233,7 +252,8 @@ if ! check_disabled "$checkgroup" ; then
       fi
       continue
      fi
-    iwfile=/tmp/linkcheck.iwscan.$(uci get $linkexist.device)
+    nf_uci_get "$NF_UCI_wireless" "$linkexist.device"
+    iwfile=/tmp/linkcheck.iwscan.$NF_VAL
     if [ ! -f $iwfile ] ; then
       sleep 4
       # Derselbe Waechter wie um "iw station dump" weiter unten: ein iw-Aufruf
@@ -252,7 +272,7 @@ if ! check_disabled "$checkgroup" ; then
        fi
       sleep 4
      fi
-    bsses=$(cat $iwfile|grep "BSS .*:.*:.*:.*:.*:.*(on.*)"|wc -l)
+    bsses=$(grep -c "BSS .*:.*:.*:.*:.*:.*(on.*)" "$iwfile")
     checks="bsses"
 ##   looking for BSSIDs with the name of the wifimesh
 #    unset bssid
@@ -269,7 +289,7 @@ if ! check_disabled "$checkgroup" ; then
     # every 5 minutes. It also clobbered $check, growing it by one "s" per
     # iteration.
     for check in ${checks}; do
-      wert=$(eval echo \$${check})
+      eval "wert=\$${check}"
       valuecheck ${check}
      done
    done
@@ -282,24 +302,42 @@ if ! check_disabled "$checkgroup" ; then
   # fehlender Eintrag heisst also nicht "wird uebersehen", sondern "wird
   # mitgeprueft und kann bis zum Reboot eskalieren". Fest standen hier mesh0 bis
   # mesh3, was heute reicht, aber eben nur zufaellig.
-  wifibatlinks=$(uci show wireless 2>/dev/null \
-    | grep -E "^wireless\.(mesh|ibss|batmesh)_radio[0-9]+\.ifname=" \
-    | sed "s/.*='//;s/'$//" | tr '\n' ' ')
+  wifibatlinks=''
+  set -f ; oldifs="$IFS" ; IFS='
+'
+  for l in $NF_UCI_wireless ; do
+    case "$l" in
+      wireless.mesh_radio[0-9]*.ifname=*|wireless.ibss_radio[0-9]*.ifname=*|wireless.batmesh_radio[0-9]*.ifname=*)
+        l="${l#*=}" ; l="${l#\'}"
+        wifibatlinks="$wifibatlinks ${l%\'}"
+        ;;
+    esac
+  done
+  IFS="$oldifs" ; set +f
   # Liefert uci nichts - kein wireless-Config, kaputtes uci -, dann lieber die
   # alte feste Liste als eine leere: eine leere Ausnahmeliste wuerde die
   # WLAN-Mesh-Interfaces in die Reboot-Bedingung hineinnehmen.
-  [ -n "$(echo $wifibatlinks)" ] || wifibatlinks='mesh0 mesh1 mesh2 mesh3'
+  case "$wifibatlinks" in
+    *[!\ ]*) ;;
+    *) wifibatlinks='mesh0 mesh1 mesh2 mesh3' ;;
+  esac
 
   # inventory of bat-interfaces, from all possible sources, probably unneccesary
-  batinterfaces2=$(batctl n|tail -n +3|awk '{print $1}'|sort|uniq)
-  batinterfaces1=$(batctl if|cut -d: -f1|sort|uniq)
-  batinterfaces3=$(echo "${batinterfaces1} ${batinterfaces2}")
-  batinterfaces=$(for b in ${batinterfaces3}; do echo ${b}; done|sort|uniq)
+  # aus "batctl if" und den Interfaces mit Nachbarn in "batctl n" (beides
+  # oben einmal geholt), ohne sort|uniq
+  batinterfaces=' '
+  for b in ${batmeshs} ${batncounts} ; do
+    b="${b%%=*}"
+    case "$batinterfaces" in
+      *" $b "*) ;;
+      *) batinterfaces="$batinterfaces$b " ;;
+    esac
+  done
 #  echo batinterfaces $batinterfaces
 
   # create flag files in /tmp
   for batinterface in ${batinterfaces}; do
-    echo $(date)>/tmp/linkcheck.batinterface${ifnameseparator}${batinterface}${ifnameseparator}up
+: > /tmp/linkcheck.batinterface${ifnameseparator}${batinterface}${ifnameseparator}up
    done
   # get all previously seen interfaces by flag files
   for batupfiles in "/tmp/linkcheck.batinterface${ifnameseparator}*${ifnameseparator}up"; do
@@ -310,7 +348,7 @@ if ! check_disabled "$checkgroup" ; then
   for batups in ${batupfiles}; do
     check_disabled "$checkgroup" && break
     [ -e "${batups}" ] || continue
-    batifupf=$(echo ${batups}|cut -d${ifnameseparator} -f2)
+    batifupf="${batups#*${ifnameseparator}}" ; batifupf="${batifupf%%${ifnameseparator}*}"
     if [[ "$batinterfaces" =~ "${batifupf}" ]]; then
       wert='2'
      else
@@ -334,10 +372,10 @@ if ! check_disabled "$checkgroup" ; then
     # so with the comma separator there is no third dot-field at all:
     # batifupf came out empty, [[ ! "$x" =~ "" ]] is false because an empty
     # regex matches anything, and this whole originator check never ran.
-    batifupf=$(echo ${batups}|cut -d${ifnameseparator} -f2)
+    batifupf="${batups#*${ifnameseparator}}" ; batifupf="${batifupf%%${ifnameseparator}*}"
     if [[ ! "$wifibatlinks" =~ "${batifupf}" ]]; then    # do not check for wifimesh links as check/reboot condition!
 #      echo check if by file: ${batifupf} # individually previsously seen file
-      bators=$(cat ${batmanoriginatorsfile}|grep ${batifupf}|wc -l)
+      bators=$(grep -c -- "${batifupf}" "${batmanoriginatorsfile}")
       # Hier stand eine eigene Zeile "on bat if <if> : <n> originators", bei
       # jedem Lauf und je Interface. Sie ist ersatzlos entfallen: dieselbe Zahl
       # landet zwei Zeilen weiter ueber valuecheck als
@@ -364,11 +402,12 @@ if ! check_disabled bridges || ! check_disabled bridge_ports ; then
   bridges_now=""
   for brif in /sys/class/net/*/brif ; do
     [ -d "$brif" ] || continue
-    b="$(basename "$(dirname "$brif")")"
+    b="${brif%/brif}" ; b="${b##*/}"
     bridges_now="$bridges_now $b"
-    touch "/tmp/linkcheck.bridge-seen.$b"
-    for port in $(ls "$brif" 2>/dev/null) ; do
-      touch "/tmp/linkcheck.brport-seen.$b.$port"
+    : > "/tmp/linkcheck.bridge-seen.$b"
+    for port in "$brif"/* ; do
+      [ -e "$port" ] || continue
+      : > "/tmp/linkcheck.brport-seen.$b.${port##*/}"
     done
   done
 
@@ -417,12 +456,24 @@ fi
 checkgroup='mesh_neighbours'
 if ! check_disabled "$checkgroup" ; then
   linkname='meshpeers'
-  for mesh_radio in $(uci show wireless 2>/dev/null | grep -E -o '(ibss|mesh)_radio[0-9]+' | awk '!seen[$0]++') ; do
-    radio="$(uci -q get wireless.${mesh_radio}.device)"
-    [ "$(uci -q get wireless.${radio}.disabled)" = "1" ] && continue
-    [ "$(uci -q get wireless.${mesh_radio}.disabled)" = "1" ] && continue
-    dev="$(uci -q get wireless.${mesh_radio}.ifname)"
-    [ -z "$dev" ] && continue
+  mesh_radios=' '
+  set -f ; oldifs="$IFS" ; IFS='
+'
+  for l in $NF_UCI_wireless ; do
+    case "$l" in
+      wireless.mesh_radio[0-9]*|wireless.ibss_radio[0-9]*)
+        l="${l#wireless.}" ; l="${l%%[.=]*}"
+        case "$mesh_radios" in *" $l "*) ;; *) mesh_radios="$mesh_radios$l " ;; esac
+        ;;
+    esac
+  done
+  IFS="$oldifs" ; set +f
+  for mesh_radio in $mesh_radios ; do
+    nf_uci_get "$NF_UCI_wireless" "wireless.${mesh_radio}.device" ; radio="$NF_VAL"
+    nf_uci_get "$NF_UCI_wireless" "wireless.${radio}.disabled" && [ "$NF_VAL" = "1" ] && continue
+    nf_uci_get "$NF_UCI_wireless" "wireless.${mesh_radio}.disabled" && [ "$NF_VAL" = "1" ] && continue
+    nf_uci_get "$NF_UCI_wireless" "wireless.${mesh_radio}.ifname" || continue
+    dev="$NF_VAL"
     iface_is_up "$dev" || continue
     # iw can hang on a wedged radio, so run it in the background and give up
     # after 20s rather than stalling the whole run
@@ -436,7 +487,7 @@ if ! check_disabled "$checkgroup" ; then
       logger -s -t "neanderfunk-linkcheck" -p 5 "[mesh_neighbours] iw dev $dev station dump hangs, skipped"
       continue
     fi
-    wert="$(cat "$out" 2>/dev/null)"
+    wert='' ; [ -r "$out" ] && read -r wert < "$out"
     case "$wert" in ''|*[!0-9]*) continue ;; esac
     check="${mesh_radio}"
     valuecheck "$check"
