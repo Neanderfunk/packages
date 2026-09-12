@@ -17,30 +17,76 @@
 # It can be preset for the whole community from the site.conf, see
 # /lib/gluon/upgrade/500-neanderfunk-hotfix and the package README.
 
+# --- Konfiguration einmal je Lauf -------------------------------------------
+#
+# Jeder uci-Aufruf ist ein eigener Prozess, und auf Geraeten mit 64 MB kommt
+# jeder Prozessstart aus dem Flash: der Datei-Cache haelt dort nichts ueber
+# eine Minute (Archer C25, 12.09.2026: ein Lauf healthcheck.sh startete rund
+# 500 Prozesse und brauchte 25 s). Deshalb einmal "uci show hotfix" und die
+# Werte ohne Unterprozess daraus lesen - das Ergebnis steht in $NF_VAL statt
+# auf stdout, weil eine Kommandosubstitution selbst wieder ein Prozess waere.
+# Gleiche Helfer wie in neanderfunk-linkcheck, bewusst dupliziert (die Pakete
+# haengen nicht voneinander ab).
+NF_UCI_hotfix="$(uci -q show hotfix 2>/dev/null)"
+
+# nf_uci_get <uci-show-Text> <paket.sektion.option>: setzt NF_VAL, Rueckgabe 1
+# wenn die Option fehlt oder leer ist
+nf_uci_get() {
+	local line oldifs="$IFS" noglob=''
+	case "$-" in *f*) noglob=1 ;; esac
+	set -f
+	IFS='
+'
+	NF_VAL=''
+	for line in $1 ; do
+		case "$line" in
+			"$2="*)
+				NF_VAL="${line#*=}"
+				NF_VAL="${NF_VAL#\'}"
+				NF_VAL="${NF_VAL%\'}"
+				break
+				;;
+		esac
+	done
+	IFS="$oldifs"
+	[ -n "$noglob" ] || set +f
+	[ -n "$NF_VAL" ]
+}
+
+# nf_minutes <option> <vorgabe>: hotfix.settings.<option> als Minutenzahl in
+# NF_VAL, unset oder nicht numerisch ergibt die Vorgabe
+nf_minutes() {
+	nf_uci_get "$NF_UCI_hotfix" "hotfix.settings.$1"
+	case "$NF_VAL" in
+		''|*[!0-9]*) NF_VAL="$2" ;;
+	esac
+}
+
+# Sekunden seit dem Boot in NF_UP, ohne sed
+nf_uptime() {
+	read -r NF_UP _ < /proc/uptime
+	NF_UP="${NF_UP%.*}"
+}
+
 # true when the named check is switched off on this node
 check_disabled() {
-	if [ "$(uci -q get hotfix."$1".disabled)" = "1" ] ; then
-		return 0
-	fi
-	return 1
+	nf_uci_get "$NF_UCI_hotfix" "hotfix.$1.disabled" && [ "$NF_VAL" = "1" ]
 }
 
 # minimum uptime in seconds before any check may reboot; anything unset or
 # not a plain number falls back to the 60 minutes this used to be hardcoded to
 reboot_uptime_limit() {
-	local m
-	m="$(uci -q get hotfix.settings.reboot_uptime_min)"
-	case "$m" in
-		''|*[!0-9]*) m=60 ;;
-	esac
-	echo $((m * 60))
+	nf_minutes reboot_uptime_min 60
+	echo $((NF_VAL * 60))
 }
 
 # true once the node is old enough for a check to ACT on what it found -
 # reboot, wifi restart, any network reinit. A check below this limit still
 # runs and still logs; see no_action_yet().
 uptime_ok() {
-	[ "$(sed 's/\..*//g' /proc/uptime)" -gt "$(reboot_uptime_limit)" ]
+	nf_minutes reboot_uptime_min 60
+	nf_uptime
+	[ "$NF_UP" -gt "$((NF_VAL * 60))" ]
 }
 
 # Minimum uptime in seconds before a check may even run (minutes, default 5):
@@ -49,17 +95,15 @@ uptime_ok() {
 # would only report a problem that is not one. Below this limit nothing runs
 # and nothing is logged.
 check_uptime_limit() {
-	local m
-	m="$(uci -q get hotfix.settings.check_uptime_min)"
-	case "$m" in
-		''|*[!0-9]*) m=5 ;;
-	esac
-	echo $((m * 60))
+	nf_minutes check_uptime_min 5
+	echo $((NF_VAL * 60))
 }
 
 # true once the node is old enough for the checks to run at all
 checks_ok() {
-	[ "$(sed 's/\..*//g' /proc/uptime)" -gt "$(check_uptime_limit)" ]
+	nf_minutes check_uptime_min 5
+	nf_uptime
+	[ "$NF_UP" -gt "$((NF_VAL * 60))" ]
 }
 
 # Log that a check found something but is not acting on it yet. Between
@@ -101,7 +145,8 @@ no_action_yet() {
 #     uci set hotfix.kernel_bug.immediate='0' ; uci commit hotfix
 acts_immediately() {
 	local v
-	v="$(uci -q get hotfix."$1".immediate)"
+	nf_uci_get "$NF_UCI_hotfix" "hotfix.$1.immediate"
+	v="$NF_VAL"
 	case "$v" in
 		1) return 0 ;;
 		0) return 1 ;;
@@ -125,13 +170,16 @@ acts_immediately() {
 strike() {
 	local n=1
 	while [ -e "$1.$n" ] ; do n=$((n + 1)) ; done
-	touch "$1.$n"
+	: > "$1.$n"
 	echo "$n"
 }
 
-# forget all strikes recorded under this prefix
+# forget all strikes recorded under this prefix. rm nur, wenn es welche gibt:
+# der Normalfall ist "keine", bei jedem Lauf und jedem Check.
 unstrike() {
-	rm -f "$1".* 2>/dev/null
+	set -- "$1".*
+	[ -e "$1" ] || return 0
+	rm -f "$@" 2>/dev/null
 }
 
 # The syslog tag the functions below log under. healthcheck.sh sets it to
