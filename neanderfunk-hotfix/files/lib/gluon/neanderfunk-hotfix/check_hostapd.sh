@@ -65,7 +65,9 @@ restart_wifi() {
 	wifi down
 	killall hostapd 2>/dev/null
 	rm -f /tmp/hostapd.*.core 2>/dev/null
-	wifi config
+	# Kein "wifi config" zwischen down und up: das erkennt unter OpenWrt 23.05
+	# neue Radios und macht dabei "uci commit wireless" - samt offener
+	# Laufzeit-Aenderungen (Offline-SSID, ap-timer). Fuer den Neustart unnoetig.
 	wifi up
 	wifi_unlock
 	sleep 60
