@@ -64,6 +64,14 @@ It also installs these commands (all listed by `help`):
 - `v4up` - fetches IPv4 via DHCP from the mesh on `br-client`. Refused if the
   uplink already has IPv4: a second default route would pull the tunnel into
   the mesh and, without another uplink there, cut the node off.
+- `vpn [on|off]` (also `enable`/`disable`) - without an argument shows the
+  mesh VPN state (both switches, daemon running, neighbours over
+  `mesh-vpn`). `on`/`off` sets `gluon.mesh_vpn.enabled` and lets Gluon's
+  `/lib/gluon/mesh-vpn/update-config` derive the daemon's own switch
+  (`tunneldigger.mesh_vpn.enabled`, or fastd's), commits both packages (a
+  manual change that should survive updates) and starts or stops the daemon
+  via its init script, as Gluon's `reload.d` does. With the daemon switch off
+  neither `tunneldigger-watchdog` nor neanderfunk-hotfix restarts it.
 - `flash <url|directory-url|file> [sysupgrade options]` - downloads a
   firmware image to `/tmp` (an `https://` URL is fetched as `http://`, not
   every node has TLS), shows size, free RAM and sha256, checks it with

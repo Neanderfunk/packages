@@ -42,4 +42,5 @@ Eingriffe (schreiben, wirksam nach "reconf")
   wanrole [rolle]       WAN-Rolle zeigen/setzen, z.B. "wanrole uplink mesh"
   reconf                gluon-reconfigure + Neustart im Hintergrund
   v4up                  IPv4 per DHCP aus dem Mesh - nur ohne IPv4 am Uplink
+  vpn [on|off]          Mesh-VPN zeigen, dauerhaft an/aus (sofort wirksam)
 HILFE

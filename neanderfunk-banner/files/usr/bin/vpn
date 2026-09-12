@@ -1,0 +1,101 @@
+#!/bin/sh
+# vpn [on|off] - Mesh-VPN zeigen, ein- oder ausschalten, dauerhaft.
+#
+#     vpn              Stand: Schalter, laeuft der Tunnel, Nachbarn darueber
+#     vpn off          aus (auch: disable)
+#     vpn on           an (auch: enable)
+#
+# Es gibt zwei Schalter: gluon.mesh_vpn.enabled ist die Gluon-Einstellung
+# (die zeigen Wizard und Config-Mode), <provider>.mesh_vpn.enabled die des
+# Daemons (tunneldigger, fastd). Den zweiten leitet Gluon aus dem ersten ab
+# (/lib/gluon/mesh-vpn/update-config, bei jedem gluon-reconfigure und Update).
+# vpn setzt deshalb den Gluon-Schalter und laesst update-config den des
+# Daemons nachziehen, dann uci commit beider Pakete - ein manueller Eingriff,
+# der ins Flash soll und das naechste Update ueberlebt.
+#
+# Danach stoppt bzw. startet es den Daemon ueber sein Init-Skript, wie Gluons
+# reload.d (310-tunneldigger-stop / 790-tunneldigger-start). Die Watchdogs
+# (tunneldigger-watchdog, neanderfunk-hotfix) greifen nur ein, solange der
+# Daemon-Schalter an ist - mit "aus" startet ihn keiner neu.
+#
+# Ohne Mesh-VPN haengt der Knoten nur noch am Mesh (WLAN/LAN). Ohne Nachbarn
+# mit Gateway ist er dann offline (Offline-SSID).
+
+usage() {
+	echo "Aufruf: vpn [on|off]   (auch enable/disable; ohne Argument: Stand)" >&2
+	exit 1
+}
+
+provider() {
+	lua -e 'local n = require("gluon.mesh-vpn").get_active_provider(); print(n or "")' 2>/dev/null
+}
+
+running() {
+	case "$1" in
+		tunneldigger|fastd) pidof "$1" >/dev/null ;;
+		*) [ -d /sys/class/net/mesh-vpn ] ;;
+	esac
+}
+
+status() {
+	local p="$1" g d n
+	g=$(uci -q get gluon.mesh_vpn.enabled)
+	d=$(uci -q get "$p.mesh_vpn.enabled")
+	echo "Mesh-VPN:  gluon.mesh_vpn.enabled=${g:-?}  $p.mesh_vpn.enabled=${d:-?}"
+	if running "$p"; then
+		echo "Tunnel:    $p laeuft ($(pidof "$p" 2>/dev/null | wc -w) Prozesse)"
+	else
+		echo "Tunnel:    $p laeuft nicht"
+	fi
+	if [ -d /sys/class/net/mesh-vpn ]; then
+		n=$(batctl n -H 2>/dev/null | grep -c "mesh-vpn")
+		echo "mesh-vpn:  Interface da, $n Nachbar(n) darueber"
+	else
+		echo "mesh-vpn:  kein Interface"
+	fi
+}
+
+p=$(provider)
+[ -n "$p" ] || { echo "vpn: kein Mesh-VPN in dieser Firmware/Domain." >&2; exit 1; }
+
+case "$1" in
+	'') status "$p"; exit 0 ;;
+	on|enable) want=1 ;;
+	off|disable) want=0 ;;
+	*) usage ;;
+esac
+
+# Kein gluon-reconfigure: das liefe durch alle Upgrade-Skripte und schriebe
+# viel mehr ins Flash. update-config setzt nur den Daemon-Schalter (uci save,
+# RAM); ins Flash gehen genau die zwei Pakete - und gar nichts, wenn beide
+# Schalter schon so stehen.
+if [ "$(uci -q get gluon.mesh_vpn.enabled)" = "$want" ] &&
+   [ "$(uci -q get "$p.mesh_vpn.enabled")" = "$want" ]; then
+	echo "vpn: Schalter stehen schon so, nichts zu schreiben."
+else
+	uci set gluon.mesh_vpn.enabled="$want"
+	/lib/gluon/mesh-vpn/update-config || { echo "vpn: update-config fehlgeschlagen - nichts committet." >&2; exit 1; }
+	if [ "$(uci -q get "$p.mesh_vpn.enabled")" != "$want" ]; then
+		echo "vpn: $p.mesh_vpn.enabled folgt nicht - nichts committet." >&2
+		uci revert gluon.mesh_vpn.enabled
+		exit 1
+	fi
+	uci commit gluon
+	uci commit "$p"
+fi
+
+case "$p" in
+	tunneldigger|fastd)
+		if [ "$want" = 1 ]; then
+			/etc/init.d/"$p" start
+		elif running "$p"; then
+			/etc/init.d/"$p" stop
+		fi
+		;;
+	*)
+		echo "vpn: $p starte ich nicht selbst - wirksam nach gluon-reload oder Neustart."
+		;;
+esac
+
+[ "$want" = 1 ] && echo "Mesh-VPN an (dauerhaft)." || echo "Mesh-VPN aus (dauerhaft)."
+status "$p"
