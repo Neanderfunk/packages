@@ -20,6 +20,14 @@ colours, system fonts only. Covers every page of the config mode. The site
 has to drop Gluon's theme (`'-gluon-config-mode-theme'`). See
 [](neanderfunk-config-mode-theme/README.md).
 
+### neanderfunk-setup-mode ###
+
+the whole config mode on one page: the wizard on top, every form of
+"Advanced settings" below as a collapsed group, one "Save & restart". All
+forms valid or nothing is written, only changed forms are written, the wizard
+last. The forms stay Gluon's and the packages' own. Needs
+neanderfunk-config-mode-theme. See [](neanderfunk-setup-mode/README.md).
+
 ### neanderfunk-respondd ###
 
 respondd module in C that adds `neanderfunk` to nodeinfo (CPU model, flash

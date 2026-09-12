@@ -1,0 +1,97 @@
+<%#
+SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+SPDX-License-Identifier: BSD-3-Clause
+
+The one page: wizard on top, every form of "Advanced settings" below as a
+collapsed group, one form element around all of them.
+-%>
+<%-
+	local p = page
+	local v = '?v=' .. urlencode(release)
+	local chev = '<svg class="chev" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 7.5l5 5 5-5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+-%>
+<div class="layout">
+<aside class="side">
+	<h4><%:Setup%></h4>
+	<ul>
+	<% for _, g in ipairs(p.setup) do if g.title then %>
+		<li><a href="#g-<%=g.key%>"><%|g.title%><span class="dot" data-dot="<%=g.key%>" hidden></span></a></li>
+	<% end end %>
+	</ul>
+	<% if #p.groups > 0 then %>
+	<h4><%:Advanced settings%></h4>
+	<ul>
+	<% for _, g in ipairs(p.groups) do %>
+		<li><a href="#g-<%=g.key%>" data-open><%|g.title%><span class="dot" data-dot="<%=g.key%>" hidden></span></a></li>
+	<% end %>
+	</ul>
+	<% end %>
+	<% if #p.links > 0 then %>
+	<div class="sep"></div>
+	<ul>
+	<% for _, l in ipairs(p.links) do %>
+		<li><a class="ext" href="<%|url({l.name})%>"><%|i18n(l.pkg).translate(l.title)%></a></li>
+	<% end %>
+	</ul>
+	<% end %>
+</aside>
+<div class="main">
+<form method="post" enctype="multipart/form-data" action="<%|url(request)%>" id="nf-form" class="content" novalidate>
+	<input type="hidden" name="<%=p.wizard:id()%>" value="1">
+
+	<div class="intro">
+		<% if p.wizard.title and #p.wizard.title > 0 then %><h1><%|p.wizard.title%></h1><% end %>
+		<% for _, s in ipairs(p.intro) do s:render(renderer) end %>
+	</div>
+
+	<% if state.invalid then %>
+	<div class="nf-msg nf-msg-error" id="nf-problem"><%:Some fields need a correction, they are marked. Nothing was saved.%></div>
+	<% elseif state.failed then %>
+	<div class="nf-msg nf-msg-error" id="nf-problem"><%:Not everything could be saved, see the marked section. The node was not restarted.%></div>
+	<% end %>
+
+	<section class="part">
+		<div class="part-head"><h2><%:Setup%></h2></div>
+		<% for _, g in ipairs(p.setup) do %>
+		<div class="group" id="g-<%=g.key%>" data-sec="<%=g.key%>">
+			<% if g.title then %><h3><%|g.title%></h3><% end %>
+			<div class="panel<%= g.callout and ' callout' or '' %>" id="panel-<%=g.key%>">
+				<% for _, s in ipairs(g.sections) do s:render(renderer) end %>
+			</div>
+		</div>
+		<% end %>
+	</section>
+
+	<% if #p.groups > 0 then %>
+	<section class="part">
+		<div class="part-head"><h2><%:Advanced settings%></h2><span><%:collapsed, open only when needed%></span></div>
+		<div class="advanced-list">
+		<% for _, g in ipairs(p.groups) do %>
+			<details class="group" id="g-<%=g.key%>" data-sec="<%=g.key%>"<% if g.open then %> open<% end %>>
+				<summary><span><span class="sum-title"><%|g.title%></span><span class="sum-state"></span></span><span class="changed-pill" hidden><%:changed%></span><%=chev%></summary>
+				<div class="panel">
+				<% if g.err then %>
+					<div class="gdesc"><div class="nf-msg nf-msg-error"><%:This section could not be loaded.%> <a href="<%|url({'admin', g.key})%>"><%:Open it on its own page%></a><br><code><%|g.err%></code></div></div>
+				<% else
+					for _, m in ipairs(g.maps) do m:render(renderer) end
+				end %>
+				</div>
+			</details>
+		<% end %>
+		</div>
+		<% if #p.links > 0 then %><p class="elsewhere"><%:Firmware upgrade and information stay pages of their own, linked at the top.%></p><% end %>
+	</section>
+	<% end %>
+
+	<div class="actions">
+		<div class="bar" role="region">
+			<div class="status" id="nf-status" aria-live="polite"><span><%:No changes%></span></div>
+			<div class="btns"><button type="submit" class="btn btn-primary" id="nf-save"><%:Save & restart%></button></div>
+		</div>
+	</div>
+</form>
+</div>
+</div>
+<script src="/static/gluon-web-model.js<%=v%>"></script>
+<script>window.nfText = <%=json(p.text)%>;</script>
+<script src="/static/neanderfunk-setup-mode.js<%=v%>"></script>

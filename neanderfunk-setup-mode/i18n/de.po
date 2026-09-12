@@ -1,0 +1,97 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"PO-Revision-Date: 2026-09-12 05:00+0200\n"
+"Language-Team: German\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "%d changes, not saved yet"
+msgstr "%d Änderungen, noch nicht gespeichert"
+
+msgid "%d fields need a correction. Nothing was saved."
+msgstr "%d Felder brauchen noch eine Korrektur. Gespeichert wurde nichts."
+
+msgid "%d SSH keys"
+msgstr "%d SSH-Schlüssel"
+
+msgid "1 change, not saved yet"
+msgstr "1 Änderung, noch nicht gespeichert"
+
+msgid "1 SSH key"
+msgstr "1 SSH-Schlüssel"
+
+msgid "Advanced settings"
+msgstr "Erweiterte Einstellungen"
+
+msgid "changed"
+msgstr "geändert"
+
+msgid "Client"
+msgstr "Client"
+
+msgid "collapsed, open only when needed"
+msgstr "eingeklappt, nur bei Bedarf öffnen"
+
+msgid "Firmware upgrade and information stay pages of their own, linked at the top."
+msgstr "Firmware aktualisieren und Informationen bleiben eigene Seiten, sie sind oben verlinkt."
+
+msgid "Internet connection"
+msgstr "Internetverbindung"
+
+msgid "Location"
+msgstr "Standort"
+
+msgid "Mesh"
+msgstr "Mesh"
+
+msgid "No changes"
+msgstr "Keine Änderungen"
+
+msgid "no client"
+msgstr "kein Client"
+
+msgid "No SSH keys"
+msgstr "Keine SSH-Schlüssel"
+
+msgid "Node"
+msgstr "Knoten"
+
+msgid "Not everything could be saved, see the marked section. The node was not restarted."
+msgstr "Nicht alles ließ sich speichern, siehe den markierten Abschnitt. Der Knoten wurde nicht neu gestartet."
+
+msgid "Off"
+msgstr "Aus"
+
+msgid "On"
+msgstr "An"
+
+msgid "One field needs a correction. Nothing was saved."
+msgstr "Ein Feld braucht noch eine Korrektur. Gespeichert wurde nichts."
+
+msgid "Open it on its own page"
+msgstr "Als eigene Seite öffnen"
+
+msgid "Outdoor installation"
+msgstr "Außenbereich"
+
+msgid "Please check this input."
+msgstr "Bitte diese Eingabe prüfen."
+
+msgid "Save & restart"
+msgstr "Speichern & Neustarten"
+
+msgid "Saving..."
+msgstr "Speichere …"
+
+msgid "Setup"
+msgstr "Einrichtung"
+
+msgid "Some fields need a correction, they are marked. Nothing was saved."
+msgstr "Einige Felder brauchen noch eine Korrektur, sie sind markiert. Gespeichert wurde nichts."
+
+msgid "This section could not be loaded."
+msgstr "Dieser Abschnitt ließ sich nicht laden."

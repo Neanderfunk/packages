@@ -1,0 +1,97 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"PO-Revision-Date: 2026-09-12 05:00+0200\n"
+"Language-Team: French\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "%d changes, not saved yet"
+msgstr ""
+
+msgid "%d fields need a correction. Nothing was saved."
+msgstr ""
+
+msgid "%d SSH keys"
+msgstr ""
+
+msgid "1 change, not saved yet"
+msgstr ""
+
+msgid "1 SSH key"
+msgstr ""
+
+msgid "Advanced settings"
+msgstr ""
+
+msgid "changed"
+msgstr ""
+
+msgid "Client"
+msgstr ""
+
+msgid "collapsed, open only when needed"
+msgstr ""
+
+msgid "Firmware upgrade and information stay pages of their own, linked at the top."
+msgstr ""
+
+msgid "Internet connection"
+msgstr ""
+
+msgid "Location"
+msgstr ""
+
+msgid "Mesh"
+msgstr ""
+
+msgid "No changes"
+msgstr ""
+
+msgid "no client"
+msgstr ""
+
+msgid "No SSH keys"
+msgstr ""
+
+msgid "Node"
+msgstr ""
+
+msgid "Not everything could be saved, see the marked section. The node was not restarted."
+msgstr ""
+
+msgid "Off"
+msgstr ""
+
+msgid "On"
+msgstr ""
+
+msgid "One field needs a correction. Nothing was saved."
+msgstr ""
+
+msgid "Open it on its own page"
+msgstr ""
+
+msgid "Outdoor installation"
+msgstr ""
+
+msgid "Please check this input."
+msgstr ""
+
+msgid "Save & restart"
+msgstr ""
+
+msgid "Saving..."
+msgstr ""
+
+msgid "Setup"
+msgstr ""
+
+msgid "Some fields need a correction, they are marked. Nothing was saved."
+msgstr ""
+
+msgid "This section could not be loaded."
+msgstr ""

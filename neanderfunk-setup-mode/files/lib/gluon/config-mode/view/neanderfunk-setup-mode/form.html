@@ -1,0 +1,12 @@
+<%# One form of "Advanced settings" inside its group: no <form> of its own
+    (the page has one for everything), no buttons. The hidden field tells
+    gluon-web-model that this form was submitted. -%>
+<div class="nf-form" id="form-<%=id%>">
+	<input type="hidden" name="<%=id%>" value="1">
+	<% if self.nf_title then %><div class="subhead"><%|self.title%></div><% end %>
+	<% if self.description and #self.description > 0 then %><div class="gdesc"><%=self.description%></div><% end %>
+	<% if self.errmessage then %><div class="gdesc"><div class="nf-msg nf-msg-error"><%|self.errmessage%></div></div><% end %>
+	<% for _, child in ipairs(self.children) do
+		if not child.nf_moved then child:render(renderer, scope) end
+	end %>
+</div>

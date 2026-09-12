@@ -1,0 +1,13 @@
+<%-
+	local flag = self.subtemplate == 'model/fvalue'
+	local title = self.title and #self.title > 0
+	local desc = self.description and #self.description > 0
+-%>
+<div class="row<%= flag and ' flag' or '' %><%= title and '' or ' wide' %><%= self.error and ' invalid' or '' %>" id="value-<%=id%>" data-index="<%=self.index%>"<%= attr("data-depends", self:deplist()) %>>
+	<% if title then %><label class="lbl" for="<%=id%>"><%|self.title%><% if desc then %><span class="help"><%=self.description%></span><% end %></label><% end %>
+	<div class="ctl">
+		<% include(self.subtemplate) %>
+		<% if desc and not title then %><span class="sub"><%=self.description%></span><% end %>
+		<span class="err"><%:Please check this input.%></span>
+	</div>
+</div>
