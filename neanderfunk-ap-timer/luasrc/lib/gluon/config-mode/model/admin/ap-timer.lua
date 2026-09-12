@@ -2,14 +2,17 @@ local uci = require('simple-uci').cursor()
 
 local pkg_i18n = i18n 'neanderfunk-ap-timer'
 
+-- The shipped /etc/config/ap-timer has no sections. Create them in this
+-- cursor only, so that the options below can be written; f:write() commits
+-- them together with the values. No uci:save() here: merely showing the page
+-- must not leave changes behind (on the one-page setup of
+-- neanderfunk-setup-mode every form is loaded on every visit).
 if not uci:get('ap-timer', 'settings') then
 	uci:section('ap-timer', 'ap-timer', 'settings')
-	uci:save('ap-timer')
 end
 
 if not uci:get('ap-timer', 'all') then
 	uci:section('ap-timer', 'day', 'all')
-	uci:save('ap-timer')
 end
 
 local f = Form(pkg_i18n.translate('AP Timer'), pkg_i18n.translate(
