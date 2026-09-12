@@ -73,11 +73,24 @@ if autoupdater_busy ; then
   safety_exit "autoupdate running"
 fi
 
+# Die drei Kernel-Checks lesen denselben Ringpuffer: dmesg einmal, ein awk
+# fuer alle drei statt dreimal dmesg durch bis zu drei grep. Die Muster sind
+# dieselben wie vorher, auch "je Zeile" (ath_malloc: ath, alloc of size und
+# failed in derselben Zeile).
+kernel_bug=0 ; ath_malloc=0 ; ksoftirqd_malloc=0
+if ! check_disabled kernel_bug || ! check_disabled ath_malloc || ! check_disabled ksoftirqd_malloc ; then
+  set -- $(dmesg 2>/dev/null | awk '
+    /Kernel bug/ { k = 1 }
+    /ath/ && /alloc of size/ && /failed/ { a = 1 }
+    /ksoftirqd/ && /page allocation failure/ { s = 1 }
+    END { print k + 0, a + 0, s + 0 }')
+  kernel_bug="${1:-0}" ; ath_malloc="${2:-0}" ; ksoftirqd_malloc="${3:-0}"
+fi
 # batman-adv crash when removing interface in certain configurations
-check_disabled kernel_bug || { dmesg | grep -q "Kernel bug" && now_reboot "[kernel_bug] gluon issue #680" ; true ; }
+check_disabled kernel_bug || { [ "$kernel_bug" = 1 ] && now_reboot "[kernel_bug] gluon issue #680" ; true ; }
 # ath/ksoftirq-malloc-errors (upcoming oom scenario)
-check_disabled ath_malloc || { dmesg | grep "ath" | grep "alloc of size" | grep -q "failed" && now_reboot "[ath_malloc] ath0 malloc fail" ; true ; }
-check_disabled ksoftirqd_malloc || { dmesg | grep "ksoftirqd" | grep -q "page allocation failure" && now_reboot "[ksoftirqd_malloc] kernel malloc fail" ; true ; }
+check_disabled ath_malloc || { [ "$ath_malloc" = 1 ] && now_reboot "[ath_malloc] ath0 malloc fail" ; true ; }
+check_disabled ksoftirqd_malloc || { [ "$ksoftirqd_malloc" = 1 ] && now_reboot "[ksoftirqd_malloc] kernel malloc fail" ; true ; }
 # hostapd bedient die konfigurierten AP-Interfaces?
 #
 # Frueher wurde hier jeder hostapd-Prozess aus der ps-Ausgabe hereingereicht:
@@ -129,7 +142,10 @@ reboot_when_not_running() {
 }
 
 # check if 5min load >2 (panic reboot)
-check_disabled load || { [ "$(cat /proc/loadavg|cut -d" " -f3|tr -d .)" -ge "201" ] && now_reboot "[load] Load 5minute-avg exceeds 2!" ; true ; }
+# (Feld 3 von /proc/loadavg ist das 15-Minuten-Mittel, nicht das 5er - so
+# war es schon immer, die Meldung bleibt, wie sie ist.) read statt
+# cat|cut|tr: "1.72" wird zu 172.
+check_disabled load || { read -r _ _ load15 _ < /proc/loadavg ; load15="${load15%.*}${load15#*.}" ; [ "${load15#0}" -ge "201" ] 2>/dev/null && now_reboot "[load] Load 5minute-avg exceeds 2!" ; true ; }
 
 # respondd or dropbear not running
 check_disabled respondd || reboot_when_not_running respondd
