@@ -1,0 +1,107 @@
+<%#
+SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+SPDX-License-Identifier: BSD-3-Clause
+
+Replaces Gluon's theme/layout. Same inputs (content, scope, pkg, hidenav)
+and the same menu logic: top level = the visible categories of the
+dispatcher tree, below that the pages of the current category as tabs.
+-%>
+<%
+	local pretty_hostname = require 'pretty_hostname'
+	local uci = require('simple-uci').cursor()
+	local util = require 'gluon.util'
+	local site = require 'gluon.site'
+
+	local t = i18n('neanderfunk-config-mode-theme')
+
+	local hostname = pretty_hostname.get(uci)
+	local release = util.trim(util.readfile('/lib/gluon/release') or '')
+	local model = util.trim(util.readfile('/tmp/sysinfo/model') or '')
+	local site_name = site.site_name('')
+
+	local root = node()
+	local rnode = node(unpack(request))
+	local category = request[1]
+
+	local function title(n)
+		return i18n(n.pkg).translate(n.title)
+	end
+
+	local function children(n)
+		local ret = {}
+		if not n then return ret end
+		for k, v in pairs(n.nodes) do
+			if v.title and v.target and not v.hidden then
+				table.insert(ret, k)
+			end
+		end
+		table.sort(ret, function(a, b)
+			return (n.nodes[a].order or 100) < (n.nodes[b].order or 100)
+		end)
+		return ret
+	end
+
+	local categories = children(root)
+	local tabs = category and children(root.nodes[category]) or {}
+
+	-- /static/ comes without Cache-Control and with a fixed Last-Modified;
+	-- the release in the URL makes browsers fetch the new stylesheet after
+	-- an update instead of keeping last month's.
+	local v = '?v=' .. urlencode(release)
+
+	http:prepare_content('text/html')
+-%>
+<!DOCTYPE html>
+<html lang="">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="/static/neanderfunk.css<%=v%>">
+<title><%| hostname .. ((rnode and rnode.title) and ' - ' .. title(rnode) or '') %></title>
+</head>
+<body>
+<div class="app">
+<header class="app-header">
+	<a class="brand" href="<%|url({})%>">
+		<svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><circle cx="17" cy="17" r="17" fill="var(--accent)"/><circle cx="17" cy="21" r="2.6" fill="#FFF"/><path d="M11.2 15.6a8.2 8.2 0 0 1 11.6 0" stroke="#FFF" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M7.6 12a13.3 13.3 0 0 1 18.8 0" stroke="#FFB400" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>
+		<span>
+			<span class="brand-name"><%| site_name ~= '' and site_name or hostname %></span>
+			<span class="brand-sub"><%|hostname%></span>
+		</span>
+	</a>
+	<div class="head-right">
+		<span class="device"><% if model ~= '' then %><b><%|model%></b><% end %><span class="mono"><%|release%></span></span>
+		<% if #categories > 1 and not hidenav then %>
+		<nav class="head-links">
+			<% for _, r in ipairs(categories) do %>
+			<a href="<%|url({r})%>"<% if r == category then %> aria-current="page"<% end %>><%|title(root.nodes[r])%></a>
+			<% end %>
+		</nav>
+		<% end %>
+	</div>
+</header>
+<% if #tabs > 1 and not hidenav then %>
+<nav class="tabs">
+	<% for _, r in ipairs(tabs) do %>
+	<a href="<%|url({category, r})%>"<% if r == request[2] then %> aria-current="page"<% end %>><%|title(root.nodes[category].nodes[r])%></a>
+	<% end %>
+</nav>
+<% end %>
+<div class="page">
+	<noscript>
+		<div class="errorbox">
+			<strong><%|t.translate('JavaScript required!')%></strong><br>
+			<%|t.translate('You must enable JavaScript in your browser or the web interface will not work properly.')%>
+		</div>
+	</noscript>
+	<%
+		ok, err = pcall(renderer.render, content, scope, pkg)
+		if not ok then
+			renderer.render('error/500', {message = err}, 'gluon-web')
+		end
+	%>
+</div>
+</div>
+</body>
+</html>

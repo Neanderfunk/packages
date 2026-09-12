@@ -12,6 +12,14 @@ and whether Gluon 2025.1 changes that:
 Flash and RAM of the devices in the field, grouped by how soon a Gluon
 release may drop them: [docs/feldgeraete-flash-ram.md](docs/feldgeraete-flash-ram.md).
 
+### neanderfunk-config-mode-theme ###
+
+replaces gluon-config-mode-theme: config mode layout and stylesheet,
+responsive down to phone width, dark mode following the browser, Freifunk
+colours, system fonts only. Covers every page of the config mode. The site
+has to drop Gluon's theme (`'-gluon-config-mode-theme'`). See
+[](neanderfunk-config-mode-theme/README.md).
+
 ### neanderfunk-respondd ###
 
 respondd module in C that adds `neanderfunk` to nodeinfo (CPU model, flash
