@@ -598,11 +598,18 @@ local wan_role = roles_of('iface_wan')
 local lan_role = roles_of('iface_lan')
 local single_role = roles_of('iface_single')
 
--- WAN-Adressen, nur wenn das Interface oben ist
+-- WAN-Adressen, nur wenn das Interface oben ist.
+--
+-- ubus.connect() ohne zweites Argument wartet in der Lua-Anbindung 30 s auf
+-- jede Antwort. Kurz nach dem Boot ist netifd noch mit den Interfaces
+-- beschaeftigt, der Login stand dann bis zu einer halben Minute hinter
+-- "Kontakt" (FUTRO, 13.09.2026). UBUS_TIMEOUT begrenzt jeden Aufruf; kommt
+-- nichts, bleiben die Angaben eben leer.
+local UBUS_TIMEOUT = 3
 local wan_v4, wan_v6, wan_gw
 pcall(function()
 	local ubus = require('ubus')
-	local conn = ubus.connect()
+	local conn = ubus.connect(nil, UBUS_TIMEOUT)
 	if not conn then return end
 	local w4 = conn:call('network.interface.wan', 'status', {})
 	if w4 and w4.up and w4['ipv4-address'] and w4['ipv4-address'][1] then
@@ -1034,7 +1041,7 @@ elseif not vpn_enabled and not vpn_up then
 elseif vpn_up then
 	local since = ''
 	pcall(function()
-		local conn = require('ubus').connect()
+		local conn = require('ubus').connect(nil, UBUS_TIMEOUT)
 		local st = conn and conn:call('network.interface.mesh_vpn', 'status', {})
 		if st and st.uptime then since = ' seit ' .. duration(st.uptime) end
 		if conn then conn:close() end
