@@ -24,7 +24,9 @@ actually running, not just what is configured:
   role in more than one section is warned about.
 - VPN connected or not from `batctl if` (independent of the gateway TQ; right
   after boot it says "baut auf"), gateway with TQ and outgoing interface
-- clients (local, per band, mesh-wide), SSID and offline-SSID counters
+- clients (local, per band, mesh-wide), SSID, and the offline SSID worded
+  like the status page: `online`, `offline` (red) or `aus`, with the
+  counters now/switches since boot/gateway losses since boot
 - a radio table with the live channel, width, HT mode and tx power per radio
   (from `iwinfo`), AP and mesh state, clients and mesh neighbours with TQ
 - a warning when a radio's channel differs from the firmware (site.conf /

@@ -1028,14 +1028,23 @@ local pc = uci:get('gluon', 'wireless', 'preserve_channels')
 local pctxt = pc and ('Kanal ' .. (uci:get_bool('gluon', 'wireless', 'preserve_channels') and 'fest' or 'aus Site')) or ''
 
 if has_wifi then
-	local sc = ''
-	if sc_now then
-		sc = string.format('Offline %s %s/%s/%s',
-			sc_now == '1' and c('red', 'AKTIV') or 'nein',
-			sc_now, readline('/tmp/ssid-changer-offline-switches') or '-',
-			readline('/tmp/ssid-changer-gateway-losses') or '-')
+	row('SSID', essid or '', pctxt)
+
+	-- Wortlaut wie auf der Statusseite (Firmware 26fb6f3): ein Zustandswort,
+	-- dahinter die Zaehler jetzt offline (0/1) / Offline-SSID geschaltet seit
+	-- Start / Gateway verloren seit Start. "aus" ohne Zaehler, wenn der
+	-- ssid-changer abgeschaltet ist; ohne ssid-changer keine Zeile.
+	if uci:get('ssid-changer', 'settings') then
+		if uci:get('ssid-changer', 'settings', 'enabled') == '0' then
+			row('', 'Offline-SSID aus')
+		else
+			local word = sc_now == '1' and c('red', 'offline') or sc_now == '0' and 'online' or '-'
+			row('', 'Offline-SSID ' .. word,
+				string.format('%s/%s/%s', sc_now or '-',
+					readline('/tmp/ssid-changer-offline-switches') or '-',
+					readline('/tmp/ssid-changer-gateway-losses') or '-'))
+		end
 	end
-	row('SSID', essid or '', sc, pctxt)
 	if sc_now == '1' then warn('red', 'Offline-SSID ist aktiv') end
 
 	-- Die Offline-SSID gehoert nur in den uci-Delta. Steht sie in
