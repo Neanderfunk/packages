@@ -48,6 +48,15 @@ Einzelheiten
   rendert.
 - **CSS:** Ein File für beide Pakete. Teil 1 ist Gluons Markup, Teil 2 die
   Sammelseite.
+- **Hinweis auf der Upgrade-Seite:** Über `admin/upgrade` (auch unter
+  `upgrade`, wenn die Sammelseite sie hochzieht) steht immer ein gelber Kasten.
+  Er erklärt, dass der Datei-Upload im Anmeldefenster eines Handys oder
+  Laptops (Captive Portal) nicht geht, und nennt die Adresse, über die die
+  Seite gerade geöffnet wurde (`SERVER_ADDR`: 198.51.100.1 im Setup-WLAN,
+  192.168.1.1 am Kabel). Der Portal-Browser von Android lässt keinen Upload
+  zu, die Schaltfläche ist dort ohne Fehlermeldung wirkungslos. Ihn sicher zu
+  erkennen geht nicht, deshalb erscheint der Hinweis immer. Am C25 im
+  Setup-Mode geprüft, 14.09.2026 (deutsch und englisch).
 
 Lizenz
 ------

@@ -8,3 +8,11 @@ msgid ""
 "You must enable JavaScript in your browser or the web interface will not "
 "work properly."
 msgstr ""
+
+msgid ""
+"Opened from the sign-in notice of your phone or laptop? That window cannot "
+"upload files, the upload button then simply does nothing."
+msgstr ""
+
+msgid "Open %s in your normal browser instead."
+msgstr ""

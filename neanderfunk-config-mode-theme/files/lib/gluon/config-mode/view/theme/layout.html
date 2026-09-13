@@ -96,6 +96,22 @@ dispatcher tree, below that the pages of the current category as tabs.
 		</div>
 	</noscript>
 	<%
+		-- The browser a phone or laptop opens for a captive portal (the
+		-- "sign in to network" notice, e.g. over neanderfunk-setup-wifi)
+		-- cannot upload files: the button is inert, without an error.
+		-- Detecting that browser is unreliable, so the upgrade page always
+		-- says it, with the address this page came in on.
+		if content == 'admin/upgrade' then
+			local addr = http:getenv('SERVER_ADDR') or ''
+			if addr == '' then addr = '192.168.1.1' end
+			if addr:find(':', 1, true) then addr = '[' .. addr .. ']' end
+			local base = 'http://' .. addr
+			local link = '<a href="' .. pcdata(base .. url(request)) .. '">' .. pcdata(base) .. '</a>'
+	%>
+	<p class="gluon-warning"><%|t.translate('Opened from the sign-in notice of your phone or laptop? That window cannot upload files, the upload button then simply does nothing.')%>
+	<%=t.translatef('Open %s in your normal browser instead.', link)%></p>
+	<% end %>
+	<%
 		ok, err = pcall(renderer.render, content, scope, pkg)
 		if not ok then
 			renderer.render('error/500', {message = err}, 'gluon-web')

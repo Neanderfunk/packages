@@ -16,3 +16,13 @@ msgid ""
 "You must enable JavaScript in your browser or the web interface will not "
 "work properly."
 msgstr "Bitte aktiviere JavaScript in deinem Browser, damit das Webinterface korrekt funktionieren kann."
+
+msgid ""
+"Opened from the sign-in notice of your phone or laptop? That window cannot "
+"upload files, the upload button then simply does nothing."
+msgstr ""
+"Über die Anmelde-Meldung des Handys oder Laptops geöffnet? In diesem Fenster "
+"geht kein Datei-Upload, die Schaltfläche tut dann einfach nichts."
+
+msgid "Open %s in your normal browser instead."
+msgstr "Öffne stattdessen %s im normalen Browser."
