@@ -1,5 +1,13 @@
 #!/bin/sh
 
+# Im Setup-Mode nichts tun. netifd laeuft dort mit der Konfiguration in
+# /var/gluon/setup-mode/config: "WLAN an/aus" wuerde die normale
+# /etc/config/wireless aendern und committen, "wifi" das Setup-WLAN
+# (neanderfunk-setup-wifi) umwerfen. Den Kurzdruck im Setup-Mode hat dort
+# neanderfunk-setup-wifi (reset/wps/phone), die rfkill-Taste bleibt ohne
+# Funktion. /var/gluon/setup-mode legt gluon-setup-mode nur im Setup-Mode an.
+[ -d /var/gluon/setup-mode ] && exit 0
+
 BIND=$(uci -q get button-bind.wifi.function)
 
 case "$BIND" in
