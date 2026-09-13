@@ -1,5 +1,5 @@
 #!/bin/sh
 # nodeinfo - die Statusuebersicht wie beim Login, dazu die Mesh-Nachbarn
-# einzeln (TQ, Signal), alle Gateways, die VPN-Broker mit dem verbundenen und
-# die Adressen des Knotens.
+# einzeln (TQ, Signal), alle Gateways, die VPN-Broker mit dem verbundenen, die
+# Adressen des Knotens und die oeffentliche IPv4 mit rDNS und ASN.
 exec /usr/bin/nodestatus details

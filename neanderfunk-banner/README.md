@@ -51,17 +51,21 @@ It also installs these commands (all listed by `help`):
   `nodestatus details` adds every mesh neighbour with TQ and signal, all
   gateways, the VPN brokers with the connected one marked, and the node's
   addresses; `nodestatus ports [-v]` prints just the port table.
-- `nodeinfo` - `nodestatus details`.
+- `nodeinfo` - `nodestatus details`, including the public IPv4 lines below.
 - `switch0` (alias `ports`) - the port table on any device, swconfig or DSA.
-  Below the uplink it also shows the public IPv4, asked in parallel from
-  `ipv4.icanhazip.com` (Cloudflare) and `checkip.amazonaws.com` (AWS) with
-  `wget -4`, so over the WAN and not through the mesh; at most 4 s, marked
-  `direkt`, `hinter NAT` or `hinter CGNAT`; `kein IPv4 am WAN` or
-  `nicht ermittelbar` if there is no answer. Below it the reverse DNS name of
-  that address, which usually gives away the broadband provider
-  (`...dip0.t-ipconnect.de` = Telekom); looked up through the node's own
-  resolver (the mesh DNS, not the WAN router's), at most 2 s, left out if
-  there is none. The login overview does not ask.
+- **Public IPv4** (in `nodeinfo` and `switch0`, below the uplink; the login
+  overview does not ask): asked in parallel from `ipv4.icanhazip.com`
+  (Cloudflare) and `checkip.amazonaws.com` (AWS) with `wget -4`, so over the
+  WAN and not through the mesh; at most 4 s, marked `direkt`, `hinter NAT`
+  or `hinter CGNAT`; `kein IPv4 am WAN` or `nicht ermittelbar` if there is
+  no answer. Below it the reverse DNS name of that address
+  (`...dip0.t-ipconnect.de` = Telekom) and the ASN with its name
+  (`AS3320 DTAG - Deutsche Telekom AG`), from Team Cymru's DNS service
+  (`<d.c.b.a>.origin.asn.cymru.com`, `AS<n>.asn.cymru.com`, TXT). The ASN
+  names the provider even where the line has its own PTR (business lines).
+  All through the node's own resolver (the mesh DNS, not the WAN router's),
+  rDNS and ASN in parallel, at most 2 s per step, each line left out if
+  there is no answer.
 - `switchstatus` - the port table with MAC, MTU, bridge, link changes since
   boot and drops per port; `-r` shows the raw swconfig output.
 - `lanrole` / `wanrole` - show or set `gluon.iface_<lan|wan>.role`, checked

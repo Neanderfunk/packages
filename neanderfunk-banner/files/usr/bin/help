@@ -3,8 +3,10 @@
 cat <<'HILFE'
 Status
   status / nodestatus   Uebersicht wie beim Login
-  nodeinfo              dazu Nachbarn einzeln, Gateways, VPN-Broker, Adressen
-  switch0 / ports       Port-Tabelle (auch DSA): Link, Rolle, Mesh, Traffic
+  nodeinfo              dazu Nachbarn einzeln, Gateways, VPN-Broker, Adressen,
+                        oeffentliche IPv4 mit rDNS und ASN (Provider)
+  switch0 / ports       Port-Tabelle (auch DSA): Link, Rolle, Mesh, Traffic,
+                        oeffentliche IPv4 mit rDNS und ASN
   switchstatus [-r]     Ports ausfuehrlich: MAC, MTU, Link-Wechsel, Drops;
                         -r: rohe swconfig-Ausgabe
 Mesh (batman-adv)
