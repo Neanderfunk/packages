@@ -53,6 +53,11 @@ It also installs these commands (all listed by `help`):
   addresses; `nodestatus ports [-v]` prints just the port table.
 - `nodeinfo` - `nodestatus details`.
 - `switch0` (alias `ports`) - the port table on any device, swconfig or DSA.
+  Below the uplink it also shows the public IPv4, asked in parallel from
+  `ipv4.icanhazip.com` (Cloudflare) and `checkip.amazonaws.com` (AWS) with
+  `wget -4`, so over the WAN and not through the mesh; at most 4 s, marked
+  `direkt`, `hinter NAT` or `hinter CGNAT`; `kein IPv4 am WAN` or
+  `nicht ermittelbar` if there is no answer. The login overview does not ask.
 - `switchstatus` - the port table with MAC, MTU, bridge, link changes since
   boot and drops per port; `-r` shows the raw swconfig output.
 - `lanrole` / `wanrole` - show or set `gluon.iface_<lan|wan>.role`, checked

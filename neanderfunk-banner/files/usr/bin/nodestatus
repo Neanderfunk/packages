@@ -706,6 +706,70 @@ local function human(n)
 	return (n < 10 and string.format('%.1f', n) or tostring(math.floor(n + 0.5))) .. units[i]
 end
 
+-- Oeffentliche IPv4 des Uplinks, nur fuer "nodestatus ports"/switch0 (der
+-- Login-Splash fragt kein Netz ab). Zwei unabhaengige Dienste parallel, beide
+-- mit reinen IPv4-Namen und "wget -4" - die Anfrage geht also ueber IPv4 und
+-- damit ueber das WAN, nicht per IPv6 durchs Mesh:
+--   http://ipv4.icanhazip.com     (Cloudflare, seit 2009)
+--   http://checkip.amazonaws.com  (AWS)
+-- Beide liefern nur die Adresse, per http ohne Umleitung (uclient-fetch kann
+-- ohne TLS keiner https-Umleitung folgen - Cloudflares 1.1.1.1/cdn-cgi/trace
+-- leitet inzwischen um). DNS-Tricks (myip.opendns.com) scheitern, wenn der
+-- Router davor Port 53 abfaengt. Ein Waechter beendet beide nach 4 s (busybox
+-- hat kein timeout-Applet). Ohne IPv4 am WAN wird gar nicht gefragt.
+-- Rueckgabe: die beiden Antworten (nil, wenn keine gueltige IPv4) und das
+-- Interface der IPv4-Default-Route.
+local function public_v4()
+	local out = sh('d=$(mktemp -d) || exit 0; ' ..
+		'wget -4 -q -T 3 -O "$d/a" http://ipv4.icanhazip.com </dev/null >/dev/null 2>&1 & p1=$!; ' ..
+		'wget -4 -q -T 3 -O "$d/b" http://checkip.amazonaws.com </dev/null >/dev/null 2>&1 & p2=$!; ' ..
+		'( sleep 4; kill $p1 $p2 ) >/dev/null 2>&1 </dev/null & w=$!; ' ..
+		'wait $p1 $p2 2>/dev/null; kill $w 2>/dev/null; ' ..
+		'echo "a $(head -n 1 "$d/a" 2>/dev/null)"; echo "b $(head -n 1 "$d/b" 2>/dev/null)"; ' ..
+		'ip -4 route get 1.1.1.1 2>/dev/null | sed -n "s/.* dev \\([^ ]*\\).*/dev \\1/p"; ' ..
+		'rm -rf "$d"')
+	local function v4(a)
+		local o = { (a or ''):match('^(%d+)%.(%d+)%.(%d+)%.(%d+)$') }
+		if #o ~= 4 then return nil end
+		for _, x in ipairs(o) do if tonumber(x) > 255 then return nil end end
+		return a
+	end
+	return v4(out:match('a (%S+)')), v4(out:match('b (%S+)')), out:match('dev (%S+)')
+end
+
+local function is_private_v4(a)
+	local o1, o2 = (a or ''):match('^(%d+)%.(%d+)%.')
+	o1, o2 = tonumber(o1), tonumber(o2)
+	if not o1 then return false end
+	return o1 == 10 or (o1 == 172 and o2 >= 16 and o2 <= 31) or (o1 == 192 and o2 == 168)
+end
+
+local function public_v4_rows()
+	if not wan_v4 then
+		row('', '', c('dim', 'oeff. v4 -'), c('dim', 'kein IPv4 am WAN'))
+		return
+	end
+	local a, b, dev = public_v4()
+	local pub = a or b
+	if not pub then
+		row('', '', c('yellow', 'oeff. v4 ?'), c('dim', 'nicht ermittelbar'))
+		return
+	end
+	local note
+	if pub == wan_v4 then
+		note = 'direkt'
+	elseif wan_v4:match('^100%.') and tonumber(wan_v4:match('^100%.(%d+)')) >= 64 and tonumber(wan_v4:match('^100%.(%d+)')) <= 127 then
+		note = 'hinter CGNAT'
+	elseif is_private_v4(wan_v4) then
+		note = 'hinter NAT'
+	else
+		note = 'anders als WAN'
+	end
+	if a and b and a ~= b then note = note .. ', Dienste uneins: ' .. b end
+	if dev and dev ~= 'br-wan' then note = note .. ', Weg ueber ' .. dev end
+	row('', '', 'oeff. v4 ' .. pub, note)
+end
+
 local function port_table(wiredmesh, detail)
 	local TCOLS = { 0, 8, 18, 27, 33, 38, 50, 63 }
 	local groups = {}
@@ -826,9 +890,12 @@ local function port_table(wiredmesh, detail)
 			end
 			place(TCOLS, { '', ' ' .. name, '', (st == '?' and c('dim', '?')) or (st and c('green', st)) or c('dim', '-'), extra })
 		end
-		if is_uplink(g.role) and (wan_gw or wan_v4 or wan_v6) then
-			row('', wan_gw and ('gw ' .. wan_gw) or '', wan_v4 and ('v4 ' .. wan_v4) or '', '')
-			if wan_v6 then row('', '', 'v6 ' .. wan_v6, '') end
+		if is_uplink(g.role) then
+			if wan_gw or wan_v4 or wan_v6 then
+				row('', wan_gw and ('gw ' .. wan_gw) or '', wan_v4 and ('v4 ' .. wan_v4) or '', '')
+				if wan_v6 then row('', '', 'v6 ' .. wan_v6, '') end
+			end
+			if MODE == 'ports' then public_v4_rows() end
 		end
 	end
 	for _, name in ipairs(rest) do
