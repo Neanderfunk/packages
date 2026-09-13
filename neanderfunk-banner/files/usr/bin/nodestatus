@@ -627,94 +627,8 @@ pcall(function()
 	conn:close()
 end)
 
--- Rolle in Spalte A, die Ports ab Spalte B, bei vielen Ports auf Folgezeilen
-local function port_rows(label, role, cells, extra)
-	local lines, cur = {}, ''
-	for _, cell in ipairs(cells or {}) do
-		if cur ~= '' and vlen(cur) + 1 + vlen(cell) > (extra and (COLS[4] - COLS[3] - 1) or (80 - COLS[3])) then
-			table.insert(lines, cur)
-			cur = cell
-		else
-			cur = cur == '' and cell or (cur .. ' ' .. cell)
-		end
-	end
-	if cur ~= '' or #lines == 0 then table.insert(lines, cur) end
-	for i, l in ipairs(lines) do
-		if i == 1 then row(label, role or '', l, extra or '') else row('', '', l, '') end
-	end
-end
-
-local wc = (not single_role) and port_cells('wan') or nil
-for _, cell in ipairs(wc or {}) do
-	local plain = cell:gsub('\27%[[%d;]*m', '')
-	if not plain:match(':%?$') then wan_link_known = true end
-	if not plain:match(':%-$') and not plain:match(':%?$') then wan_link = true end
-end
-
--- Mit WLAN kompakt in zwei Zeilen; ohne WLAN steht an Stelle der Radio-Tabelle
--- die ausfuehrlichere Port-Tabelle (port_table, weiter unten).
--- Die Adressen des Uplinks (br-wan) gehoeren zu der Gruppe mit der Rolle
--- uplink - das ist meist WAN, kann aber auch LAN oder der einzige Port sein.
--- Das Gateway steht in Klammern hinter der Rolle, die eigene v4 in Spalte C,
--- die v6 (bis 39 Zeichen) auf einer Folgezeile ab Spalte B.
-local uplink_shown = false
-local function is_uplink(role)
-	if uplink_shown or not role or not role:find('uplink') then return false end
-	uplink_shown = true
-	return true
-end
-local function roletxt_gw(role)
-	return role .. (wan_gw and (' (' .. wan_gw .. ')') or '')
-end
-
-if has_wifi then
-	local groups = single_role and { { 'Port', single_role, port_cells('lan') } }
-		or { { 'WAN', wan_role, wc }, { 'LAN', lan_role, port_cells('lan') } }
-	for _, g in ipairs(extra_groups) do
-		table.insert(groups, { extra_label(g), g.role, dev_cells(g.devs) })
-	end
-	for _, g in ipairs(groups) do
-		local label, role, cells = g[1], g[2], g[3]
-		if cells and #cells > 0 then
-			if is_uplink(role) then
-				port_rows(label, roletxt_gw(role), cells, wan_v4 and ('v4 ' .. wan_v4) or '')
-				if wan_v6 then row('', '', 'v6 ' .. wan_v6, '') end
-			else
-				port_rows(label, role, cells)
-			end
-		end
-	end
-end
-
-local wan_mesh = wan_role and wan_role:find('mesh')
-
--- Mehrere Rollen auf einem Interface (etwa uplink+mesh) sind moeglich, aber
--- selten gewollt.
-uci:foreach('gluon', 'interface', function(s)
-	local r = aslist(s.role)
-	if #r > 1 then
-		warn('yellow', 'Interface ' .. (s.name or s['.name']) .. ' hat mehrere Rollen: ' .. join(r, '+'))
-	end
-end)
-
-
--- Port-Tabelle fuer Geraete ohne WLAN: je Port Link, Traffic seit Boot und
--- Fehler, je Rollengruppe Mesh und Nachbarn. Nachbarn gibt es nur je Gruppe:
--- mehrere Mesh-Ports fasst Gluon zu einer Bridge zusammen, batman sieht nur
--- die Bridge und weiss nicht, an welchem Port ein Nachbar haengt. Eigene
--- Mesh-Ports (siehe extra_groups) sind je eine Gruppe, dort also je Port.
-local function human(n)
-	n = tonumber(n)
-	if not n then return '-' end
-	local units = { 'B', 'K', 'M', 'G', 'T' }
-	local i = 1
-	while n >= 1024 and i < #units do n = n / 1024 i = i + 1 end
-	if i == 1 then return tostring(math.floor(n)) end
-	return (n < 10 and string.format('%.1f', n) or tostring(math.floor(n + 0.5))) .. units[i]
-end
-
--- Oeffentliche IPv4 des Uplinks, nur fuer "nodestatus ports"/switch0 (der
--- Login-Splash fragt kein Netz ab). Zwei unabhaengige Dienste parallel, beide
+-- Oeffentliche IPv4 des Uplinks, fuer switch0 ("nodestatus ports") und
+-- nodeinfo ("nodestatus details"); der Login-Splash fragt kein Netz ab. Zwei unabhaengige Dienste parallel, beide
 -- mit reinen IPv4-Namen und "wget -4" - die Anfrage geht also ueber IPv4 und
 -- damit ueber das WAN, nicht per IPv6 durchs Mesh:
 --   http://ipv4.icanhazip.com     (Cloudflare, seit 2009)
@@ -776,18 +690,126 @@ local function public_v4_rows()
 	if dev and dev ~= 'br-wan' then note = note .. ', Weg ueber ' .. dev end
 	row('', '', 'oeff. v4 ' .. pub, note)
 
-	-- rDNS verraet meist den Anschlussanbieter (dip0.t-ipconnect.de = Telekom).
-	-- Ueber den Resolver des Knotens, also den DNS aus dem Mesh - nicht den
-	-- des Routers am WAN, der DNS unter Umstaenden abfaengt. pub ist eine
-	-- gepruefte IPv4, darf also in die Shell-Zeile. Ohne Eintrag keine Zeile.
-	local rdns = sh('d=$(mktemp -d) || exit 0; ' ..
-		'nslookup ' .. pub .. ' > "$d/r" 2>/dev/null </dev/null & p=$!; ' ..
-		'( sleep 2; kill $p ) >/dev/null 2>&1 </dev/null & w=$!; ' ..
-		'wait $p 2>/dev/null; kill $w 2>/dev/null; ' ..
-		'sed -n "s/.*name = //p" "$d/r" 2>/dev/null | head -n 1; rm -rf "$d"'):match('^%s*(%S+)')
+	-- rDNS verraet oft den Anschlussanbieter (dip0.t-ipconnect.de = Telekom),
+	-- aber nicht bei einem eigenen PTR (Business-Anschluesse). Deshalb dazu
+	-- die ASN per DNS bei Team Cymru: <d.c.b.a>.origin.asn.cymru.com TXT
+	-- "3320 | 217.80.0.0/12 | DE | ripencc | ...", dann AS3320.asn.cymru.com
+	-- TXT "3320 | DE | ripencc | ... | DTAG - Deutsche Telekom AG, DE".
+	-- rDNS und ASN laufen parallel, der Name danach; je Stufe ein Waechter von
+	-- 2 s. Ueber den Resolver des Knotens, also den DNS aus dem Mesh - nicht
+	-- den des Routers am WAN, der DNS unter Umstaenden abfaengt. pub ist eine
+	-- gepruefte IPv4, die ASN reine Ziffern, beide duerfen in die Shell-Zeile.
+	-- Ohne Antwort keine Zeile.
+	local o1, o2, o3, o4 = pub:match('^(%d+)%.(%d+)%.(%d+)%.(%d+)$')
+	local out = sh('d=$(mktemp -d) || exit 0; ' ..
+		'nslookup ' .. pub .. ' > "$d/r" 2>/dev/null </dev/null & p1=$!; ' ..
+		'nslookup -type=txt ' .. o4 .. '.' .. o3 .. '.' .. o2 .. '.' .. o1 .. '.origin.asn.cymru.com > "$d/o" 2>/dev/null </dev/null & p2=$!; ' ..
+		'( sleep 2; kill $p1 $p2 ) >/dev/null 2>&1 </dev/null & w=$!; ' ..
+		'wait $p1 $p2 2>/dev/null; kill $w 2>/dev/null; ' ..
+		'cat "$d/r" "$d/o" 2>/dev/null; rm -rf "$d"')
+	local rdns = out:match('name = (%S+)')
+	local asn = out:match('text = "(%d+)')
 	if rdns then
 		row('', '', 'rDNS ' .. rdns:gsub('%.$', ''), '')
 	end
+	if asn then
+		local n = sh('d=$(mktemp -d) || exit 0; ' ..
+			'nslookup -type=txt AS' .. asn .. '.asn.cymru.com > "$d/n" 2>/dev/null </dev/null & p=$!; ' ..
+			'( sleep 2; kill $p ) >/dev/null 2>&1 </dev/null & w=$!; ' ..
+			'wait $p 2>/dev/null; kill $w 2>/dev/null; ' ..
+			'cat "$d/n" 2>/dev/null; rm -rf "$d"'):match('text = "[^"]*|%s*([^|"]-)%s*"')
+		-- "DTAG - Deutsche Telekom AG, DE": das Land steht schon in der ASN-Zeile
+		-- der Registry, hier genuegt der Name.
+		n = n and n:gsub(',%s*%u%u$', '')
+		row('', '', 'AS' .. asn .. ((n and n ~= '') and (' ' .. cut(n, 44)) or ''), '')
+	end
+end
+
+-- Rolle in Spalte A, die Ports ab Spalte B, bei vielen Ports auf Folgezeilen
+local function port_rows(label, role, cells, extra)
+	local lines, cur = {}, ''
+	for _, cell in ipairs(cells or {}) do
+		if cur ~= '' and vlen(cur) + 1 + vlen(cell) > (extra and (COLS[4] - COLS[3] - 1) or (80 - COLS[3])) then
+			table.insert(lines, cur)
+			cur = cell
+		else
+			cur = cur == '' and cell or (cur .. ' ' .. cell)
+		end
+	end
+	if cur ~= '' or #lines == 0 then table.insert(lines, cur) end
+	for i, l in ipairs(lines) do
+		if i == 1 then row(label, role or '', l, extra or '') else row('', '', l, '') end
+	end
+end
+
+local wc = (not single_role) and port_cells('wan') or nil
+for _, cell in ipairs(wc or {}) do
+	local plain = cell:gsub('\27%[[%d;]*m', '')
+	if not plain:match(':%?$') then wan_link_known = true end
+	if not plain:match(':%-$') and not plain:match(':%?$') then wan_link = true end
+end
+
+-- Mit WLAN kompakt in zwei Zeilen; ohne WLAN steht an Stelle der Radio-Tabelle
+-- die ausfuehrlichere Port-Tabelle (port_table, weiter unten).
+-- Die Adressen des Uplinks (br-wan) gehoeren zu der Gruppe mit der Rolle
+-- uplink - das ist meist WAN, kann aber auch LAN oder der einzige Port sein.
+-- Das Gateway steht in Klammern hinter der Rolle, die eigene v4 in Spalte C,
+-- die v6 (bis 39 Zeichen) auf einer Folgezeile ab Spalte B.
+local uplink_shown = false
+local function is_uplink(role)
+	if uplink_shown or not role or not role:find('uplink') then return false end
+	uplink_shown = true
+	return true
+end
+local function roletxt_gw(role)
+	return role .. (wan_gw and (' (' .. wan_gw .. ')') or '')
+end
+
+if has_wifi then
+	local groups = single_role and { { 'Port', single_role, port_cells('lan') } }
+		or { { 'WAN', wan_role, wc }, { 'LAN', lan_role, port_cells('lan') } }
+	for _, g in ipairs(extra_groups) do
+		table.insert(groups, { extra_label(g), g.role, dev_cells(g.devs) })
+	end
+	for _, g in ipairs(groups) do
+		local label, role, cells = g[1], g[2], g[3]
+		if cells and #cells > 0 then
+			if is_uplink(role) then
+				port_rows(label, roletxt_gw(role), cells, wan_v4 and ('v4 ' .. wan_v4) or '')
+				if wan_v6 then row('', '', 'v6 ' .. wan_v6, '') end
+				if MODE == 'details' then public_v4_rows() end
+			else
+				port_rows(label, role, cells)
+			end
+		end
+	end
+end
+
+local wan_mesh = wan_role and wan_role:find('mesh')
+
+-- Mehrere Rollen auf einem Interface (etwa uplink+mesh) sind moeglich, aber
+-- selten gewollt.
+uci:foreach('gluon', 'interface', function(s)
+	local r = aslist(s.role)
+	if #r > 1 then
+		warn('yellow', 'Interface ' .. (s.name or s['.name']) .. ' hat mehrere Rollen: ' .. join(r, '+'))
+	end
+end)
+
+
+-- Port-Tabelle fuer Geraete ohne WLAN: je Port Link, Traffic seit Boot und
+-- Fehler, je Rollengruppe Mesh und Nachbarn. Nachbarn gibt es nur je Gruppe:
+-- mehrere Mesh-Ports fasst Gluon zu einer Bridge zusammen, batman sieht nur
+-- die Bridge und weiss nicht, an welchem Port ein Nachbar haengt. Eigene
+-- Mesh-Ports (siehe extra_groups) sind je eine Gruppe, dort also je Port.
+local function human(n)
+	n = tonumber(n)
+	if not n then return '-' end
+	local units = { 'B', 'K', 'M', 'G', 'T' }
+	local i = 1
+	while n >= 1024 and i < #units do n = n / 1024 i = i + 1 end
+	if i == 1 then return tostring(math.floor(n)) end
+	return (n < 10 and string.format('%.1f', n) or tostring(math.floor(n + 0.5))) .. units[i]
 end
 
 local function port_table(wiredmesh, detail)
@@ -915,7 +937,7 @@ local function port_table(wiredmesh, detail)
 				row('', wan_gw and ('gw ' .. wan_gw) or '', wan_v4 and ('v4 ' .. wan_v4) or '', '')
 				if wan_v6 then row('', '', 'v6 ' .. wan_v6, '') end
 			end
-			if MODE == 'ports' then public_v4_rows() end
+			if MODE == 'ports' or MODE == 'details' then public_v4_rows() end
 		end
 	end
 	for _, name in ipairs(rest) do
