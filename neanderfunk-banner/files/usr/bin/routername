@@ -1,0 +1,64 @@
+#!/usr/bin/lua
+-- routername [name ...] - Knotennamen zeigen oder dauerhaft setzen.
+--
+--     routername                 zeigt den Namen (und den Hostnamen, wenn er abweicht)
+--     routername Kiga Sonnenweg  setzt "Kiga Sonnenweg" (mehrere Woerter ohne Anfuehrungszeichen)
+--     routername --default       zurueck auf den Standardnamen der Firmware
+--
+-- Wie das Setup ("Knotenname"): Gluons pretty_hostname.set() speichert den
+-- Namen wie eingegeben als system.pretty_hostname, falls er vom Hostnamen
+-- abweicht, und den bereinigten Hostnamen (a-z, 0-9, "-", hoechstens 63
+-- Zeichen) als system.hostname; der Kernel-Hostname gilt sofort. Danach
+-- uci commit system - ein manueller Eingriff, der ins Flash soll. Ist der
+-- Name schon so, wird nichts geschrieben. Die Karte zeigt den neuen Namen,
+-- sobald sie die nodeinfo des Knotens wieder abfragt.
+
+local uci = require('simple-uci').cursor()
+local pretty = require('pretty_hostname')
+
+local function usage()
+	io.stderr:write('Aufruf: routername [name ...]   (ohne Name: anzeigen; --default: Standardname)\n')
+	os.exit(1)
+end
+
+local function hostname()
+	local h
+	uci:foreach('system', 'system', function(s) h = s.hostname return false end)
+	return h
+end
+
+local function show(prefix)
+	local p, h = pretty.get(uci), hostname()
+	if p ~= h then
+		print(string.format('%s%s   (Hostname: %s)', prefix or '', p, h))
+	else
+		print((prefix or '') .. (p or '?'))
+	end
+end
+
+if #arg == 0 then
+	show()
+	os.exit(0)
+end
+
+local new
+if arg[1] == '-h' or arg[1] == '--help' then
+	usage()
+elseif arg[1] == '--default' then
+	if #arg > 1 then usage() end
+	new = require('gluon.util').default_hostname()
+else
+	if arg[1]:sub(1, 1) == '-' then usage() end
+	new = table.concat(arg, ' '):gsub('^%s+', ''):gsub('%s+$', '')
+end
+
+if new == '' then usage() end
+
+if new == pretty.get(uci) then
+	show('Unveraendert, nichts geschrieben: ')
+	os.exit(0)
+end
+
+pretty.set(uci, new)
+uci:commit('system')
+show('Neuer Name: ')

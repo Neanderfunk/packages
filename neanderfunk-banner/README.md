@@ -71,6 +71,14 @@ It also installs these commands (all listed by `help`):
 - `v4up` - fetches IPv4 via DHCP from the mesh on `br-client`. Refused if the
   uplink already has IPv4: a second default route would pull the tunnel into
   the mesh and, without another uplink there, cut the node off.
+- `routername [name ...]` - shows the node name, or sets it like the setup
+  wizard's "node name": Gluon's `pretty_hostname.set()` keeps the name as
+  typed (spaces, umlauts, emoji - that is what the map shows, respondd reports
+  `pretty_hostname` first) and derives the hostname (a-z, 0-9, `-`), the
+  kernel hostname applies at once, then `uci commit system`. Several words
+  need no quotes; `--default` goes back to the firmware's default name;
+  nothing is written if the name is unchanged. Gluon's own `pretty-hostname`
+  does the same without these extras.
 - `vpn [on|off]` (also `enable`/`disable`) - without an argument shows the
   mesh VPN state (both switches, daemon running, neighbours over
   `mesh-vpn`). `on`/`off` sets `gluon.mesh_vpn.enabled` and lets Gluon's

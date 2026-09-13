@@ -43,4 +43,5 @@ Eingriffe (schreiben, wirksam nach "reconf")
   reconf                gluon-reconfigure + Neustart im Hintergrund
   v4up                  IPv4 per DHCP aus dem Mesh - nur ohne IPv4 am Uplink
   vpn [on|off]          Mesh-VPN zeigen, dauerhaft an/aus (sofort wirksam)
+  routername [name]     Knotennamen zeigen/setzen (Leerzeichen, Umlaute ok)
 HILFE
