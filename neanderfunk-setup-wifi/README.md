@@ -79,6 +79,16 @@ Ultra mit 192.168.2.1 nur „kein Internet“). Deshalb nicht einstellbar. Im
 Setup-WLAN lädt die OSM-Karte nicht (auch deren Name zeigt auf den Knoten),
 Koordinaten also von Hand.
 
+**Firmware-Upload geht nicht im Anmeldefenster.** Das Fenster, das Android
+über „Im Netzwerk anmelden“ öffnet (Captive-Portal-Browser), lässt keinen
+Datei-Upload zu. Die Schaltfläche ist dort einfach wirkungslos, ohne
+Fehlermeldung (adorfer, Android 16, 14.09.2026). Das ist kein Fehler des
+Knotens, der Portal-Browser ist so gebaut. Abhilfe: die Seite im normalen
+Browser öffnen, `http://198.51.100.1` (oder `http://setup.gluon`). Einrichten
+(Wizard, Erweiterte Einstellungen) geht im Anmeldefenster ganz normal. Die
+Upgrade-Seite sagt das selbst: Ab `neanderfunk-config-mode-theme`
+`d04e526` steht dort immer ein Hinweis mit der passenden Adresse.
+
 Voraussetzungen in der Firmware
 -------------------------------
 
@@ -112,6 +122,12 @@ Bindung, ohne `S19wpad`:
   zweiter Druck 30 s später startet den Timeout neu; aus 91 s nach dem
   zweiten Druck, LED zurück, Logzeile.
 - `off`: Kurzdruck ohne Wirkung, kein hostapd.
+
+Am 14.09.2026 der erste echte Hardware-Test mit `button`/`open` durch
+adorfer, Firmware 26091317bro, Handy mit Android 16: Setup-Mode am Kabel und
+über das Setup-WLAN funktionieren. Daraus zwei Änderungen: LED jetzt 200/60
+statt 333/100 (war vom Setup-Mode-Takt zu schwer zu unterscheiden) und der
+Upload-Hinweis oben.
 
 Tasten ohne Finger:
 `ACTION=released BUTTON=reset SEEN=1 /sbin/hotplug-call button`.
