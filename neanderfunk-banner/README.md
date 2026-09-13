@@ -57,7 +57,11 @@ It also installs these commands (all listed by `help`):
   `ipv4.icanhazip.com` (Cloudflare) and `checkip.amazonaws.com` (AWS) with
   `wget -4`, so over the WAN and not through the mesh; at most 4 s, marked
   `direkt`, `hinter NAT` or `hinter CGNAT`; `kein IPv4 am WAN` or
-  `nicht ermittelbar` if there is no answer. The login overview does not ask.
+  `nicht ermittelbar` if there is no answer. Below it the reverse DNS name of
+  that address, which usually gives away the broadband provider
+  (`...dip0.t-ipconnect.de` = Telekom); looked up through the node's own
+  resolver (the mesh DNS, not the WAN router's), at most 2 s, left out if
+  there is none. The login overview does not ask.
 - `switchstatus` - the port table with MAC, MTU, bridge, link changes since
   boot and drops per port; `-r` shows the raw swconfig output.
 - `lanrole` / `wanrole` - show or set `gluon.iface_<lan|wan>.role`, checked

@@ -768,6 +768,19 @@ local function public_v4_rows()
 	if a and b and a ~= b then note = note .. ', Dienste uneins: ' .. b end
 	if dev and dev ~= 'br-wan' then note = note .. ', Weg ueber ' .. dev end
 	row('', '', 'oeff. v4 ' .. pub, note)
+
+	-- rDNS verraet meist den Anschlussanbieter (dip0.t-ipconnect.de = Telekom).
+	-- Ueber den Resolver des Knotens, also den DNS aus dem Mesh - nicht den
+	-- des Routers am WAN, der DNS unter Umstaenden abfaengt. pub ist eine
+	-- gepruefte IPv4, darf also in die Shell-Zeile. Ohne Eintrag keine Zeile.
+	local rdns = sh('d=$(mktemp -d) || exit 0; ' ..
+		'nslookup ' .. pub .. ' > "$d/r" 2>/dev/null </dev/null & p=$!; ' ..
+		'( sleep 2; kill $p ) >/dev/null 2>&1 </dev/null & w=$!; ' ..
+		'wait $p 2>/dev/null; kill $w 2>/dev/null; ' ..
+		'sed -n "s/.*name = //p" "$d/r" 2>/dev/null | head -n 1; rm -rf "$d"'):match('^%s*(%S+)')
+	if rdns then
+		row('', '', 'rDNS ' .. rdns:gsub('%.$', ''), '')
+	end
 end
 
 local function port_table(wiredmesh, detail)
