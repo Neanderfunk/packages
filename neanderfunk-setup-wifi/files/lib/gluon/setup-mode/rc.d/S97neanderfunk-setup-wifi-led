@@ -4,7 +4,7 @@
 #
 # gluon-setup-mode S96led stellt die Status-LED beim Boot auf den
 # Setup-Mode-Takt. Laeuft das Setup-WLAN schon (start = 'boot'), danach
-# wieder dreimal so schnell.
+# wieder fuenfmal so schnell.
 
 START=97
 

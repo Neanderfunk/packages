@@ -55,7 +55,7 @@ Verhalten
   Kein Neustart – ein unkonfigurierter Knoten käme wieder in den Setup-Mode,
   am Kabel flöge man aus der Eingabe.
 - **Status-LED:** Setup-Mode wie bei Gluon 1000/300 ms, solange das
-  Setup-WLAN läuft dreimal so schnell (333/100).
+  Setup-WLAN läuft fünfmal so schnell (200/60, bis 14.09.2026 333/100).
 
 Aufbau
 ------

@@ -72,7 +72,8 @@ sw_names() {
 }
 
 # Status-LED wie gluon-setup-mode S96led: Setup-Mode 1000/300, solange das
-# Setup-WLAN laeuft dreimal so schnell.
+# Setup-WLAN laeuft fuenfmal so schnell (am Handy-Test 14.09.2026 gewuenscht:
+# 333/100 war vom Setup-Mode-Takt zu schwer zu unterscheiden).
 sw_led() {
 	local custom_led
 	. /etc/diag.sh
@@ -85,7 +86,7 @@ sw_led() {
 	fi
 	[ -n "$status_led" ] || return 0
 	case "$1" in
-		fast) status_led_set_timer 333 100 ;;
+		fast) status_led_set_timer 200 60 ;;
 		*) status_led_set_timer 1000 300 ;;
 	esac
 }
