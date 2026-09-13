@@ -1,0 +1,16 @@
+#!/bin/sh /etc/rc.common
+# SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# gluon-setup-mode S96led stellt die Status-LED beim Boot auf den
+# Setup-Mode-Takt. Laeuft das Setup-WLAN schon (start = 'boot'), danach
+# wieder dreimal so schnell.
+
+START=97
+
+. /lib/gluon/neanderfunk-setup-wifi/lib.sh
+
+start() {
+	[ -f "$SW_ACTIVE" ] && sw_led fast
+	return 0
+}

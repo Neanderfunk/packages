@@ -1,0 +1,21 @@
+#!/bin/sh /etc/rc.common
+# SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# hostapd fuer das Setup-WLAN. Der Setup-Mode startet nur die Skripte in
+# diesem Verzeichnis, also wird das normale /etc/init.d/wpad (hostapd-common)
+# von hier eingebunden; netifd braucht dessen ubus-Objekt.
+#
+# Nicht, wenn das Setup-WLAN aus ist (start = 'off'), und nicht, solange die
+# Firmware noch den frueheren Patch mit eigenem S19wpad traegt - sonst liefe
+# hostapd zweimal.
+
+. /lib/gluon/neanderfunk-setup-wifi/lib.sh
+
+if [ -e /lib/gluon/setup-mode/rc.d/S19wpad ] || sw_legacy_patch || [ ! -f /etc/init.d/wpad ]; then
+	exit 0
+fi
+sw_conf
+[ "$SW_START" = off ] && exit 0
+
+. /etc/init.d/wpad

@@ -1,0 +1,26 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Kurzer Tastendruck im Setup-Mode: Setup-WLAN an bzw. Timeout neu starten.
+#
+# Gluons 50-gluon-setup-mode bleibt unberuehrt: Langdruck (3 s) ->
+# gluon-enter-setup-mode, beim Loslassen vorher bricht er ab. Dieser Handler
+# reagiert nur aufs Loslassen nach weniger als 3 s ($SEEN von procd) und nur
+# im Setup-Mode; im Normalbetrieb tut der Kurzdruck nichts.
+#
+# Tasten wie bei Gluon: reset, wps, phone. Beim Genexis Pulse EX400 schliesst
+# Gluon die kapazitive wps-Taste nur fuer den Langdruck aus; fuer den Kurzdruck
+# im Setup-Mode gilt sie hier bewusst mit (adorfer), der Reset-Knopf ebenso.
+
+[ "$ACTION" = released ] || exit 0
+[ "${SEEN:-99}" -lt 3 ] 2>/dev/null || exit 0
+
+case "$BUTTON" in
+	reset|wps|phone) ;;
+	*) exit 0 ;;
+esac
+
+[ -d /var/gluon/setup-mode/config ] || exit 0
+
+/lib/gluon/neanderfunk-setup-wifi/ctl button >/dev/null 2>&1 &
