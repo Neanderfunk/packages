@@ -26,6 +26,7 @@ ab, wie schnell er sich ändert:
 | statisch nach dem Boot | CPU-Modell, BIOS, Flash-Größe; intern die Port-Liste aus `board.json` | `nodeinfo` | einmal gelesen, danach gehalten (der respondd-Prozess lebt so lange wie der Boot) |
 | Konfiguration | `preserve_channels` | `nodeinfo` | bei jeder nodeinfo-Abfrage (die kommt selten) |
 | mittel | je Radio Kanal, HT-Modus, SSID, TX-Leistung, Land, Mesh | `statistics` | 10 s gecacht; ändert sich durch ACS, ssid-changer, Eingriffe |
+| mittel | Temperaturen: SoC, WLAN-Chips | `statistics` | 10 s gecacht; mt76 fragt dafür bei jedem Lesen die WLAN-Firmware |
 | langsam | Speicherdruck: MemAvailable, Refaults, Forks, zram | `statistics` | 60 s gecacht; Zähler für Raten über Minuten, dafür reicht das |
 | schnell | je Ethernet-Port Link, Geschwindigkeit, Duplex; ssid-changer-Zähler | `statistics` | bei jeder Abfrage aus sysfs bzw. `/tmp`; das ioctl für `possible` nur, wenn sich die Geschwindigkeit des Ports geändert hat |
 
@@ -35,8 +36,10 @@ Datenvertrag
 In `statistics` sind **alle Felder immer vorhanden**, notfalls `0`, `false`
 oder `""` - die Statusseite schreibt Werte per `data-statistics`
 unverändert ins Element, ein fehlender Schlüssel käme dort als `undefined`
-an. Einzige Ausnahme: `ssid_changer` fehlt ganz, wenn eine seiner Dateien
-fehlt (Paket nicht installiert).
+an. Zwei Ausnahmen: `ssid_changer` fehlt ganz, wenn eine seiner Dateien
+fehlt (Paket nicht installiert), und `temperature` fehlt ganz, wenn die
+Hardware keinen Sensor hat bzw. keiner einen gültigen Wert liefert. Auch
+innerhalb von `temperature` kann ein Sensor von Abfrage zu Abfrage fehlen.
 
 ### nodeinfo
 
@@ -88,7 +91,8 @@ fehlt (Paket nicht installiert).
     "ethernet": { "carrier": false, "speed": 0,    "duplex": "",     "possible": 0 }
   },
   "system": { "mem_available": 2412, "refault_file": 540, "forks": 18969,
-              "zram": { "size": 27648, "data": 1712, "ram": 744 } }
+              "zram": { "size": 27648, "data": 1712, "ram": 744 } },
+  "temperature": { "soc": 56.4, "mt7915_phy0": 48.0, "mt7915_phy1": 48.0 }
 }
 ```
 
@@ -151,6 +155,39 @@ daraus flach, ob er thrashte oder nicht. Höchstens alle 60 s neu gelesen.
 Die Raten rechnet die Auswertung aus den Zählern; nach einem Reboot beginnen
 sie bei 0.
 
+**temperature** - was die Hardware an Temperaturen hergibt, Grad Celsius mit
+einer Nachkommastelle (Zahl), Schlüssel = Sensor. Höchstens alle 10 s neu
+gelesen.
+- `soc`: die Thermal-Zone des SoC (`type` mit „cpu“ oder „soc“,
+  `x86_pkg_temp`), auf x86 sonst `coretemp`/`k10temp`/`k8temp` (höchster
+  Fühler, bei coretemp also meist das Package). **Fester Schlüssel** für
+  Statusseite und `nodestatus`.
+- weitere Thermal-Zonen unter ihrem `type`, hwmon-Chips unter ihrem `name`,
+  z. B. `mt7915_phy0`/`mt7915_phy1` je Funkchip (der Treiber heißt auch bei
+  MT7981/MT7986 und MT7916 so). Doppelte Namen bekommen `_1`, `_2` …
+- Ein hwmon, der nur eine Thermal-Zone spiegelt (MT798x: `cpu_thermal` →
+  `thermal_zone0`), fällt weg.
+- Gültig ist **−40 … +150 °C** (adorfer, 14.09.2026): Außenknoten haben im
+  Winter Minusgrade, SoCs in der Sonne werden heiß, bis 150 °C bleibt ein
+  Knoten kurz vor der Notabschaltung noch sichtbar. **Genau 0** gilt als
+  Fehlerwert. Werte ab 2³¹ werden als vorzeichenbehaftete 32-Bit-Zahl
+  gelesen (Treiber, die Minusgrade so ausgeben).
+
+Welche Hardware was liefert (Testknoten, 14.09.2026):
+
+| Familie | Gerät | `temperature` |
+| --- | --- | --- |
+| MT7981 (filogic) | Cudy WR3000S v1, Cudy WR3000E v1 | `soc` 56–67, `mt7915_phy0/1` 46–52 |
+| MT7981 (filogic) | ZyXEL NWA50AX Pro (Schulstr7-Kiste) | `soc` 77–78; die MT7915 liefert abwechselnd 491000, 0 und ~70 °C - meist verworfen |
+| MT7986 (filogic) | MERCUSYS MR90X v1 | `soc` 42, `mt7915_phy0/1` 41/45 |
+| MT7621 + MT7915 | D-Link COVR-X1860, ZyXEL NWA55AXE | nur `mt7915_phy0/1` (55); der MT7621 hat keinen Sensor |
+| MT7621 + mt7603/mt76x2 | Xiaomi 4A Gigabit | nichts |
+| ath79 (ath9k, ath10k) | TL-WDR3600, TL-WR1043ND v2, Archer C25 | nichts |
+| ipq40xx | FRITZ!Box 4040 | nichts |
+| mpc85xx | Extreme WS-AP3825i | nichts |
+| x86 | FUTRO S550 (`k8temp`) | nichts: der Sempron meldet 4294918296 = −49 °C, verworfen |
+| x86 | QEMU-VM | nichts |
+
 Auf **swconfig-Geräten** (TL-WDR3600, Archer C7 …) bleibt `ethernet` leer,
 die echten Ports kennt nur der Switch. Eine zweite Stufe per libsw wäre
 möglich (so wie `nodestatus` `swconfig dev switch0 port N get link` fragt).
@@ -173,6 +210,11 @@ Produktiv-respondd unberührt:
 Am 12.09.2026 `system` ebenso: WDR3600 (128 MB, ohne zram, Refaults 0) und
 Archer C25 (64 MB, zram 27 MB) - Werte gleich `/proc/meminfo`, `/proc/vmstat`,
 `/proc/stat` und `mm_stat`; zweite Abfrage nach 5 s aus dem Cache.
+
+Am 14.09.2026 `temperature` ebenso auf WR3000S (aarch64), MR90X, NWA50AX Pro,
+COVR-X1860 (mipsel), WDR3600 (mips), FUTRO und VM (x86_64); Werte siehe
+Tabelle oben, Rohwerte gegen sysfs geprüft. Erste Abfrage 10–70 ms (mt76 fragt
+die Firmware), die zweite aus dem Cache.
 
 10 statistics-Abfragen samt `gluon-neighbour-info`-Prozessstart brauchten auf
 den MIPS-Knoten zusammen unter 0,1 s.

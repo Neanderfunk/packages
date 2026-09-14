@@ -23,6 +23,8 @@
  *                           Mesh. Aendert sich durch ACS, ssid-changer,
  *                           Eingriffe. WIRELESS_TTL Sekunden gecacht.
  *                           Steht in statistics.
+ *                           Temperaturen (SoC, WLAN-Chips): TEMP_TTL Sekunden,
+ *                           weil mt76 dafuer die WLAN-Firmware fragt.
  *   langsam                 Speicherdruck (MemAvailable, Refaults, Forks,
  *                           zram): Zaehler fuer Raten ueber Minuten.
  *                           SYSTEM_TTL Sekunden gecacht. Steht in statistics.
@@ -607,6 +609,192 @@ static struct json_object * get_system(void) {
 }
 
 
+/* --- statistics: Temperaturen --------------------------------------------- */
+
+/*
+ * Was die Hardware an Temperaturen hergibt, in Grad Celsius mit einer
+ * Nachkommastelle, Schluessel = Sensor:
+ *
+ *  - Thermal-Zonen (/sys/class/thermal/thermal_zone*): der Name aus "type".
+ *    Die Zone des SoC (type mit "cpu" oder "soc", x86_pkg_temp) heisst
+ *    immer "soc", damit Statusseite und nodestatus einen festen Pfad haben.
+ *  - hwmon (/sys/class/hwmon/hwmon*): der Name aus "name", z. B.
+ *    mt7915_phy0. Hat ein Chip mehrere Fuehler (coretemp je Kern), zaehlt
+ *    der hoechste. coretemp/k10temp/k8temp werden zu "soc", wenn keine Zone
+ *    das schon ist. Ein hwmon, der nur eine Thermal-Zone spiegelt (MT798x:
+ *    cpu_thermal -> thermal_zone0), faellt weg.
+ *
+ * Gueltig ist -40 ... +150 C (adorfer, 14.09.2026). Aussenknoten haben im
+ * Winter Minusgrade (auch x86 in Kisten); ein laufender SoC ist zwar immer
+ * deutlich waermer als die Umgebung, -40 C ist aber die Untergrenze
+ * industrieller Bauteile und laesst Luft. In der Sonne werden SoCs heiss; ueber
+ * ~125 C schaltet die Hardware ab, bis 150 bleibt ein Knoten kurz davor noch
+ * sichtbar. Genau 0 (Milligrad) gilt als Fehlerwert: ein laufender Chip ist
+ * nie exakt 0 C warm, die MT7915 des NWA50AX Pro liefert aber zwischendurch
+ * genau 0 (und 491000) statt ihrer ~70 C. Werte ab 2^31 sind
+ * als vorzeichenbehaftete 32-Bit-Zahl gemeint (Treiber, die Minusgrade so
+ * ausgeben). Gesehen am 14.09.2026: k8temp auf einem FUTRO S550 liefert
+ * 4294918296, also -49 C (drinnen Unsinn, fliegt raus), die MT7915 eines
+ * NWA50AX Pro in der Schulstr7-Kiste 491000.
+ *
+ * mt76 fragt die Temperatur bei jedem Lesen bei der WLAN-Firmware ab (MCU-
+ * Kommando). Deshalb nur alle TEMP_TTL Sekunden und nicht bei jeder Abfrage
+ * der Statusseite. Ohne einen einzigen Sensor fehlt der Schluessel ganz.
+ */
+#define TEMP_TTL 10
+#define TEMP_MIN_MC (-40000)
+#define TEMP_MAX_MC 150000
+
+/* Milligrad lesen; ein als unsigned ausgegebener 32-Bit-Minuswert wird
+ * zurueckgerechnet (4294918296 -> -49000) */
+static bool temp_read(const char *path, long long *mc) {
+	long long v;
+	if (!read_ll(path, &v))
+		return false;
+	if (v >= 2147483648LL && v <= 4294967295LL)
+		v -= 4294967296LL;
+	*mc = v;
+	return true;
+}
+
+static bool temp_plausible(long long mc) {
+	return mc != 0 && mc >= TEMP_MIN_MC && mc <= TEMP_MAX_MC;
+}
+
+/* Milligrad -> Zahl mit einer Nachkommastelle, auch so serialisiert */
+static struct json_object * temp_value(long long mc) {
+	char buf[16];
+	/* kaufmaennisch runden, auch unter null; |mc| <= 150000 passt in int */
+	int d = (int)((mc < 0 ? mc - 50 : mc + 50) / 100);
+	int a = d < 0 ? -d : d;
+	snprintf(buf, sizeof(buf), "%s%d.%d", d < 0 ? "-" : "", a / 10, a % 10);
+	return json_object_new_double_s((double)d / 10.0, buf);
+}
+
+/* Schluessel eindeutig machen: "acpitz", "acpitz_1", ... */
+static void temp_add(struct json_object *obj, const char *name, long long mc) {
+	char key[64];
+	snprintf(key, sizeof(key), "%s", name);
+	for (int i = 1; json_object_object_get_ex(obj, key, NULL) && i < 16; i++)
+		snprintf(key, sizeof(key), "%s_%d", name, i);
+	json_object_object_add(obj, key, temp_value(mc));
+}
+
+static bool temp_is_soc_zone(const char *type) {
+	return strstr(type, "cpu") || strstr(type, "soc") || !strcmp(type, "x86_pkg_temp");
+}
+
+static bool temp_is_soc_hwmon(const char *name) {
+	return !strcmp(name, "coretemp") || !strcmp(name, "k10temp") || !strcmp(name, "k8temp");
+}
+
+static struct json_object * collect_temperature(void) {
+	struct json_object *ret = json_object_new_object();
+	bool have_soc = false;
+	char path[PATH_MAX], type[64];
+	struct dirent *de;
+	long long mc;
+	DIR *d;
+
+	if ((d = opendir("/sys/class/thermal"))) {
+		while ((de = readdir(d))) {
+			if (strncmp(de->d_name, "thermal_zone", 12))
+				continue;
+			snprintf(path, sizeof(path), "/sys/class/thermal/%s/type", de->d_name);
+			if (!read_line(path, type, sizeof(type)))
+				continue;
+			snprintf(path, sizeof(path), "/sys/class/thermal/%s/temp", de->d_name);
+			if (!temp_read(path, &mc) || !temp_plausible(mc))
+				continue;
+			if (!have_soc && temp_is_soc_zone(type)) {
+				json_object_object_add(ret, "soc", temp_value(mc));
+				have_soc = true;
+			} else {
+				temp_add(ret, type, mc);
+			}
+		}
+		closedir(d);
+	}
+
+	if ((d = opendir("/sys/class/hwmon"))) {
+		while ((de = readdir(d))) {
+			if (de->d_name[0] == '.')
+				continue;
+
+			/* Spiegel einer Thermal-Zone: device zeigt auf thermal_zoneN */
+			char link[PATH_MAX];
+			snprintf(path, sizeof(path), "/sys/class/hwmon/%s/device", de->d_name);
+			ssize_t l = readlink(path, link, sizeof(link) - 1);
+			if (l > 0) {
+				link[l] = 0;
+				const char *base = strrchr(link, '/');
+				if (!strncmp(base ? base + 1 : link, "thermal_zone", 12))
+					continue;
+			}
+
+			snprintf(path, sizeof(path), "/sys/class/hwmon/%s/name", de->d_name);
+			if (!read_line(path, type, sizeof(type)))
+				continue;
+
+			long long best = 0;
+			bool found = false;
+			for (int i = 1; i <= 32; i++) {
+				snprintf(path, sizeof(path), "/sys/class/hwmon/%s/temp%d_input", de->d_name, i);
+				if (!temp_read(path, &mc)) {
+					/* coretemp beginnt bei temp1 (Package) oder temp2 */
+					if (i > 2)
+						break;
+					continue;
+				}
+				if (temp_plausible(mc) && (!found || mc > best)) {
+					best = mc;
+					found = true;
+				}
+			}
+			if (!found)
+				continue;
+
+			if (!have_soc && temp_is_soc_hwmon(type)) {
+				json_object_object_add(ret, "soc", temp_value(best));
+				have_soc = true;
+			} else {
+				temp_add(ret, type, best);
+			}
+		}
+		closedir(d);
+	}
+
+	if (json_object_object_length(ret) == 0) {
+		json_object_put(ret);
+		return NULL;
+	}
+	return ret;
+}
+
+/* NULL, wenn es keinen Sensor gibt */
+static struct json_object * get_temperature(void) {
+	static struct json_object *cache;
+	static time_t stamp;
+	static bool valid;
+	time_t now = now_monotonic();
+
+	if (!valid || now - stamp >= TEMP_TTL) {
+		if (cache)
+			json_object_put(cache);
+		cache = collect_temperature();
+		stamp = now;
+		valid = true;
+	}
+
+	if (!cache)
+		return NULL;
+	struct json_object *ret = NULL;
+	if (json_object_deep_copy(cache, &ret, NULL))
+		return NULL;
+	return ret;
+}
+
+
 /* --- statistics: Ethernet ------------------------------------------------- */
 
 /*
@@ -889,6 +1077,10 @@ static struct json_object * respondd_provider_statistics(void) {
 
 	json_object_object_add(nf, "ethernet", get_ethernet());
 	json_object_object_add(nf, "system", get_system());
+
+	struct json_object *temp = get_temperature();
+	if (temp)
+		json_object_object_add(nf, "temperature", temp);
 
 	struct json_object *ret = json_object_new_object();
 	json_object_object_add(ret, "neanderfunk", nf);
