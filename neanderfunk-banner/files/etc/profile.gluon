@@ -92,7 +92,7 @@ case "$-" in
 				i=$((i + 1))
 				if [ -n "$skip" ]; then skip=''; continue; fi
 				case "$a" in
-					-f|-b|-r|--create-backup|--restore-backup) skip=1 ;;
+					-d|-f|-b|-r|--create-backup|--restore-backup) skip=1 ;;
 					-h|--help)
 						# die Hilfe des Originals, dahinter was flash dazutut
 						command sysupgrade "$@"

@@ -34,8 +34,15 @@
 #     sysupgrade ab, stellt abort.d Netz und Dienste wieder her.
 #     --hooks erzwingt diesen Weg, --no-hooks schaltet ihn ab (beliebige
 #     Stelle, gehen nicht an sysupgrade; gleichwertig FLASH_HOOKS=1/0).
-# Optionen nach der URL gehen unveraendert an sysupgrade, und zwar VOR die
+# Optionen duerfen vor oder hinter der URL stehen ("flash -T <url>" wie
+# "flash <url> -T"); sie gehen unveraendert an sysupgrade, und zwar VOR die
 # Datei, wie sysupgrade es erwartet (z.B. -n, -F, -v).
+#   - -T: nur pruefen. flash laedt, vergleicht sha256, laesst sysupgrade -T
+#     laufen und raeumt danach auf (Datei weg, angehaltene Dienste wieder an).
+#   - Eine Datei, die flash selbst geladen hat, wird immer geloescht, wenn nicht
+#     geflasht wird (-T, Ablehnung, sha256-Fehler, sysupgrade kehrt zurueck) -
+#     /tmp ist RAM, auf 64-MB-Geraeten zaehlt jedes MB. Eine uebergebene lokale
+#     Datei bleibt liegen.
 
 HOOKDIR=/usr/lib/autoupdater
 LOWMEM_KB=32768		# MemAvailable vor dem Download
@@ -43,7 +50,7 @@ LOWMEM_AFTER_KB=16384	# MemAvailable mit dem Image in /tmp
 LOG=/tmp/flash.log
 
 usage() {
-	echo "Aufruf: flash <url|verzeichnis-url|datei> [--hooks|--no-hooks] [sysupgrade-optionen]" >&2
+	echo "Aufruf: flash [sysupgrade-optionen] <url|verzeichnis-url|datei> [--hooks|--no-hooks] [sysupgrade-optionen]" >&2
 	echo "  z.B.  flash http://server/pfad/sysupgrade/ -n" >&2
 	exit 1
 }
@@ -79,7 +86,8 @@ flash / sysupgrade in der interaktiven Shell (neanderfunk-banner):
     dieses Geraet im Manifest (sha256 wird verglichen), sonst in der
     Verzeichnisliste
   - zeigt Groesse, freien RAM und sha256, prueft vorher mit sysupgrade -T
-  - Optionen duerfen auch hinter dem Image stehen (-n, -F, -v ...)
+  - Optionen duerfen vor oder hinter dem Image stehen (-n, -F, -v, -T ...)
+  - -T: nur pruefen, danach Datei weg und Dienste wieder an
   - wenig RAM (unter 32 MB frei): haelt die Dienste an wie der Autoupdater,
     der Rest laeuft ohne Sitzung - die Verbindung bricht ab.
     Log: /tmp/flash.log, logread -e flash
@@ -94,7 +102,8 @@ EOF_HELP
 if [ "$1" = --detached ]; then
 	shift
 	file="$1"
-	shift
+	owned="$2"
+	shift 2
 	trap '' HUP PIPE
 	exec >> "$LOG" 2>&1 < /dev/null
 	say "upgrade.d (wifi down, Netz aus), dann sysupgrade $* $file"
@@ -102,6 +111,7 @@ if [ "$1" = --detached ]; then
 	say "RAM verfuegbar $(mem_avail) KiB"
 	sysupgrade "$@" "$file"
 	say "sysupgrade kam zurueck ($?), nichts geflasht - abort.d: Netz und Dienste wieder an"
+	[ "$owned" = 1 ] && rm -f "$file"
 	run_hooks abort
 	exit 1
 fi
@@ -120,8 +130,17 @@ stop_services() {
 	stopped=1
 }
 
+owned=''
+drop_file() {
+	if [ -n "$owned" ] && [ -n "$file" ] && [ -e "$file" ]; then
+		rm -f "$file"
+		echo "flash: $file geloescht (RAM wieder frei)" >&2
+	fi
+}
+
 fail() {
 	echo "flash: $*" >&2
+	drop_file
 	if [ -n "$stopped" ]; then
 		echo "flash: starte die angehaltenen Dienste wieder (abort.d)" >&2
 		run_hooks abort
@@ -189,16 +208,30 @@ for a in "$@"; do
 	esac
 done
 
-case "$1" in
-	-h|--help) help; exit 0 ;;
-esac
-[ -n "$1" ] || usage
-src="$1"
-shift
+# Das Image darf an beliebiger Stelle stehen ("flash -T <url>" wie "flash <url>
+# -T"): das erste Argument, das keine Option ist - dabei die Werte von Optionen
+# ueberspringen, die einen haben (sysupgrade -d/-f/-b/-r). Der Rest geht in
+# seiner Reihenfolge an sysupgrade. -T merken: dann nur pruefen.
+src='' test_only='' skip=''
+i=0
+for a in "$@"; do
+	i=$((i + 1))
+	[ "$i" -eq 1 ] && set --
+	if [ -n "$skip" ]; then skip=''; set -- "$@" "$a"; continue; fi
+	case "$a" in
+		-h|--help) help; exit 0 ;;
+		-d|-f|-b|-r|--create-backup|--restore-backup) skip=1; set -- "$@" "$a" ;;
+		-T) test_only=1; set -- "$@" "$a" ;;
+		-*) set -- "$@" "$a" ;;
+		*)
+			if [ -z "$src" ]; then src="$a"; else set -- "$@" "$a"; fi
+			;;
+	esac
+done
+[ -n "$src" ] || usage
 want_sha=''
 
 case "$src" in
-	-*) usage ;;
 	https://*)
 		src="http://${src#https://}"
 		echo "flash: lade per http statt https: $src"
@@ -229,10 +262,10 @@ case "$src" in
 		[ -n "$name" ] || name=sysupgrade.bin
 		file="/tmp/$name"
 		rm -f "$file"
+		owned=1
 		[ -n "$hooks" ] && stop_services
 		echo "flash: lade nach $file"
 		if ! wget -O "$file" "$src" ; then
-			rm -f "$file"
 			fail "Download fehlgeschlagen - nichts geflasht."
 		fi
 		;;
@@ -250,13 +283,23 @@ echo "flash: $file, $((size / 1024)) KiB, RAM verfuegbar noch ${avail:-?} KiB"
 echo "flash: sha256 $sha"
 
 if [ -n "$want_sha" ] && [ "$sha" != "$want_sha" ] ; then
-	fail "sha256 passt nicht zum Manifest ($want_sha) - nichts geflasht.
-flash: Die Datei bleibt in $file liegen (RAM, weg nach dem Neustart)."
+	fail "sha256 passt nicht zum Manifest ($want_sha) - nichts geflasht."
 fi
 
+# -T steht dann schon in "$@"; doppelt schadet nicht
 if ! sysupgrade -T "$@" "$file" ; then
-	fail "sysupgrade -T lehnt das Image ab - nichts geflasht.
-flash: Die Datei bleibt in $file liegen (RAM, weg nach dem Neustart)."
+	fail "sysupgrade -T lehnt das Image ab - nichts geflasht."
+fi
+
+# Nur pruefen: aufraeumen und fertig, ohne upgrade.d
+if [ -n "$test_only" ]; then
+	echo "flash: Test bestanden (-T) - nichts geflasht."
+	drop_file
+	if [ -n "$stopped" ]; then
+		echo "flash: starte die angehaltenen Dienste wieder (abort.d)"
+		run_hooks abort
+	fi
+	exit 0
 fi
 
 # Erst mit dem Image in /tmp knapp geworden: die Dienste jetzt anhalten.
@@ -267,7 +310,12 @@ fi
 
 if [ -z "$hooks" ]; then
 	echo "flash: Image passt. sysupgrade $* $file"
-	exec sysupgrade "$@" "$file"
+	# kein exec: kehrt sysupgrade zurueck, hat es nicht geflasht - dann aufraeumen
+	sysupgrade "$@" "$file"
+	rc=$?
+	echo "flash: sysupgrade kam zurueck ($rc) - nichts geflasht." >&2
+	drop_file
+	exit $rc
 fi
 
 say "Image passt. Weiter ohne diese Sitzung: gleich gehen WLAN und Netz aus"
@@ -279,6 +327,6 @@ echo "flash: sysupgrade ab, kommen Netz und Dienste von selbst wieder."
 # Pidfile, denn ohne vergleicht start-stop-daemon ueber das Programm, und
 # /bin/sh ist busybox - jede laufende Shell gaelte als "laeuft schon".
 rm -f /tmp/flash.pid
-start-stop-daemon -S -b -m -p /tmp/flash.pid -x /bin/sh -- "$0" --detached "$file" "$@" ||
+start-stop-daemon -S -b -m -p /tmp/flash.pid -x /bin/sh -- "$0" --detached "$file" "${owned:-0}" "$@" ||
 	fail "konnte den Rest nicht losgeloest starten - nichts geflasht."
 exit 0
