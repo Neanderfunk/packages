@@ -108,6 +108,7 @@ set on the node - so a local `uci set` always wins over the site default:
     check_uptime_min  = 5,                  -- optional, minutes, default 5
     reboot_uptime_min = 60,                 -- optional, minutes, default 60
     eth_tx_stall_dry_run = 0,               -- optional, let eth_tx_stall reboot (default: only log)
+    load_per_cpu = 2,                       -- optional, load threshold per core (integer, default 2)
     disabled_checks = { 'load', 'tunneldigger' },  -- optional
   },
 ```
@@ -152,8 +153,22 @@ The others keep it deliberately:
   boot. Both also recur - the Freifunk forum reports page allocation failures
   every 5 to 10 seconds - so nothing is lost by waiting, and the node limps
   rather than dying outright.
-* **`load`** - right after a boot the load is legitimately high, and the 5
-  minute average is not meaningful before the node has been up 5 minutes.
+* **`load`** - right after a boot the load is legitimately high, and the 15
+  minute average is not meaningful before the node has been up a while.
+
+`load` reads the 15 minute average (field 3 of `/proc/loadavg`) and compares
+it with `hotfix.load.per_cpu` (default 2) times the cores, counted fork-free
+from `/sys/devices/system/cpu/online`. A reboot needs two healthcheck runs in a
+row above that. Until 14.09.2026 it was a fixed "above 2" regardless of the
+cores, on the first hit, and the message spoke of the 5 minute average: that
+rebooted a dual-core MT7981 (Schulstr7 AP01) in a load test with nine wget
+loops and uhttpd - legitimate user-space load, 1 minute load 1.5-3.1.
+Single-core devices keep the threshold 2, now with the confirmation. Per node:
+
+```
+uci set hotfix.load.per_cpu='3'
+uci commit hotfix
+```
 
 Changeable per node in either direction:
 
@@ -177,7 +192,7 @@ Checks
 | `dfs_failcheck` | hostapd failing its DFS check | wifi restart |
 | `tunneldigger` | too many tunneldigger watchdogs/instances | reboot |
 | `br_client_ipv6` | br-client without an address from the site prefix | reboot |
-| `load` | 5 minute load average above 2 | reboot |
+| `load` | 15 minute load average above `hotfix.load.per_cpu` x cores (default 2 x cores) in two runs in a row (~7 min) | reboot |
 | `respondd` | respondd not running | reboot |
 | `dropbear` | dropbear not running | reboot |
 | `no_wifi_clients` | clients were seen and then all disappeared | wifi restart |

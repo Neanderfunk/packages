@@ -158,11 +158,52 @@ reboot_when_not_running() {
   (daemon_running "$1" || sleep 20 ; daemon_running "$1" || now_reboot "[$1] $1 not running") &> /dev/null
 }
 
-# check if 5min load >2 (panic reboot)
-# (Feld 3 von /proc/loadavg ist das 15-Minuten-Mittel, nicht das 5er - so
-# war es schon immer, die Meldung bleibt, wie sie ist.) read statt
-# cat|cut|tr: "1.72" wird zu 172.
-check_disabled load || { read -r _ _ load15 _ < /proc/loadavg ; load15="${load15%.*}${load15#*.}" ; [ "${load15#0}" -ge "201" ] 2>/dev/null && now_reboot "[load] Load 5minute-avg exceeds 2!" ; true ; }
+# Load: das 15-Minuten-Mittel (Feld 3 von /proc/loadavg) ueber
+# hotfix.load.per_cpu x Kerne (Vorgabe 2), in zwei Laeufen hintereinander
+# (~7 min), dann Reboot.
+#
+# Frueher fest "ueber 2", unabhaengig von der Kernzahl, beim ersten Treffer, und
+# die Meldung sprach vom 5-Minuten-Mittel. Das warf am 14.09.2026 den Schulstr7-
+# AP01 (MT7981, 2 Kerne) im Lasttest um: 9 wget-Schleifen und uhttpd, 1-min-Load
+# 1,5-3,1, also legitime Last. Einkerner verhalten sich wie bisher (Schwelle 2),
+# nur mit Bestaetigung.
+#
+# Kerne fork-frei aus /sys/devices/system/cpu/online ("0", "0-1", "0,2-3").
+load_nproc() {
+  local list r a b n=0 oldifs="$IFS"
+  read -r list < /sys/devices/system/cpu/online 2>/dev/null || list=0
+  IFS=,
+  for r in $list ; do
+    a="${r%-*}" ; b="${r#*-}"
+    case "$a$b" in ''|*[!0-9]*) continue ;; esac
+    n=$((n + b - a + 1))
+  done
+  IFS="$oldifs"
+  [ "$n" -ge 1 ] || n=1
+  NPROC=$n
+}
+
+if ! check_disabled load ; then
+  load_nproc
+  per_cpu=2
+  nf_uci_get "$NF_UCI_hotfix" hotfix.load.per_cpu
+  case "$NF_VAL" in ''|0|*[!0-9]*) ;; *) per_cpu="$NF_VAL" ;; esac
+  load_limit=$((per_cpu * NPROC))
+  # read statt cat|cut|tr: "1.72" wird zu 172, fuehrende Nullen weg
+  read -r _ _ load15 _ < /proc/loadavg
+  l="${load15%.*}${load15#*.}"
+  while case "$l" in 0?*) true ;; *) false ;; esac ; do l="${l#0}" ; done
+  if [ "$l" -gt $((load_limit * 100)) ] 2>/dev/null ; then
+    load_msg="[load] 15min-avg $load15 > $load_limit ($per_cpu x $NPROC cores)"
+    if [ "$(strike /tmp/hotfix.load-high)" -ge 2 ] ; then
+      now_reboot "$load_msg, 2 runs in a row"
+    else
+      logger -s -t "$HOTFIX_TAG" -p 5 "$load_msg, strike 1 of 2"
+    fi
+  else
+    unstrike /tmp/hotfix.load-high
+  fi
+fi
 
 # respondd or dropbear not running
 check_disabled respondd || reboot_when_not_running respondd
