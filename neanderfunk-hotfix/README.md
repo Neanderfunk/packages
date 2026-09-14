@@ -346,6 +346,45 @@ The check, every minute:
 Without carrier the kernel watchdog does not fire at all, so a pulled cable
 never starts an episode in the first place.
 
+**Port reset before the reboot** (adorfer, 14.09.2026). When the strikes are
+reached, the check first runs `ethtool -r <dev>` (restart autoneg), as if the
+cable had been pulled and plugged back in - on the Cudy TR3000 with its
+RTL8221B only that ever helped, a reboot with the cable in often did not:
+
+| step | what | in dry run |
+| --- | --- | --- |
+| 1 | `ethtool -r`, if `ethtool` is installed and `hotfix.eth_tx_stall.soft_reset` is not `0`; logged to the syslog only | runs as well - harmless and informative |
+| - | TX comes back | "recovered after ethtool -r", done |
+| - | `ethtool -r` fails (fixed link, driver without nway_reset) | straight on to step 2 in the same run |
+| 2 | strikes reached again within the hour | reboot | "would reboot ..., ethtool -r did not help" |
+
+One port reset per port counts for 60 minutes, so a port that goes quiet after
+the reset cannot keep the check from escalating. Without `ethtool` (it is only
+in the images of the RTL8221B devices, firmware 8b8041b) step 2 follows
+directly, as before. There is deliberately no `ip link down/up` as a
+substitute: it would cut across netifd and `br-wan`.
+
+**Second trigger, only for RTL8221B uplinks** (Cudy TR3000, WR3000H, M3000):
+a GMAC whose `phydev` is bound to an RTL8221B driver (compared fork-free with
+`[ -ef ]`) and which is a port of `br-wan`. Carrier up but `rx_packets` does
+not move for `hotfix.eth_tx_stall.rx_strikes` runs (default 5, i.e. about 5
+minutes): that is the "booted with the cable already in, SerDes mode wrong"
+case, which need not produce a single TX timeout. An uplink receives something
+every few seconds (ARP, router advertisements, VPN keepalives); five minutes of
+nothing with link up is not idle. Reaction: only `ethtool -r`, **never a
+reboot**, from the same once-per-hour budget per port. RX moving again is
+logged as recovered. On these devices the check therefore always runs its full
+path (with uci), elsewhere the process-free exit stays.
+
+```
+uci set hotfix.eth_tx_stall.soft_reset='0'   # no port reset
+uci set hotfix.eth_tx_stall.rx_strikes='10'  # RTL8221B trigger after 10 min
+uci commit hotfix
+```
+
+Not tested on a real RTL8221B - there is none among our test devices; the
+logic was played back with a fake sysfs including a bound RTL8221B driver.
+
 **Only logs by default.** The reaction is unproven: no hung node has been
 seen yet, the tests ran on played-back counters. Switching it on:
 
@@ -393,7 +432,8 @@ that may still be meshing over wifi. One more reason for the dry-run default.
 
 Testing without rebooting anything: the environment variables
 `HOTFIX_DRYRUN=1`/`=0`, `HOTFIX_SYSFS=<fake sysfs root>`,
-`HOTFIX_DMESG=<file>` and `HOTFIX_STATE=<state prefix>` play the counters back
+`HOTFIX_DMESG=<file>`, `HOTFIX_STATE=<state prefix>` and
+`HOTFIX_ETHTOOL=<command>` play the counters back
 from `/tmp`. Tested that way on 14.09.2026 on a Cudy WR3000S v1 (MT7981,
 26091317bro), with `now_reboot` also removed from the copy under test:
 arming, three strikes with rising counters, a quiet port after a successful
@@ -401,7 +441,12 @@ reset (no action), recovery, timeouts while TX moves, `warm reset failed`
 without carrier, counters going backwards, dry run by default and switched
 on; against the real sysfs with all counters 0: no process started, no state
 file written. `eth0` found and all `queues/tx-*/tx_timeout` readable also on
-MT7621 (COVR-X1860, Xiaomi 4A Gigabit).
+MT7621 (COVR-X1860, Xiaomi 4A Gigabit). The port reset (14.09.2026, same way,
+`ethtool` replaced by `echo` and `false`): reset at the third strike,
+recovery after it, reboot stage when it did not help, a failing `ethtool`
+going straight to the reboot stage, no `ethtool` at all; the RTL8221B trigger
+after five minutes without RX, no reaction without carrier, no second reset
+within the hour.
 
 Watchdog (micrond deadman switch)
 ---------------------------------

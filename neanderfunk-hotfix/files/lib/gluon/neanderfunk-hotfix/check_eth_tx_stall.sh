@@ -29,6 +29,30 @@
 # Timeouts while TX keeps moving (one queue stuck while others send) are logged
 # once per episode and never acted on.
 #
+# Before a reboot comes a port reset: "ethtool -r <dev>" restarts autoneg, as
+# if the cable had been pulled and put back (adorfer, 14.09.2026). On the Cudy
+# TR3000 with its RTL8221B only that ever helped; a reboot with the cable in
+# often did not. So when the strikes are reached:
+#   1. ethtool -r (if ethtool is there and hotfix.eth_tx_stall.soft_reset is not
+#      0) - also in dry run, it is harmless and tells us something. Logged to the
+#      syslog only, not to the reboot log on flash. If TX comes back: "recovered
+#      after ethtool -r", done. If ethtool fails (fixed link, driver without
+#      nway_reset), straight on to 2.
+#   2. the strikes are reached again within the hour: reboot, or in dry run
+#      "would reboot". One ethtool -r per port counts for 60 minutes, so a port
+#      that goes quiet after the reset cannot keep the check from escalating.
+# Without ethtool it is 2. straight away, as before; no "ip link down/up" as a
+# substitute, it would cut across netifd and br-wan.
+#
+# Second, narrow trigger, only for ports with an RTL8221B PHY that are in br-wan
+# (Cudy TR3000, WR3000H, M3000): carrier up but rx_packets does not move for
+# hotfix.eth_tx_stall.rx_strikes runs (default 5, i.e. 5 minutes). That is the
+# "booted with the cable already in, SerDes mode wrong" case, which need not
+# produce a single tx timeout. An uplink receives something every few seconds
+# (ARP, RA, VPN keepalives), five minutes of nothing with link up is not idle.
+# Reaction: only ethtool -r, never a reboot, at most once per hour per port -
+# the same budget as step 1 above, so the two triggers never reset a port twice.
+#
 # Only logs by default (dry run): the reaction is unproven in the field. To
 # let it reboot:
 #     uci set hotfix.eth_tx_stall.dry_run='0' ; uci commit hotfix
@@ -45,6 +69,7 @@
 #     HOTFIX_SYSFS=/tmp/fake                    sysfs root to read from
 #     HOTFIX_DMESG=/tmp/fake.dmesg              file instead of dmesg
 #     HOTFIX_STATE=/tmp/x                       state prefix instead of /tmp/hotfix.eth_tx_stall
+#     HOTFIX_ETHTOOL='echo ethtool'             command instead of ethtool
 
 CHECK='eth_tx_stall'
 SYSFS="${HOTFIX_SYSFS:-/sys}"
@@ -87,7 +112,21 @@ done
 # Unterprozess. Das ist der Normalfall auf allen ~260 Knoten mit diesem
 # Treiber, darunter 64-MB-Geraete (R6120, WR1000) - common.sh und uci erst,
 # wenn der Kernel wirklich einen Timeout gezaehlt hat.
+# Ports mit RTL8221B-PHY im br-wan, fuer den RX-Ausloeser. Die Treiber sind auf
+# jedem filogic-Image registriert; es zaehlt nur, ob der phydev eines Ports auf
+# einen davon zeigt. [ -ef ] vergleicht das ohne Prozessstart.
+rtl_devs=''
+for drvdir in "$SYSFS"/bus/mdio_bus/drivers/*8221B* ; do
+	[ -d "$drvdir" ] || continue
+	for dev in $devs ; do
+		[ "$SYSFS/class/net/$dev/phydev/driver" -ef "$drvdir" ] || continue
+		[ -e "$SYSFS/class/net/br-wan/brif/$dev" ] || continue
+		case " $rtl_devs " in *" $dev "*) ;; *) rtl_devs="$rtl_devs $dev" ;; esac
+	done
+done
+
 busy=''
+[ -n "$rtl_devs" ] && busy=1
 for dev in $devs ; do
 	[ -e "$STATE.$dev" ] && busy=1
 	for q in "$SYSFS/class/net/$dev"/queues/tx-*/tx_timeout ; do
@@ -127,6 +166,43 @@ esac
 
 log() {
 	logger -s -t "$HOTFIX_TAG" -p 5 "[$CHECK] $*"
+}
+
+# Port-Reset per ethtool -r: an, solange soft_reset nicht 0 ist und ethtool da
+ETHTOOL="${HOTFIX_ETHTOOL:-ethtool}"
+soft=1
+nf_uci_get "$NF_UCI_hotfix" "hotfix.$CHECK.soft_reset" && [ "$NF_VAL" = 0 ] && soft=''
+command -v "${ETHTOOL%% *}" >/dev/null 2>&1 || soft=''
+
+rx_need=5
+nf_uci_get "$NF_UCI_hotfix" "hotfix.$CHECK.rx_strikes"
+case "$NF_VAL" in
+	''|0|*[!0-9]*) ;;
+	*) rx_need="$NF_VAL" ;;
+esac
+
+nf_uptime
+SOFT_HOLD=3600
+
+# true, wenn der Port-Reset hinter diesem Marker weniger als SOFT_HOLD her ist
+soft_recent() {
+	local t=''
+	[ -r "$1" ] && read -r t < "$1"
+	case "$t" in ''|*[!0-9]*) return 1 ;; esac
+	[ $((NF_UP - t)) -lt "$SOFT_HOLD" ]
+}
+
+# port_reset <dev> <warum>: ethtool -r, Ergebnis ins Syslog; Rueckgabe wie ethtool
+port_reset() {
+	local out rc
+	out="$($ETHTOOL -r "$1" 2>&1)"
+	rc=$?
+	if [ "$rc" = 0 ] ; then
+		log "$1: $2 - port reset (ethtool -r), watching whether it comes back"
+	else
+		log "$1: $2 - ethtool -r failed (rc $rc${out:+: $(echo "$out" | head -n 1)})"
+	fi
+	return "$rc"
 }
 
 # dmesg nur lesen, wenn ein Netdev scharf ist und steht - also praktisch nie.
@@ -205,7 +281,12 @@ for dev in $devs ; do
 		# with new ones it is a single queue stuck while others still send, not
 		# what this check is about - stay armed, but start counting over.
 		if [ -z "$rose" ] ; then
-			log "$dev: tx moves again after tx timeout (count $first -> $sum), recovered, no action"
+			if [ -e "$st.soft" ] ; then
+				log "$dev: tx moves again after tx timeout (count $first -> $sum), recovered after ethtool -r"
+				rm -f "$st.soft"
+			else
+				log "$dev: tx moves again after tx timeout (count $first -> $sum), recovered, no action"
+			fi
 			rm -f "$st.armed"
 		fi
 		unstrike "$st.s"
@@ -228,7 +309,19 @@ for dev in $devs ; do
 		continue
 	fi
 
-	reason="[$CHECK] $dev: tx hung since tx timeout, tx_packets stuck at $pkts (strike $n of $need), tx_timeout $first -> $sum, bql inflight $inflight, carrier $carrier${DMESG_HITS:+; dmesg: $DMESG_HITS}"
+	# Stufe 1: Port-Reset, einmal je Stunde und Port. Klappt ethtool nicht,
+	# gleich weiter zur Stufe 2.
+	if [ -n "$soft" ] && ! soft_recent "$st.soft" ; then
+		if port_reset "$dev" "tx hung since tx timeout, tx_packets stuck at $pkts, tx_timeout $first -> $sum" ; then
+			echo "$NF_UP" > "$st.soft"
+			unstrike "$st.s"
+			continue
+		fi
+	fi
+
+	soft_note=''
+	soft_recent "$st.soft" && soft_note=', ethtool -r did not help'
+	reason="[$CHECK] $dev: tx hung since tx timeout, tx_packets stuck at $pkts (strike $n of $need), tx_timeout $first -> $sum, bql inflight $inflight, carrier $carrier$soft_note${DMESG_HITS:+; dmesg: $DMESG_HITS}"
 	rm -f "$st.armed"
 	unstrike "$st.s"
 	if [ -n "$dry" ] ; then
@@ -236,5 +329,40 @@ for dev in $devs ; do
 		continue
 	fi
 	now_reboot "$reason"
+done
+
+# RTL8221B-Uplink: Link da, aber RX steht -> nur Port-Reset, nie Reboot
+for dev in $rtl_devs ; do
+	d="$SYSFS/class/net/$dev"
+	sr="$STATE.$dev.rx"
+	rx=''
+	read -r rx < "$d/statistics/rx_packets" 2>/dev/null
+	[ -n "$rx" ] || continue
+	carrier=0
+	read -r carrier < "$d/carrier" 2>/dev/null
+	prx=''
+	[ -r "$sr" ] && read -r prx < "$sr"
+	echo "$rx" > "$sr"
+
+	if [ "$carrier" != 1 ] || [ -z "$prx" ] || [ "$rx" != "$prx" ] ; then
+		unstrike "$sr.s"
+		if [ "$carrier" = 1 ] && [ -n "$prx" ] && [ "$rx" != "$prx" ] && [ -e "$STATE.$dev.soft" ] ; then
+			log "$dev: uplink rx moves again after ethtool -r (rx_packets $prx -> $rx), recovered"
+			rm -f "$STATE.$dev.soft"
+		fi
+		continue
+	fi
+
+	n="$(strike "$sr.s")"
+	[ "$n" = 1 ] && log "$dev: uplink (RTL8221B) has carrier but rx_packets stands at $rx, watching"
+	[ "$n" -lt "$rx_need" ] && continue
+	unstrike "$sr.s"
+	if [ -z "$soft" ] ; then
+		log "$dev: uplink rx_packets stuck at $rx with carrier for $n min, no ethtool or soft_reset=0, no action"
+		continue
+	fi
+	soft_recent "$STATE.$dev.soft" && continue
+	port_reset "$dev" "uplink (RTL8221B) has carrier but rx_packets stuck at $rx for $n min" &&
+		echo "$NF_UP" > "$STATE.$dev.soft"
 done
 exit 0
