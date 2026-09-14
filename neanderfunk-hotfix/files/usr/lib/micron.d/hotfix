@@ -7,3 +7,8 @@
 # leaves the node deaf, and waiting out healthcheck's 7 minute period twice
 # would take a quarter of an hour. The check is two globs and a read.
 */3 * * * * /lib/gluon/neanderfunk-hotfix/check_wifi_firmware.sh
+
+# Every minute: after a TX timeout the check has to see tx_packets stand for
+# three runs, and a node whose ethernet is dead is cut off entirely. On nodes
+# without mtk_soc_eth it ends after two globs, without starting a process.
+* * * * * /lib/gluon/neanderfunk-hotfix/check_eth_tx_stall.sh

@@ -32,6 +32,7 @@ Before any check may act:
 - br-client without an address from the site's own (ULA) `prefix6` - the node
   is meshing, but cannot show its status page or fetch updates
 - respondd or dropbear gone: something very strange happened to the system
+- ethernet TX hung after a transmit timeout (mtk_soc_eth, MT7981/MT7986)
 - micrond itself dying, caught by a deadman watchdog (see below)
 
 Manual installation
@@ -179,6 +180,7 @@ Checks
 | `dropbear` | dropbear not running | reboot |
 | `no_wifi_clients` | clients were seen and then all disappeared | wifi restart |
 | `wifi_firmware` | mt76 wifi firmware crashed, see below | reboot |
+| `eth_tx_stall` | ethernet TX hung after a transmit timeout, see below | reboot |
 | `watchdog` | deadman switch for micrond itself, see below | reboot |
 
 hostapd not serving an AP interface (`hostapd_pids`)
@@ -288,6 +290,78 @@ mt76-generic. On chips that do not export `rf_regval` (a Xiaomi 4A Gigabit with
 `mt7603e`/`mt76x2e`) nothing matches and the check does nothing. Worth knowing,
 because on that device the original's `cat` fails too: only its `ls` guard kept
 it from rebooting the node every two minutes.
+
+Ethernet TX hung after a transmit timeout (`eth_tx_stall`)
+---------------------------------------------------------
+
+For `mtk_soc_eth` (MT7981/MT7986), after
+[openwrt/openwrt#17505](https://github.com/openwrt/openwrt/issues/17505): first
+`NETDEV WATCHDOG: eth0 (mtk_soc_eth): transmit queue 0 timed out`, then
+`warm reset failed`, after which both GMACs stay dead. Reported to us for a Cudy
+TR3000 whose 2.5G WAN (RTL8221B over 2500base-x) dies and does not come back.
+**Not yet confirmed on our own nodes** - the dmesg of a hung node is still
+outstanding.
+
+What the kernel does (5.15 with the backports `729-19` to `729-21`):
+
+* `dev_watchdog()` finds a TX queue stopped for longer than `watchdog_timeo`
+  (5 s for this driver), counts `/sys/class/net/<dev>/queues/tx-N/tx_timeout`
+  up and calls the driver - every 5 s for as long as the queue stays stuck. The
+  WARN appears only once per boot, the counter keeps rising.
+* `mtk_tx_timeout()` only schedules a reset when `mtk_hw_reset_check()` finds
+  error bits in the frame engine's interrupt status. Otherwise it returns
+  silently, and the queue may simply stay stuck.
+* A reset that fails logs `warm reset failed`.
+
+The check, every minute:
+
+| situation | reaction |
+| --- | --- |
+| no netdev of a listed driver | ends after two globs, no process started, no uci |
+| the `tx_timeout` sum of a netdev rose | log once, watch that netdev |
+| watched, `tx_packets` did not move since the last run | one strike; `warm reset failed` in the dmesg makes it two |
+| `hotfix.eth_tx_stall.strikes` reached (default 3, i.e. about 3 minutes) | reboot, reason with netdev, counters, BQL inflight, carrier and the last two matching dmesg lines |
+| watched, `tx_packets` moves and no new timeouts | "recovered" logged, episode over, no action |
+| timeouts while `tx_packets` still moves | logged once, never acted on (reset worked within the minute, or one queue stuck while others send) |
+| watched, carrier lost, no `warm reset failed` | episode dropped - a cable pulled mid-episode must not reboot the node |
+
+Without carrier the kernel watchdog does not fire at all, so a pulled cable
+never starts an episode in the first place.
+
+Only the netdevs the driver itself registers are looked at - the GMACs, found as
+`/sys/bus/*/drivers/<driver>/*/net/*` - not the DSA ports behind them. On a Cudy
+WR3000S that is `eth0` alone (16 TX queues), with `lan1`-`lan4` on the switch.
+Further drivers are added with
+
+```
+uci add_list hotfix.eth_tx_stall.driver='<driver>'
+uci commit hotfix
+```
+
+The list is read straight from `/etc/config/hotfix` without starting `uci`,
+because the entry runs every minute on every node and almost none of them have
+this driver; a driver added without `uci commit` is therefore not seen.
+
+The reboot goes through `now_reboot()` like every other check: held back below
+`reboot_uptime_min`, never while the autoupdater runs, and written to the
+shared reboot log. Whether a warm reboot helps at all is open: the TR3000's
+operator reports the WAN staying dead across warm reboots. Then the check
+cannot cure it, and the hold-off limits it to one reboot per hour.
+
+Testing without rebooting anything:
+
+```
+uci set hotfix.eth_tx_stall.dry_run='1'   # logs "dry run, would reboot: ..."
+```
+
+and for test runs by hand the environment variables `HOTFIX_DRYRUN=1`,
+`HOTFIX_SYSFS=<fake sysfs root>`, `HOTFIX_DMESG=<file>` and
+`HOTFIX_STATE=<state prefix>`, so the counters can be played back from `/tmp`.
+Tested that way on 14.09.2026 on a Cudy WR3000S v1 (MT7981, 26091317bro), with
+`now_reboot` also removed from the copy under test: arming, three strikes,
+recovery, a cable pulled mid-episode, timeouts while TX moves, `warm reset
+failed`, counters going backwards; against the real sysfs: `eth0` found, all
+`queues/tx-*/tx_timeout` readable, 10 ms per run.
 
 Watchdog (micrond deadman switch)
 ---------------------------------
