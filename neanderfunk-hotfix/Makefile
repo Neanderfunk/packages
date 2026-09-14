@@ -21,7 +21,8 @@ define Package/$(PKG_NAME)/description
 	wounded" states, too many stray tunneldigger instances, hostapd processes
 	with stale pid files, an AP whose clients have all disappeared, br-client
 	without an address from the site prefix, respondd or dropbear gone,
-	ethernet TX hung after a transmit timeout (mtk_soc_eth), and a
+	ethernet TX hung after a transmit timeout (mtk_soc_eth, only logged
+	unless switched on), and a
 	deadman watchdog for micrond itself. Checks about the network - gateway,
 	anycast, mesh neighbours, bridge ports - live in neanderfunk-linkcheck.
 	Each check can be switched off per node (uci set hotfix.<check>.disabled=1)

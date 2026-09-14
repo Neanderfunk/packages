@@ -32,7 +32,8 @@ Before any check may act:
 - br-client without an address from the site's own (ULA) `prefix6` - the node
   is meshing, but cannot show its status page or fetch updates
 - respondd or dropbear gone: something very strange happened to the system
-- ethernet TX hung after a transmit timeout (mtk_soc_eth, MT7981/MT7986)
+- ethernet TX hung after a transmit timeout (mtk_soc_eth: filogic, MT7621,
+  MT7622, mt76x8, mt7620; by default only logged)
 - micrond itself dying, caught by a deadman watchdog (see below)
 
 Manual installation
@@ -106,6 +107,7 @@ set on the node - so a local `uci set` always wins over the site default:
   hotfix = {
     check_uptime_min  = 5,                  -- optional, minutes, default 5
     reboot_uptime_min = 60,                 -- optional, minutes, default 60
+    eth_tx_stall_dry_run = 0,               -- optional, let eth_tx_stall reboot (default: only log)
     disabled_checks = { 'load', 'tunneldigger' },  -- optional
   },
 ```
@@ -180,7 +182,7 @@ Checks
 | `dropbear` | dropbear not running | reboot |
 | `no_wifi_clients` | clients were seen and then all disappeared | wifi restart |
 | `wifi_firmware` | mt76 wifi firmware crashed, see below | reboot |
-| `eth_tx_stall` | ethernet TX hung after a transmit timeout, see below | reboot |
+| `eth_tx_stall` | ethernet TX hung after a transmit timeout, see below | reboot, by default only logged |
 | `watchdog` | deadman switch for micrond itself, see below | reboot |
 
 hostapd not serving an AP interface (`hostapd_pids`)
@@ -317,21 +319,46 @@ The check, every minute:
 
 | situation | reaction |
 | --- | --- |
-| no netdev of a listed driver | ends after two globs, no process started, no uci |
+| no netdev of a listed driver, or all `tx_timeout` counters 0 and no episode running | ends after a few globs and reads, no process started, no uci |
 | the `tx_timeout` sum of a netdev rose | log once, watch that netdev |
-| watched, `tx_packets` did not move since the last run | one strike; `warm reset failed` in the dmesg makes it two |
-| `hotfix.eth_tx_stall.strikes` reached (default 3, i.e. about 3 minutes) | reboot, reason with netdev, counters, BQL inflight, carrier and the last two matching dmesg lines |
+| watched, `tx_packets` did not move **and the timeouts kept rising** | one strike (a stuck queue is re-reported by the kernel every 5 s); `warm reset failed` in the dmesg makes it two |
+| watched, `tx_packets` did not move, no new timeouts, but `warm reset failed` | strikes too - a dead GMAC need not have carrier any more |
+| `hotfix.eth_tx_stall.strikes` reached (default 3, i.e. about 3 minutes) | reboot - **only if switched on**, see below; otherwise "dry run, would reboot", reason with netdev, counters, BQL inflight, carrier and the last two matching dmesg lines |
 | watched, `tx_packets` moves and no new timeouts | "recovered" logged, episode over, no action |
-| timeouts while `tx_packets` still moves | logged once, never acted on (reset worked within the minute, or one queue stuck while others send) |
-| watched, carrier lost, no `warm reset failed` | episode dropped - a cable pulled mid-episode must not reboot the node |
+| watched, `tx_packets` stands but no new timeouts | episode closed, no action: the reset worked and the port is just quiet, or the cable is out |
+| timeouts while `tx_packets` still moves | logged once, never acted on (one queue stuck while others send) |
 
 Without carrier the kernel watchdog does not fire at all, so a pulled cable
 never starts an episode in the first place.
 
-Only the netdevs the driver itself registers are looked at - the GMACs, found as
-`/sys/bus/*/drivers/<driver>/*/net/*` - not the DSA ports behind them. On a Cudy
-WR3000S that is `eth0` alone (16 TX queues), with `lan1`-`lan4` on the switch.
-Further drivers are added with
+**Only logs by default.** The reaction is unproven: no hung node has been
+seen yet, the tests ran on played-back counters. Switching it on:
+
+```
+uci set hotfix.eth_tx_stall.dry_run='0'
+uci commit hotfix
+```
+
+or for the whole community in the `site.conf` (seeded by
+`500-neanderfunk-hotfix` if the node has no value of its own):
+
+```lua
+  hotfix = {
+    eth_tx_stall_dry_run = 0,
+  },
+```
+
+**Scope.** Only the netdevs the driver itself registers are looked at - the
+GMACs, found as `/sys/bus/*/drivers/<driver>/*/net/*` - not the DSA ports
+behind them. On a Cudy WR3000S that is `eth0` alone (16 TX queues), with
+`lan1`-`lan4` on the switch. `mtk_soc_eth` is the driver name not only on
+filogic (MT7981/MT7986) but also on MT7621, MT7622 and, from OpenWrt's own
+ramips driver, mt76x8 and mt7620: on 14.09.2026 263 of 1112 online nodes,
+among them the 64 MB mt76x8 devices (19 Netgear R6120, Archer C50 v3, Cudy
+WR1000). That is why a node without any timeout since boot starts no process
+for this check. The analysis of the reset path above is for the mediatek
+driver; the ramips one is only covered by the generic logic. Further drivers
+are added with
 
 ```
 uci add_list hotfix.eth_tx_stall.driver='<driver>'
@@ -339,29 +366,27 @@ uci commit hotfix
 ```
 
 The list is read straight from `/etc/config/hotfix` without starting `uci`,
-because the entry runs every minute on every node and almost none of them have
-this driver; a driver added without `uci commit` is therefore not seen.
+because the entry runs every minute on every node and most of them do not
+have this driver; a driver added without `uci commit` is therefore not seen.
 
 The reboot goes through `now_reboot()` like every other check: held back below
 `reboot_uptime_min`, never while the autoupdater runs, and written to the
 shared reboot log. Whether a warm reboot helps at all is open: the TR3000's
 operator reports the WAN staying dead across warm reboots. Then the check
-cannot cure it, and the hold-off limits it to one reboot per hour.
+cannot cure it, and the hold-off limits it to one reboot per hour - on a node
+that may still be meshing over wifi. One more reason for the dry-run default.
 
-Testing without rebooting anything:
-
-```
-uci set hotfix.eth_tx_stall.dry_run='1'   # logs "dry run, would reboot: ..."
-```
-
-and for test runs by hand the environment variables `HOTFIX_DRYRUN=1`,
-`HOTFIX_SYSFS=<fake sysfs root>`, `HOTFIX_DMESG=<file>` and
-`HOTFIX_STATE=<state prefix>`, so the counters can be played back from `/tmp`.
-Tested that way on 14.09.2026 on a Cudy WR3000S v1 (MT7981, 26091317bro), with
-`now_reboot` also removed from the copy under test: arming, three strikes,
-recovery, a cable pulled mid-episode, timeouts while TX moves, `warm reset
-failed`, counters going backwards; against the real sysfs: `eth0` found, all
-`queues/tx-*/tx_timeout` readable, 10 ms per run.
+Testing without rebooting anything: the environment variables
+`HOTFIX_DRYRUN=1`/`=0`, `HOTFIX_SYSFS=<fake sysfs root>`,
+`HOTFIX_DMESG=<file>` and `HOTFIX_STATE=<state prefix>` play the counters back
+from `/tmp`. Tested that way on 14.09.2026 on a Cudy WR3000S v1 (MT7981,
+26091317bro), with `now_reboot` also removed from the copy under test:
+arming, three strikes with rising counters, a quiet port after a successful
+reset (no action), recovery, timeouts while TX moves, `warm reset failed`
+without carrier, counters going backwards, dry run by default and switched
+on; against the real sysfs with all counters 0: no process started, no state
+file written. `eth0` found and all `queues/tx-*/tx_timeout` readable also on
+MT7621 (COVR-X1860, Xiaomi 4A Gigabit).
 
 Watchdog (micrond deadman switch)
 ---------------------------------
