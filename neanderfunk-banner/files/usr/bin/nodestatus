@@ -354,14 +354,22 @@ if size then
 end
 local overlay_ro = (readfile('/proc/mounts') or ''):find('/ overlay ro,', 1, true) ~= nil
 
+-- SoC-Temperatur aus neanderfunk-respondd (statistics.neanderfunk.temperature,
+-- dort gefiltert und 10 s gecacht) - dieselbe Zahl wie auf der Statusseite.
+-- Ohne Sensor oder mit aelterer Firmware steht nichts da. ASCII "C" statt
+-- Gradzeichen: auch die serielle Konsole soll es lesen koennen.
+local soc = stats.neanderfunk and stats.neanderfunk.temperature
+	and tonumber(stats.neanderfunk.temperature.soc)
+local soctxt = soc and string.format('SoC %.1f C', soc) or ''
+
 local l1, l5, l15 = (readline('/proc/loadavg') or ''):match('^(%S+) (%S+) (%S+)')
 local loadwarn = tonumber(l5) and tonumber(l5) > nproc
 local loadtxt = 'load ' .. (l1 or '?') .. ' ' .. (l5 or '?') .. ' ' .. (l15 or '?')
 row('System', 'up ' .. (uptime and duration(uptime) or '?') .. '  ' .. nproc .. (nproc == 1 and ' Kern' or ' Kerne'),
 	loadwarn and c('yellow', loadtxt) or loadtxt, 'Kernel ' .. (readline('/proc/sys/kernel/osrelease') or '?'))
-if memtxt ~= '' or flashtxt ~= '' then
+if memtxt ~= '' or flashtxt ~= '' or soctxt ~= '' then
 	row('Frei', memwarn and c('yellow', memtxt) or memtxt,
-		(flashwarn or overlay_ro) and c('red', flashtxt) or flashtxt, '')
+		(flashwarn or overlay_ro) and c('red', flashtxt) or flashtxt, soctxt)
 end
 
 if overlay_ro then warn('red', 'Overlay ist read-only - Flash voll? Dateien unter /overlay/upper pruefen, dann reboot') end

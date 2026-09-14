@@ -15,7 +15,11 @@ terminal (`NO_COLOR` disables, `FORCE_COLOR` forces colour). It shows what is
 actually running, not just what is configured:
 
 - node, image name, domain, firmware, uptime, load, free RAM and flash,
-  autoupdater, contact and location
+  the SoC temperature where the hardware has a sensor (`SoC 56.3 C` next to
+  RAM and flash, from `statistics.neanderfunk.temperature.soc` of
+  neanderfunk-respondd - the same value as on the status page; nothing on
+  hardware without one or on firmware without that field), autoupdater,
+  contact and location
 - ports with link and speed from `/sys` (DSA) or `swconfig`, mapped to their
   Gluon roles via `/etc/board.json`, WAN addresses. Ports split off into
   further `gluon` interface sections (e.g. `iface_client`) or into own mesh
