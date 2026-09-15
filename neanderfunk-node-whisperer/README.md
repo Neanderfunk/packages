@@ -62,6 +62,21 @@ selben Wertebereich und heisst in der App weiterhin "Gateway". Die App
 funktioniert also unveraendert weiter - das Gateway-Byte sagt nur endlich die
 Wahrheit.
 
+"Knoten im Netz" zaehlte jeden Weg
+----------------------------------
+
+Bytes 2-3 des `batman_adv`-Datensatzes zeigt die App als "Knoten im Netz". Der
+Daemon zaehlte dafuer jeden Eintrag der Originator-Tabelle
+(`BATADV_CMD_GET_ORIGINATORS`) - und die hat einen Eintrag je Originator,
+Next-Hop und Interface. Ein Knoten, den man ueber mehrere Nachbarn auf 2,4 GHz,
+5 GHz und ueber das VPN hoert, zaehlte mehrfach. Am Archer C25 (9 Nachbarn,
+15.09.2026): 338 Eintraege, 91 verschiedene Originatoren, die App zeigte 338.
+
+`patches/0004` zaehlt nur den Eintrag mit `BATADV_ATTR_FLAG_BEST` - genau einen
+je Originator, die Zeile, die `batctl o` mit `*` markiert (am C25: 91 von 338).
+Die Nachbarzahl (Bytes 4-5) bleibt, wie sie ist: direkte Links, einer je
+Nachbar und Interface, wie `batctl n`. Drahtformat und App unveraendert.
+
 Namensraum
 ----------
 

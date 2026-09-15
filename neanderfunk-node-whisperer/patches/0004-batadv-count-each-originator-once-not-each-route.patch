@@ -1,0 +1,43 @@
+From 5bc0e529e0d2afc9fab049be12e78a4131ab3798 Mon Sep 17 00:00:00 2001
+From: Neanderfunk <projekt@neanderfunk.de>
+Date: Tue, 15 Sep 2026 08:19:18 +0200
+Subject: [PATCH] batadv: count each originator once, not each route
+
+Bytes 2-3 of the batman_adv information element are what the NodeMonitor app
+shows as "Knoten im Netz" / nodes in the network. They were incremented for
+every entry of the BATADV_CMD_GET_ORIGINATORS dump - but that dump has one
+entry per originator, next hop and hard interface. A node heard through
+several neighbours over 2.4 GHz, 5 GHz and the VPN is counted once per path.
+
+Measured on a Gluon v2023.2 node (Archer C25, 9 neighbours): 332 entries in
+the originator table, 91 distinct originators; the app showed 338. 43 of the
+originators were known via 5 paths, 5 via 9.
+
+Count only the entry batman flags with BATADV_ATTR_FLAG_BEST - exactly one per
+originator. The neighbour count (bytes 4-5) is unchanged: it counts direct
+links, one per neighbour and interface, like "batctl n". Wire format and app
+stay as they are.
+---
+ src/batadv.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/batadv.c b/src/batadv.c
+index 4e3ddcc..0ca83dc 100644
+--- a/src/batadv.c
++++ b/src/batadv.c
+@@ -87,7 +87,11 @@ static int parse_orig_list_netlink_cb(struct nl_msg *msg, void *arg)
+ 	if (if_indextoname(hardif, ifname) == NULL)
+ 		return NL_OK;
+ 
+-	opts->stats->originator_count++;
++	/* The dump has one entry per originator AND next hop AND interface: a
++	 * node heard through five neighbours shows up five times. Count each
++	 * originator once, on the entry batman marks as its best next hop. */
++	if (attrs[BATADV_ATTR_FLAG_BEST])
++		opts->stats->originator_count++;
+ 	if (memcmp(orig, dest, 6) != 0)
+ 		return NL_OK;
+ 
+-- 
+2.53.0
+
