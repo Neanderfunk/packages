@@ -23,7 +23,7 @@
 # der dokumentierte Ausschalter des neuesten Checks funktionierte damit nicht.
 CHECKS='kernel_bug ath_malloc ksoftirqd_malloc hostapd_pids dfs_failcheck
 	tunneldigger load respondd dropbear watchdog no_wifi_clients
-	br_client_ipv6 wifi_firmware eth_tx_stall'
+	br_client_ipv6 wifi_firmware eth_tx_stall logremote'
 
 # Sektionen, die es einmal gab und die ersatzlos entfallen sind. Sie liegen
 # sonst bis in alle Ewigkeit im uci und lassen `uci show hotfix` Checks

@@ -209,6 +209,56 @@ fi
 check_disabled respondd || reboot_when_not_running respondd
 check_disabled dropbear || reboot_when_not_running dropbear
 
+# Remote-Syslog (system.@system[0].log_ip): logread -r verbindet seinen UDP-
+# Socket einmal beim Start, und das ist beim Boot zu frueh. Entweder scheitert
+# der connect() still und logread laeuft tatenlos weiter, oder er gelingt mit
+# der Absenderadresse, die es gerade gab - meist nur die ULA der Domain, bevor
+# das oeffentliche Praefix per RA da ist. Pakete mit ULA-Absender an eine
+# oeffentliche Adresse verwirft der Supernode. Beides am 15.09.2026 auf allen 13
+# Schulstr7-Geraeten und dem MR90X nach dem Update, geschrieben wurde nichts.
+# Dasselbe droht, wenn das Praefix spaeter wechselt (Supernode-Wechsel). Die
+# procd-Instanz "logremote" hat kein respawn.
+#
+# Deshalb: Weicht die Absenderadresse des Sockets von der ab, die der Kernel
+# jetzt waehlen wuerde (oder gibt es keinen Socket), nur die logremote-Instanz
+# neu starten - kein Reboot, logd und sein Puffer bleiben. Ohne log_ip (fast die
+# ganze Flotte) kein Prozessstart: /etc/config/system wird per read gelesen.
+logremote_check() {
+  local kw opt val lip='' lport='514' lremote=1 want have pidf p fam=''
+  [ -r /etc/config/system ] || return 0
+  while read -r kw opt val ; do
+    [ "$kw" = option ] || continue
+    val="${val#\'}" ; val="${val%\'}"
+    case "$opt" in
+      log_ip) lip="$val" ;;
+      log_port) lport="$val" ;;
+      log_remote) lremote="$val" ;;
+    esac
+  done < /etc/config/system
+  [ -n "$lip" ] && [ "$lremote" != 0 ] || return 0
+  # nur Adressen, keine Namen; IPv6 am Doppelpunkt erkennen, Klammern weg
+  lip="${lip#\[}" ; lip="${lip%\]}"
+  case "$lip" in
+    *:*) fam=-6 ;;
+    *[!0-9.]*) return 0 ;;
+  esac
+  want="$(ip $fam route get "$lip" 2>/dev/null | sed -n 's/.* src \([^ ]*\).*/\1/p' | head -n 1)"
+  # keine Route (kein Uplink): nichts zu tun, nicht jede Runde neu starten
+  [ -n "$want" ] || return 0
+  have="$(netstat -anup 2>/dev/null | awk -v p=":$lport" '$NF ~ /\/logread$/ && substr($5, length($5) - length(p) + 1) == p { print $4; exit }')"
+  have="${have%:*}"
+  [ "$have" = "$want" ] && return 0
+  for pidf in /var/run/logread.*.pid ; do
+    [ -r "$pidf" ] || continue
+    read -r p < "$pidf"
+    grep -q -- '-r' "/proc/$p/cmdline" 2>/dev/null && kill "$p" 2>/dev/null
+  done
+  sleep 1
+  /etc/init.d/log start >/dev/null 2>&1
+  logger -s -t "$HOTFIX_TAG" -p 5 "[logremote] remote syslog socket from ${have:-nowhere} to $lip, kernel would use $want - restarted logread"
+}
+check_disabled logremote || logremote_check
+
 # br-client without an address from the site prefix. site.conf's prefix6 is the
 # domain's own ULA prefix (fd..), which the node assigns to itself - so this is a
 # local network-config fault, not a question of reachability, and it stays here

@@ -198,6 +198,7 @@ Checks
 | `no_wifi_clients` | clients were seen and then all disappeared | wifi restart |
 | `wifi_firmware` | mt76 wifi firmware crashed, see below | reboot |
 | `eth_tx_stall` | ethernet TX hung after a transmit timeout, see below | reboot, by default only logged |
+| `logremote` | remote syslog socket with a stale or no source address, see below | restart of the logread instance |
 | `watchdog` | deadman switch for micrond itself, see below | reboot |
 
 hostapd not serving an AP interface (`hostapd_pids`)
@@ -447,6 +448,29 @@ recovery after it, reboot stage when it did not help, a failing `ethtool`
 going straight to the reboot stage, no `ethtool` at all; the RTL8221B trigger
 after five minutes without RX, no reaction without carrier, no second reset
 within the hour.
+
+Remote syslog socket (`logremote`)
+----------------------------------
+
+With `system.@system[0].log_ip` set, `logread -r` connects its UDP socket once,
+when it starts - and at boot that is too early. Either the `connect()` fails
+silently and logread keeps running without ever sending, or it succeeds with the
+source address that existed at that moment, usually only the domain's ULA,
+before the public prefix arrives by router advertisement. Packets from a ULA to
+a public address are dropped by the supernode. Seen on 15.09.2026 on all 13
+Schulstr7 devices and on a MERCUSYS MR90X after their firmware update: nothing
+arrived, `logread` claimed "connected". The same happens when the public prefix
+changes later (supernode takeover). The procd instance `logremote` has no
+respawn.
+
+Every healthcheck run (`*/7`) compares the source address of logread's socket
+(`netstat -anup`) with the one the kernel would pick now (`ip route get
+<log_ip>`). If they differ, or there is no socket, only the `logremote`
+instance is restarted: the logread process is killed and `/etc/init.d/log
+start` brings it back - no reboot, `logd` and its buffer stay. Without a route
+to `log_ip` (no uplink) it does nothing, and a host name instead of an address
+is left alone. Nodes without `log_ip`, nearly the whole fleet, start no process
+for this: `/etc/config/system` is read with `read`.
 
 Watchdog (micrond deadman switch)
 ---------------------------------
