@@ -73,24 +73,37 @@ if autoupdater_busy ; then
   safety_exit "autoupdate running"
 fi
 
-# Die drei Kernel-Checks lesen denselben Ringpuffer: dmesg einmal, ein awk
-# fuer alle drei statt dreimal dmesg durch bis zu drei grep. Die Muster sind
-# dieselben wie vorher, auch "je Zeile" (ath_malloc: ath, alloc of size und
-# failed in derselben Zeile).
-kernel_bug=0 ; ath_malloc=0 ; ksoftirqd_malloc=0
-if ! check_disabled kernel_bug || ! check_disabled ath_malloc || ! check_disabled ksoftirqd_malloc ; then
+# Die vier Kernel-Checks lesen denselben Ringpuffer: dmesg einmal, ein awk
+# fuer alle statt je ein grep. Die Muster sind dieselben wie vorher, auch
+# "je Zeile" (ath_malloc: ath, alloc of size und failed in derselben Zeile).
+#
+# ath10k_rxhang: "ath10k_pci ...: rx ring became corrupted: -5". Der ath10k
+# (qca988x/qca9887, 5-GHz-Radio z. B. am Archer C7/C25) fuellt seine RX-DMA-
+# Ring-Puffer im IRQ-Kontext per GFP_ATOMIC nach; reicht die atomare Reserve
+# unter Last nicht, wird der Ring korrupt. Der Chip haengt danach (5 GHz tot),
+# ohne Selbst-Recovery: `wifi` half nicht, nur ein Reboot (C25, 15.09.2026,
+# 3x reproduziert; mit vm.min_free_kbytes=2048 unter WLAN-Last, mit 8192 nie).
+# Der wifi_firmware-Check deckt nur mt76 ab (rf_regval), fuer ath10k gab es
+# bis hier keinen. Wie die anderen dmesg-Checks: nach dem Reboot ist der
+# Ringpuffer leer, also kein Loop; reboot_uptime_min gilt (kein Boot-Loop bei
+# einem Geraet, das den Fehler gleich beim Start wirft).
+kernel_bug=0 ; ath_malloc=0 ; ksoftirqd_malloc=0 ; ath10k_rxhang=0
+if ! check_disabled kernel_bug || ! check_disabled ath_malloc || ! check_disabled ksoftirqd_malloc || ! check_disabled ath10k_rxhang ; then
   set -- $(dmesg 2>/dev/null | awk '
     /Kernel bug/ { k = 1 }
     /ath/ && /alloc of size/ && /failed/ { a = 1 }
     /ksoftirqd/ && /page allocation failure/ { s = 1 }
-    END { print k + 0, a + 0, s + 0 }')
-  kernel_bug="${1:-0}" ; ath_malloc="${2:-0}" ; ksoftirqd_malloc="${3:-0}"
+    /ath10k/ && /rx ring became corrupted/ { r = 1 }
+    END { print k + 0, a + 0, s + 0, r + 0 }')
+  kernel_bug="${1:-0}" ; ath_malloc="${2:-0}" ; ksoftirqd_malloc="${3:-0}" ; ath10k_rxhang="${4:-0}"
 fi
 # batman-adv crash when removing interface in certain configurations
 check_disabled kernel_bug || { [ "$kernel_bug" = 1 ] && now_reboot "[kernel_bug] gluon issue #680" ; true ; }
 # ath/ksoftirq-malloc-errors (upcoming oom scenario)
 check_disabled ath_malloc || { [ "$ath_malloc" = 1 ] && now_reboot "[ath_malloc] ath0 malloc fail" ; true ; }
 check_disabled ksoftirqd_malloc || { [ "$ksoftirqd_malloc" = 1 ] && now_reboot "[ksoftirqd_malloc] kernel malloc fail" ; true ; }
+# ath10k rx ring corrupted -> 5 GHz haengt, nur Reboot hilft (siehe oben)
+check_disabled ath10k_rxhang || { [ "$ath10k_rxhang" = 1 ] && now_reboot "[ath10k_rxhang] ath10k rx ring corrupted, 5GHz stuck" ; true ; }
 # hostapd bedient die konfigurierten AP-Interfaces?
 #
 # Frueher wurde hier jeder hostapd-Prozess aus der ps-Ausgabe hereingereicht:
