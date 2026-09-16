@@ -77,33 +77,68 @@ fi
 # fuer alle statt je ein grep. Die Muster sind dieselben wie vorher, auch
 # "je Zeile" (ath_malloc: ath, alloc of size und failed in derselben Zeile).
 #
-# ath10k_rxhang: "ath10k_pci ...: rx ring became corrupted: -5". Der ath10k
-# (qca988x/qca9887, 5-GHz-Radio z. B. am Archer C7/C25) fuellt seine RX-DMA-
-# Ring-Puffer im IRQ-Kontext per GFP_ATOMIC nach; reicht die atomare Reserve
-# unter Last nicht, wird der Ring korrupt. Der Chip haengt danach (5 GHz tot),
-# ohne Selbst-Recovery: `wifi` half nicht, nur ein Reboot (C25, 15.09.2026,
-# 3x reproduziert; mit vm.min_free_kbytes=2048 unter WLAN-Last, mit 8192 nie).
-# Der wifi_firmware-Check deckt nur mt76 ab (rf_regval), fuer ath10k gab es
-# bis hier keinen. Wie die anderen dmesg-Checks: nach dem Reboot ist der
-# Ringpuffer leer, also kein Loop; reboot_uptime_min gilt (kein Boot-Loop bei
-# einem Geraet, das den Fehler gleich beim Start wirft).
-kernel_bug=0 ; ath_malloc=0 ; ksoftirqd_malloc=0 ; ath10k_rxhang=0
+# ath10k_rxhang faengt zwei Fehlerbilder des ath10k (qca988x/qca9887, 5-GHz-
+# Radio z. B. am Archer C7/C25). Beide enden mit totem 5 GHz ohne Selbst-
+# Recovery, beide traten unter WLAN-Last mit vm.min_free_kbytes=2048 auf, mit
+# 8192 nie (C25, 15./16.09.2026):
+#
+#   rxring  "ath10k_pci ...: rx ring became corrupted: -5". Der ath10k fuellt
+#           seine RX-DMA-Ring-Puffer im IRQ-Kontext per GFP_ATOMIC nach; reicht
+#           die atomare Reserve unter Last nicht, wird der Ring korrupt. `wifi`
+#           half nicht, nur ein Reboot (3x reproduziert). Eine einzige Zeile
+#           genuegt: Der Ring repariert sich nicht von selbst.
+#   fwloop  "ath10k_pci ...: failed to send pdev bss chan info request,
+#           restarting hardware" gefolgt von "already restarting", alle ~9 s.
+#           Die Chip-Firmware stuerzt ab, der Treiber-Neustart kommt nicht
+#           durch. Hier zaehlen wir: Ein einzelnes "restarting hardware" kann
+#           ein Ausrutscher sein, nach dem der Treiber sich faengt (adorfer,
+#           16.09.) - erst ab hotfix.settings.ath10k_restart_min Vorkommen
+#           (Vorgabe 3) im Ringpuffer ist es eine Schleife.
+#
+# Die Meldung nennt das Fehlerbild, damit in der Auswertung nicht nur "ath10k"
+# steht (adorfer, 16.09.). Der wifi_firmware-Check deckt nur mt76 ab
+# (rf_regval), fuer ath10k gab es bis hier keinen. Wie die anderen
+# dmesg-Checks: nach dem Reboot ist der Ringpuffer leer, also kein Loop;
+# reboot_uptime_min gilt (kein Boot-Loop bei einem Geraet, das den Fehler
+# gleich beim Start wirft).
+#
+# Grenze des Checks: Beim fwloop am 16.09. wurde der Knoten spaeter ganz
+# unerreichbar - Konsole stumm, kein Netz. Der Hardware-Watchdog (procd haelt
+# /dev/watchdog, Timeout 30 s, Fuetterung alle 5 s) loeste dabei NICHT aus, es
+# war also kein Kernel-Freeze: procd lief weiter und fuetterte, waehrend
+# Konsole, Netz und WLAN tot waren. micrond kam trotzdem nicht mehr zum Zug,
+# der Check kann in diesem Endzustand also nichts mehr ausrichten - er muss
+# vorher greifen, solange die Neustartschleife laeuft.
+kernel_bug=0 ; ath_malloc=0 ; ksoftirqd_malloc=0 ; ath10k_rxring=0 ; ath10k_fwloop=0
 if ! check_disabled kernel_bug || ! check_disabled ath_malloc || ! check_disabled ksoftirqd_malloc || ! check_disabled ath10k_rxhang ; then
   set -- $(dmesg 2>/dev/null | awk '
     /Kernel bug/ { k = 1 }
     /ath/ && /alloc of size/ && /failed/ { a = 1 }
     /ksoftirqd/ && /page allocation failure/ { s = 1 }
     /ath10k/ && /rx ring became corrupted/ { r = 1 }
-    END { print k + 0, a + 0, s + 0, r + 0 }')
-  kernel_bug="${1:-0}" ; ath_malloc="${2:-0}" ; ksoftirqd_malloc="${3:-0}" ; ath10k_rxhang="${4:-0}"
+    /ath10k/ && (/restarting hardware/ || /already restarting/) { f++ }
+    END { print k + 0, a + 0, s + 0, r + 0, f + 0 }')
+  kernel_bug="${1:-0}" ; ath_malloc="${2:-0}" ; ksoftirqd_malloc="${3:-0}"
+  ath10k_rxring="${4:-0}" ; ath10k_fwloop="${5:-0}"
 fi
 # batman-adv crash when removing interface in certain configurations
 check_disabled kernel_bug || { [ "$kernel_bug" = 1 ] && now_reboot "[kernel_bug] gluon issue #680" ; true ; }
 # ath/ksoftirq-malloc-errors (upcoming oom scenario)
 check_disabled ath_malloc || { [ "$ath_malloc" = 1 ] && now_reboot "[ath_malloc] ath0 malloc fail" ; true ; }
 check_disabled ksoftirqd_malloc || { [ "$ksoftirqd_malloc" = 1 ] && now_reboot "[ksoftirqd_malloc] kernel malloc fail" ; true ; }
-# ath10k rx ring corrupted -> 5 GHz haengt, nur Reboot hilft (siehe oben)
-check_disabled ath10k_rxhang || { [ "$ath10k_rxhang" = 1 ] && now_reboot "[ath10k_rxhang] ath10k rx ring corrupted, 5GHz stuck" ; true ; }
+# ath10k: RX-Ring korrupt oder Firmware-Neustartschleife -> 5 GHz haengt,
+# nur Reboot hilft (siehe oben). Das Fehlerbild steht in der Meldung.
+check_disabled ath10k_rxhang || {
+  if [ "$ath10k_rxring" = 1 ] ; then
+    now_reboot "[ath10k_rxhang] rxring: rx ring corrupted, 5GHz stuck"
+  else
+    restart_min=3
+    nf_uci_get "$NF_UCI_hotfix" hotfix.settings.ath10k_restart_min
+    case "$NF_VAL" in ''|0|*[!0-9]*) ;; *) restart_min="$NF_VAL" ;; esac
+    [ "$ath10k_fwloop" -ge "$restart_min" ] && now_reboot "[ath10k_rxhang] fwloop: ath10k restarting hardware ${ath10k_fwloop}x (limit $restart_min), 5GHz stuck"
+  fi
+  true
+}
 # hostapd bedient die konfigurierten AP-Interfaces?
 #
 # Frueher wurde hier jeder hostapd-Prozess aus der ps-Ausgabe hereingereicht:

@@ -197,7 +197,7 @@ Checks
 | `dropbear` | dropbear not running | reboot |
 | `no_wifi_clients` | clients were seen and then all disappeared | wifi restart |
 | `wifi_firmware` | mt76 wifi firmware crashed, see below | reboot |
-| `ath10k_rxhang` | ath10k `rx ring became corrupted` in dmesg, 5 GHz stuck | reboot |
+| `ath10k_rxhang` | ath10k rx ring corrupted, or a firmware restart loop, 5 GHz stuck | reboot |
 | `eth_tx_stall` | ethernet TX hung after a transmit timeout, see below | reboot, by default only logged |
 | `logremote` | remote syslog socket with a stale or no source address, see below | restart of the logread instance |
 | `watchdog` | deadman switch for micrond itself, see below | reboot |
@@ -473,25 +473,45 @@ to `log_ip` (no uplink) it does nothing, and a host name instead of an address
 is left alone. Nodes without `log_ip`, nearly the whole fleet, start no process
 for this: `/etc/config/system` is read with `read`.
 
-ath10k rx ring corrupted (`ath10k_rxhang`)
-------------------------------------------
+ath10k hangs (`ath10k_rxhang`)
+------------------------------
 
-`ath10k_pci ...: rx ring became corrupted: -5` in the dmesg. The ath10k
-(qca988x/qca9887, the 5 GHz radio on e.g. the Archer C7 and C25) refills its
-RX DMA ring buffers in interrupt context with `GFP_ATOMIC`. If the atomic
-reserve is too small under load, the ring goes corrupt and the chip hangs -
-5 GHz dead, no self-recovery. Measured on a C25 on 15.09.2026: reproduced
-three times, `wifi` restart did not bring it back (the interface vanished),
-only a reboot did. It happened with `vm.min_free_kbytes=2048` under wifi load
-and never with 8192 - which is why the low-memory sysctl backport must not
-lower min_free on ath10k devices (see `patches/lowmem/sysctl-64m-min-free`).
+Two failure modes of the ath10k (qca988x/qca9887, the 5 GHz radio on e.g. the
+Archer C7 and C25). Both leave 5 GHz dead with no self-recovery, both appeared
+under wifi load with `vm.min_free_kbytes=2048` and never with 8192 (C25,
+15./16.09.2026).
 
-The `wifi_firmware` check only covers mt76 (`rf_regval`); ath10k had no check.
-This one is a dmesg check like `kernel_bug`: after the reboot the ring buffer
-is empty, so there is no loop, and `reboot_uptime_min` applies so a device
-that throws the error right at boot does not reboot-loop. On devices without
-ath10k the pattern never matches. Reaction is a reboot, held back the first
-hour like the others - 2.4 GHz and the rest keep working meanwhile.
+**`rxring`** - `ath10k_pci ...: rx ring became corrupted: -5`. The ath10k
+refills its RX DMA ring buffers in interrupt context with `GFP_ATOMIC`. If the
+atomic reserve is too small under load, the ring goes corrupt and the chip
+hangs. A `wifi` restart did not bring it back (the interface vanished), only a
+reboot did; reproduced three times. **One line is enough to trigger** - the
+ring does not repair itself.
+
+**`fwloop`** - `ath10k_pci ...: failed to send pdev bss chan info request,
+restarting hardware` followed by `already restarting`, repeating every ~9
+seconds. The chip firmware crashes and the driver's restart never completes.
+Here the check **counts**: a single `restarting hardware` can be a one-off the
+driver recovers from, so it takes `hotfix.settings.ath10k_restart_min`
+occurrences (default 3) in the ring buffer before this counts as a loop.
+
+The reboot message names which one it was (`rxring:` or `fwloop:`), so an
+evaluation of `reboot.log` later does not just read "ath10k".
+
+The `wifi_firmware` check only covers mt76 (`rf_regval`); ath10k had none.
+Like the other dmesg checks: after the reboot the ring buffer is empty, so
+there is no loop, and `reboot_uptime_min` applies so a device that throws the
+error right at boot does not reboot-loop. On devices without ath10k neither
+pattern ever matches - mt76 lines mentioning "restarting hardware" do not,
+because both patterns require `ath10k` on the same line.
+
+Limit of the check: during the `fwloop` on 16.09. the node later became
+unreachable entirely - serial console silent, no network. The hardware watchdog
+(procd holds `/dev/watchdog`, 30 s timeout, fed every 5 s) did **not** fire, so
+it was not a kernel freeze: procd kept running and feeding while console,
+network and wifi were dead. micrond no longer got its turn either, so in that
+end state the check can do nothing - it has to catch the restart loop while the
+system is still alive.
 
 Watchdog (micrond deadman switch)
 ---------------------------------
