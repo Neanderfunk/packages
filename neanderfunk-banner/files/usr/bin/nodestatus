@@ -1139,6 +1139,16 @@ row('Clients', 'lokal ' .. (cl.total or '?') .. ((has_wifi and wired) and ('  Ka
 -- Offline-SSID (neanderfunk-ssid-changer): jetzt / Wechsel seit Boot / Gateway-Verluste
 local sc_now = readline('/tmp/ssid-changer-offline')
 local essid = sh('iwinfo client0 info'):match('ESSID: "([^"]*)"') or sh('iwinfo client1 info'):match('ESSID: "([^"]*)"')
+-- Wird die Offline-SSID wirklich gesendet? Das beantwortet iwinfo, nicht
+-- /tmp/ssid-changer-offline: diese Datei ist laut ssid-changer.lua reine
+-- Diagnose ("galt der Knoten am letzten Fensterwechsel als offline") und steht
+-- schon auf 1, bevor ueberhaupt geschaltet wird - dazwischen liegen bis zu
+-- switch_timeframe Minuten. Am 16.09.2026 meldete diese Zeile deshalb rot
+-- "Offline-SSID ist aktiv" an einem Knoten, der ganz normal die Freifunk-SSID
+-- sendete; offline galt er nur wegen der TQ-Grenze (tq_limit_min), und
+-- geschaltet wurde nie, weil der TQ vorher wieder ueber tq_limit_max stieg.
+local sc_prefix = uci:get('ssid-changer', 'settings', 'prefix') or 'FF_Offline_'
+local sc_sending = (essid and essid:sub(1, #sc_prefix) == sc_prefix) or false
 -- preserve_channels: "fest" = Kanal, Kanalliste und Breite bleiben bei Updates
 -- stehen, "aus Site" = Gluon setzt sie bei jedem Update auf die Site-Werte.
 local pc = uci:get('gluon', 'wireless', 'preserve_channels')
@@ -1155,28 +1165,35 @@ if has_wifi then
 		if uci:get('ssid-changer', 'settings', 'enabled') == '0' then
 			row('', 'Offline-SSID aus')
 		else
-			local word = sc_now == '1' and c('red', 'offline') or sc_now == '0' and 'online' or '-'
+			-- Rot nur, wenn die Offline-SSID wirklich gesendet wird; gilt der
+			-- Knoten erst als offline, ist das Wort gelb. Gleiche Laenge wie
+			-- vorher, damit die Spalten stehen bleiben.
+			local word = sc_now == '1' and c(sc_sending and 'red' or 'yellow', 'offline')
+				or sc_now == '0' and (sc_sending and c('red', 'online') or 'online') or '-'
 			row('', 'Offline-SSID ' .. word,
 				string.format('%s/%s/%s', sc_now or '-',
 					readline('/tmp/ssid-changer-offline-switches') or '-',
 					readline('/tmp/ssid-changer-gateway-losses') or '-'))
 		end
 	end
-	if sc_now == '1' then warn('red', 'Offline-SSID ist aktiv') end
+	if sc_sending then
+		warn('red', 'Offline-SSID ist aktiv')
+	elseif sc_now == '1' then
+		warn('yellow', 'Knoten gilt als offline, Offline-SSID aber noch nicht geschaltet')
+	end
 
 	-- Die Offline-SSID gehoert nur in den uci-Delta. Steht sie in
 	-- /etc/config/wireless, hat ein "uci commit" waehrend der Offline-Phase
 	-- sie mitgeschrieben; sie bleibt dann nach jedem Neustart stehen, bis
 	-- gluon-reconfigure client_radio* aus der Site neu anlegt.
 	if uci:get('ssid-changer', 'settings') then
-		local prefix = uci:get('ssid-changer', 'settings', 'prefix') or 'FF_Offline_'
 		local stored = false
 		for s in (readfile('/etc/config/wireless') or ''):gmatch("option ssid '([^']*)'") do
-			if s:sub(1, #prefix) == prefix then stored = true end
+			if s:sub(1, #sc_prefix) == sc_prefix then stored = true end
 		end
 		if stored then
 			warn('red', 'Offline-SSID steht fest in /etc/config/wireless (uci commit waehrend offline?) - reconf behebt es')
-		elseif essid and essid:sub(1, #prefix) == prefix and sc_now ~= '1' then
+		elseif sc_sending and sc_now ~= '1' then
 			warn('red', 'Offline-SSID wird gesendet, obwohl der ssid-changer online meldet')
 		end
 	end
