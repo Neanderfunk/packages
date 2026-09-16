@@ -4,3 +4,55 @@
 # it. The marker is never removed: either the upgrade reboots the node (and
 # /tmp is gone), or it aborted, and then abort.d cleans up.
 touch /tmp/hotfix.autoupdater-flashing
+
+# From here: end our own long-running processes.
+#
+# Why: sysupgrade is about to pivot into a ramdisk and wants to release
+# /overlay while doing so. A process of ours that survives keeps it busy
+# ("mount ... on /overlay failed: Resource busy"), and stage2 then cannot read
+# the image any more - the node reboots and stays on the old firmware.
+#
+# Evidence (adorfer, 16.09.2026): on an R6120 in the field two of three
+# sysupgrade attempts failed that way; the one that worked differed only in
+# that watchdog.sh had been killed by hand beforehand. Free memory was not the
+# difference - 22.9 MB failed, 23.9 MB succeeded, 13.4 MB failed. The same
+# picture was reproduced six times on an Archer C25, where quiescing the node
+# was the only thing that let a flash through.
+#
+# Only our own processes are touched. Whatever Gluon or OpenWrt shuts down
+# itself stays untouched, kill_remaining in stage2 included.
+
+# 1. Resident services from our packages: stop them through their init script,
+#    not with a kill - procd would respawn a killed one right away, and the
+#    respawned process holds /overlay again.
+for svc in neanderfunk-node-whisperer ; do
+	[ -x "/etc/init.d/$svc" ] && "/etc/init.d/$svc" stop >/dev/null 2>&1
+done
+
+# 2. The watchdog. micrond is already stopped (download.d), but an instance
+#    that was running at that moment survives it and sits in its sleep. It
+#    exits cleanly when the sleep ends by a signal - see watchdog.sh, which
+#    treats exactly this as "system is being torn down" and does not reboot.
+if [ -r /tmp/hotfix.watchdog.pid ] ; then
+	read wpid 2>/dev/null < /tmp/hotfix.watchdog.pid
+	case "$wpid" in
+	''|*[!0-9]*) ;;
+	*)
+		kill "$wpid" 2>/dev/null
+		sleep 1
+		kill -0 "$wpid" 2>/dev/null && {
+			sleep 1
+			kill -9 "$wpid" 2>/dev/null
+		}
+		;;
+	esac
+fi
+
+# Deliberately not swept: the periodic scripts from our micron.d entries
+# (linkcheck, ssid-changer, ap-timer, mt7915-backlog, weeklyreboot and the
+# hotfix checks). They run for seconds, micrond is stopped, and killing one
+# mid-run could interrupt it between `uci set` and `uci commit`. If an upgrade
+# still fails with "Resource busy", they are the next place to look - then
+# find out in stage2 which process actually holds the overlay rather than
+# killing on suspicion.
+true

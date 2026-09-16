@@ -513,6 +513,30 @@ network and wifi were dead. micrond no longer got its turn either, so in that
 end state the check can do nothing - it has to catch the restart loop while the
 system is still alive.
 
+Before the flash: our own processes get out of the way
+------------------------------------------------------
+
+`files/usr/lib/autoupdater/upgrade.d/20neanderfunk-hotfix` runs right before
+sysupgrade writes. Besides setting the "flashing" marker it now stops our own
+long-running processes: the node-whisperer service through its init script
+(killing it would only make procd respawn it) and the watchdog through
+`/tmp/hotfix.watchdog.pid` (TERM, one second, then KILL).
+
+Reason: sysupgrade pivots into a ramdisk and wants to release `/overlay`. A
+process of ours that survives keeps it busy - `mount ... on /overlay failed:
+Resource busy` - and stage2 then cannot read the image any more. The node
+reboots and stays on the old firmware, without ever writing to the flash.
+
+On an R6120 in the field two of three attempts failed that way; the one that
+worked differed only in that `watchdog.sh` had been killed by hand. Free memory
+was not the difference: 22.9 MB failed, 23.9 MB succeeded, 13.4 MB failed.
+
+The periodic scripts from our micron.d entries are deliberately left alone:
+they run for seconds, micrond is already stopped by `download.d`, and killing
+one mid-run could interrupt it between `uci set` and `uci commit`. If an
+upgrade still fails with "Resource busy", find out in stage2 which process
+actually holds the overlay instead of killing on suspicion.
+
 Watchdog (micrond deadman switch)
 ---------------------------------
 
