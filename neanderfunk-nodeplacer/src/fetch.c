@@ -38,6 +38,12 @@
 
 #define MAX_LINE_LENGTH 2048
 #define MAX_BODY_BYTES (256 * 1024)
+
+/* Hard ceiling on what we will read from a mirror at all. MAX_BODY_BYTES only
+ * bounds the part before "---", so this bounds the rest as well. A real
+ * manifest is a few kilobytes: 320 KiB is the body cap plus generous room for
+ * MAX_SIGNATURES lines, and still over in moments on any link we have. */
+#define MAX_MANIFEST_BYTES (320 * 1024)
 #define STRINGIFY_(x) #x
 #define STRINGIFY(x) STRINGIFY_(x)
 
@@ -60,10 +66,25 @@ struct settings {
 	ecc_25519_work_t *pubkeys;
 };
 
+/* -v: report every step of the search, not just its result.
+ *
+ * File scope rather than a field in struct settings because the two places
+ * that decide "this is not a manifest" while the body is still arriving live
+ * in the uclient callback, which only gets the receive context.
+ *
+ * What it covers is exactly the class "this mirror has no manifest for us" -
+ * unreachable, 404, an HTML page, something too large. That is the normal
+ * state whenever nodeplacer is not in use, so by default it produces a single
+ * summary line at the end instead of one line per mirror and step. A manifest
+ * that is actually there but unusable - bad signatures, wrong FORMAT, expired
+ * - is a different class and stays loud, with no -v needed. */
+static bool verbose;
+
 struct recv_manifest_ctx {
 	struct manifest m;
 	char buf[MAX_LINE_LENGTH + 1];
 	char *ptr;
+	size_t received;
 	bool too_long;
 	bool too_big;
 };
@@ -76,6 +97,12 @@ static void usage(void) {
 		"and prints the verified part before '---' to stdout.\n\n"
 		"Possible options are:\n"
 		"  -h, --help           Show this help.\n\n"
+		"  -v, --verbose        Report every mirror tried and why it had no manifest.\n"
+		"                       Without it, a run that finds nothing anywhere says so in\n"
+		"                       a single line: that is the normal state while nodeplacer\n"
+		"                       is not in use, and this runs from cron on every node. A\n"
+		"                       manifest that is there but unusable (bad signatures,\n"
+		"                       unsupported FORMAT, expired) is reported either way.\n\n"
 		"  <mirror> ...         Override the mirror URLs given in the configuration. If\n"
 		"                       specified, these are not shuffled.\n\n"
 		"Exit codes: 0 verified, 1 config error, 2 no manifest, 3 rejected.\n\n",
@@ -87,11 +114,12 @@ static void usage(void) {
 static void parse_args(int argc, char *argv[], struct settings *settings) {
 	const struct option options[] = {
 		{"help", no_argument, NULL, 'h'},
+		{"verbose", no_argument, NULL, 'v'},
 		{}
 	};
 
 	while (true) {
-		int c = getopt_long(argc, argv, "h", options, NULL);
+		int c = getopt_long(argc, argv, "hv", options, NULL);
 		if (c < 0)
 			break;
 
@@ -99,6 +127,10 @@ static void parse_args(int argc, char *argv[], struct settings *settings) {
 		case 'h':
 			usage();
 			exit(0);
+
+		case 'v':
+			verbose = true;
+			break;
 
 		default:
 			usage();
@@ -293,14 +325,29 @@ static void recv_manifest_cb(struct uclient *cl) {
 
 	while (true) {
 		if (ctx->ptr - ctx->buf == MAX_LINE_LENGTH) {
-			fputs("nodeplacer-fetch: error: encountered manifest line exceeding limit of " STRINGIFY(MAX_LINE_LENGTH) " characters\n", stderr);
+			/* Quiet by default like the other "no manifest here" cases:
+			 * an HTML page from a catch-all regularly arrives as one
+			 * very long line, so this fires on a mirror that simply has
+			 * no manifest. */
+			if (verbose)
+				fputs("nodeplacer-fetch: line exceeds the limit of " STRINGIFY(MAX_LINE_LENGTH) " characters, not a manifest\n", stderr);
 			ctx->too_long = true;
-			break;
+			uclient_abort_request(cl);
+			return;
 		}
 		len = uclient_read_account(cl, ctx->ptr, MAX_LINE_LENGTH - (ctx->ptr - ctx->buf));
 		if (len <= 0)
 			break;
 		ctx->ptr[len] = '\0';
+
+		ctx->received += (size_t)len;
+		if (ctx->received > MAX_MANIFEST_BYTES) {
+			if (verbose)
+				fputs("nodeplacer-fetch: response exceeds " STRINGIFY(MAX_MANIFEST_BYTES) " bytes, not a manifest\n", stderr);
+			ctx->too_big = true;
+			uclient_abort_request(cl);
+			return;
+		}
 
 		char *line = ctx->buf;
 		while (true) {
@@ -310,8 +357,13 @@ static void recv_manifest_cb(struct uclient *cl) {
 			*newline = '\0';
 
 			if (!parse_line(line, &ctx->m, MAX_BODY_BYTES)) {
-				fputs("nodeplacer-fetch: error: manifest exceeds " STRINGIFY(MAX_BODY_BYTES) " bytes\n", stderr);
+				/* Body over the cap, or more signature lines than a
+				 * manifest may carry. Either way this is not one of
+				 * ours, so stop reading. */
+				if (verbose)
+					fputs("nodeplacer-fetch: body over " STRINGIFY(MAX_BODY_BYTES) " bytes or too many signatures, not a manifest\n", stderr);
 				ctx->too_big = true;
+				uclient_abort_request(cl);
 				return;
 			}
 			line = newline + 1;
@@ -337,17 +389,27 @@ static enum exit_code fetch(const char *mirror, const struct settings *s) {
 	char url[strlen(mirror) + strlen(manifest_name) + 2];
 	sprintf(url, "%s/%s", mirror, manifest_name);
 
-	fprintf(stderr, "nodeplacer-fetch: retrieving %s ...\n", url);
+	if (verbose)
+		fprintf(stderr, "nodeplacer-fetch: retrieving %s ...\n", url);
 
 	ecdsa_sha256_init(&m->hash_ctx);
 	int err_code = get_url(url, recv_manifest_cb, &ctx, -1, NULL);
-	if (err_code != 0) {
-		fprintf(stderr, "nodeplacer-fetch: warning: error downloading manifest: %s\n", uclient_get_errmsg(err_code));
-		goto out;
-	}
 
+	/* Our own verdict first: when we hung up mid-transfer, get_url may
+	 * report a size mismatch, which would only be a confusing way of saying
+	 * what we already decided. */
 	if (ctx.too_long || ctx.too_big)
 		goto out;
+
+	if (err_code != 0) {
+		/* Unreachable or 404. Both mean "no manifest on this mirror",
+		 * which is the normal state and must not cost a log line on
+		 * every node every hour - the reserve mirrors carry no DNS on
+		 * purpose, so one of these is guaranteed on every single run. */
+		if (verbose)
+			fprintf(stderr, "nodeplacer-fetch: %s: %s\n", url, uclient_get_errmsg(err_code));
+		goto out;
+	}
 
 	/* a trailing line without newline is still part of the manifest */
 	if (ctx.ptr != ctx.buf) {
@@ -360,11 +422,27 @@ static enum exit_code fetch(const char *mirror, const struct settings *s) {
 	 * a mirror without a manifest can look like one that has a bad one.
 	 * Treat it as absent - quiet, and on to the next mirror - instead of
 	 * as rejected, which would be logged on every run. A real manifest
-	 * without signatures still has the separator and is rejected below. */
+	 * without signatures still has the separator and is rejected below.
+	 *
+	 * The exit code already said "absent", but the warning below was
+	 * printed anyway, so the case was quiet in name only: measured on
+	 * 18.09.2026, every node in the fleet logged this once an hour,
+	 * because firmware.ffnef.de answers that path with 200 and an HTML
+	 * page. Behind -v, so a mirror that really is misconfigured can still
+	 * be told apart from one that simply has no manifest - by hand, not in
+	 * everyone's syslog. */
 	if (!m->sep_found) {
-		fprintf(stderr, "nodeplacer-fetch: warning: %s is not a manifest (no \"---\" line)\n", url);
+		if (verbose)
+			fprintf(stderr, "nodeplacer-fetch: %s is not a manifest (no \"---\" line)\n", url);
 		goto out;
 	}
+
+	/* There is a separator, so this claims to be a manifest: unparsable
+	 * lines in its signature area are worth reporting. Once, with a count -
+	 * never one line per offending line, see garbage_sigs in manifest.h. */
+	if (m->garbage_sigs)
+		fprintf(stderr, "nodeplacer-fetch: warning: manifest %s has %zu unparsable line(s) in its signature area\n",
+			url, m->garbage_sigs);
 
 	/* Check manifest signatures */
 	{
@@ -475,6 +553,12 @@ int main(int argc, char *argv[]) {
 
 	uloop_done();
 
-	fputs("nodeplacer-fetch: no manifest found on any mirror\n", stderr);
+	/* The one line a fruitless run is allowed to cost. Everything that led
+	 * here - unreachable mirrors, 404s, catch-all HTML pages - is the normal
+	 * state while nodeplacer is not in use and stays behind -v; this says
+	 * that the search ran and found nothing, which is worth one line an hour
+	 * because it also proves the mechanism is alive. */
+	fprintf(stderr, "nodeplacer-fetch: no manifest on any of the %zu mirrors (-v says which and why)\n",
+		s.n_mirrors);
 	return EXIT_NO_MANIFEST;
 }

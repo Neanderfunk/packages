@@ -70,6 +70,13 @@ static void request_done(struct uclient *cl, int err_code) {
 }
 
 
+void uclient_abort_request(struct uclient *cl) {
+	/* err_code 0: this is our own decision to stop, not a transfer error.
+	 * The caller knows why it aborted and reports that instead. */
+	request_done(cl, 0);
+}
+
+
 static void header_done_cb(struct uclient *cl) {
 	const struct blobmsg_policy policy = {
 		.name = "content-length",

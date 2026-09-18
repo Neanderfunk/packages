@@ -151,7 +151,16 @@ end
 local node_id = util.node_id()
 local entry = m.entries[node_id]
 if not entry then
-	-- not addressed: quiet
+	-- A valid manifest, just not about us. Like the fruitless fetch, this is
+	-- a normal outcome and gets exactly one line - no list of who else is in
+	-- it. The line earns its place by separating "nodeplacer ran and this
+	-- manifest does not concern me" from "nodeplacer did not run at all",
+	-- which otherwise look identical in the log.
+	-- m.entries is keyed by node_id, so "#" does not count it.
+	local listed = 0
+	for _ in pairs(m.entries) do listed = listed + 1 end
+	log(string.format('manifest dated %s addresses %d node(s), not this one',
+		m.header.DATE or 'unknown', listed))
 	os.exit(0)
 end
 

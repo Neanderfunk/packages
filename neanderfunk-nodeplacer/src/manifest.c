@@ -83,11 +83,18 @@ static bool append_body(struct manifest *m, const char *line, size_t max_body) {
 
 bool parse_line(char *line, struct manifest *m, size_t max_body) {
 	if (m->sep_found) {
-		ecdsa_signature_t *sig = safe_malloc(sizeof(ecdsa_signature_t));
+		ecdsa_signature_t *sig;
+
+		if (m->n_signatures >= MAX_SIGNATURES)
+			return false;
+
+		sig = safe_malloc(sizeof(ecdsa_signature_t));
 
 		if (!parsehex(sig, line, sizeof(*sig))) {
 			free(sig);
-			fprintf(stderr, "nodeplacer-fetch: warning: garbage in signature area: %s\n", line);
+			/* Counted here, reported once by the caller - see the
+			 * comment on garbage_sigs in manifest.h. */
+			m->garbage_sigs++;
 			return true;
 		}
 		m->n_signatures++;
