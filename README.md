@@ -2,6 +2,29 @@
 
 This branch works for gluon 2023.2.x.
 
+## Using this feed
+
+Add the feed to your site's `modules` file (next to `site.conf`):
+
+```
+GLUON_SITE_FEEDS="neanderfunk"
+PACKAGES_NEANDERFUNK_REPO=https://github.com/Neanderfunk/packages.git
+PACKAGES_NEANDERFUNK_BRANCH=v2023.2.x
+PACKAGES_NEANDERFUNK_COMMIT=<commit>
+```
+
+Replace `<commit>` with a commit of the `v2023.2.x` branch. If your site
+already uses other feeds, append `neanderfunk` to the existing
+`GLUON_SITE_FEEDS` instead of replacing it - in particular do not reuse the
+name `community`, that is the feed of freifunk-gluon/community-packages. Then
+add the packages you want to `site.mk` or `image-customization.lua`.
+
+Several packages are forks of a community or ffac package and declare
+`CONFLICTS` with the original; take the original out of your package list.
+`neanderfunk-config-mode-theme` replaces Gluon's theme, so the site has to
+drop it with `'-gluon-config-mode-theme'`. Which site.conf keys a package
+reads, and whether it needs any, is in its own README.
+
 How Gluon's `gluon-reconfigure` works, and what upgrade scripts in this feed
 rely on: [docs/gluon-reconfigure.md](docs/gluon-reconfigure.md).
 

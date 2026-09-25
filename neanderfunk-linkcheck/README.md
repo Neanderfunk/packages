@@ -29,14 +29,19 @@ example:  (wifi turned off "on purpose")
     packet_write_wait: Connection to fda0:747e:ab29:9375:6666:b3ff:fede:a7e4 port 22: Broken pipe
 
 
-Create a file "modules" with the following content in your ./gluon/site/ directory:
+Add the feed to your site's `modules` file (next to `site.conf`):
 
-GLUON_SITE_FEEDS="eulenfunk"<br>
-PACKAGES_EULENFUNK_REPO=https://github.com/eulenfunk/packages.git<br>
-PACKAGES_EULENFUNK_COMMIT=*/missing/*<br>
-PACKAGES_EULENFUNK_BRANCH=chaos-calmer<br>
+```
+GLUON_SITE_FEEDS="neanderfunk"
+PACKAGES_NEANDERFUNK_REPO=https://github.com/Neanderfunk/packages.git
+PACKAGES_NEANDERFUNK_BRANCH=v2023.2.x
+PACKAGES_NEANDERFUNK_COMMIT=<commit>
+```
 
-With this done you can add the package *neanderfunk-linkcheck* to your site.mk/image-customization.lua
+Then add `neanderfunk-linkcheck` to your `site.mk` or `image-customization.lua`. Replace
+`<commit>` with a commit of the `v2023.2.x` branch. If your site already uses
+other feeds, append `neanderfunk` to the existing `GLUON_SITE_FEEDS` instead
+of replacing it. See also [Using this feed](../README.md#using-this-feed).
 
 
 Configuration
