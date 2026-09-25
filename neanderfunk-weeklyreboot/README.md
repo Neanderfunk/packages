@@ -5,9 +5,9 @@ this script basically reboots a node once a week on thursday morning at a random
 time between 3h15 and 6h AM.
 
 This clears up long-running memory/state issues on nodes that otherwise stay up
-for months. If an autoupdater run is in progress (`/tmp/autoupdate.lock`
-present), the reboot is skipped for that week rather than interrupting the
-update. The schedule is fixed in `files/usr/lib/micron.d/weeklyreboot`; there
+for months. If an autoupdater run is in progress, the reboot is skipped for
+that week rather than interrupting the update (`flock` on
+`/var/lock/autoupdater.lock`, then `pgrep sysupgrade`, see below). The schedule is fixed in `files/usr/lib/micron.d/weeklyreboot`; there
 is no site.conf option to change it, so to change the day/time you have to
 edit that cron line and rebuild.
 
