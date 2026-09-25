@@ -75,10 +75,10 @@ fi
 
 # Is the cron time meaningful at all?
 #
-# Without ntp the clock starts at the firmware build time on every boot
-# (sysfixtime). A node whose image happened to be built on a Thursday around
-# 02:00 therefore reaches "15 3 * * 4" roughly an hour after every boot - and
-# reboots again, forever. Reported from the field.
+# Without an RTC, sysfixtime sets the clock at boot to the newest mtime under
+# /etc (right after a fresh flash that is close to the build time). A node whose
+# clock thus starts on a Thursday around 02:00 reaches "15 3 * * 4" roughly an
+# hour after every boot - and reboots again, forever. Reported from the field.
 #
 # Such a node should still be restarted regularly, just not by the weekday: the
 # cron fires once per (wrong) week either way, so requiring seven days of uptime
