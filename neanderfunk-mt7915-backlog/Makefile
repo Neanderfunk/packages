@@ -17,6 +17,7 @@ define Package/$(PKG_NAME)
   CATEGORY:=Gluon
   TITLE:=reboot device if mt7915e driver shows known failure symptom
   DEPENDS:=@(TARGET_mediatek_filogic||TARGET_ramips_mt7621||TARGET_mediatek_mt7622) kmod-mt7915e +gluon-core +micrond
+  CONFLICTS:=ffac-mt7915-backlog
   MAINTAINER:=Freifunk im Neanderland <projekt@neanderfunk.de>
 endef
 

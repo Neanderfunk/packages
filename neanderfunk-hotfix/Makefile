@@ -12,6 +12,7 @@ define Package/$(PKG_NAME)
   CATEGORY:=Workaround
   TITLE:=Hotfix collection: reinit wifi or reboot on various failure conditions (Ruben Kelevra & Eulenfunk)
   DEPENDS:=+neanderfunk-common +gluon-core +micrond
+  CONFLICTS:=ffac-mt7915-hotfix
 endef
 
 define Package/$(PKG_NAME)/description
