@@ -226,13 +226,15 @@ end
 -- Waehlt per Scan einen Kanal, auf dem das eigene Mesh NICHT zu hoeren ist -
 -- fuer Knoten, die nicht ins WLAN-Mesh der Nachbarn sollen (Uplink per Kabel
 -- oder VPN). Reihenfolge (adorfer, 27.09.2026):
---   1. Kandidaten: 2.4 GHz die ungeraden 1-11 (ohne 13), 5 GHz die geraden,
---      die das Radio kann (auch DFS).
+--   1. Kandidaten: 2.4 GHz die ungeraden 1-11 (ohne 13), 5 GHz die geraden
+--      ausserhalb von DFS, also 36-48.
 --   2. Kein eigenes Mesh (Mesh Point mit der eigenen mesh_id). Sind mehrere
 --      frei, moeglichst auch kein weiteres Freifunk: SSID mit "freifunk", die
 --      eigene Client-SSID, die Offline-SSID, fremde Meshes (Mesh Point mit
 --      anderer ID, Ad-Hoc). Danach weniger fremde Netze.
---   3. Auf 2.4 GHz notfalls die geraden 2-10, gleiche Regeln.
+--   3. Notfalls auf 2.4 GHz die geraden 2-10, auf 5 GHz die DFS-Kanaele 52-144,
+--      gleiche Regeln. Auf DFS kommt das 5-GHz-Mesh nicht hoch; das sagt
+--      autofix dann dazu (adorfer, 27.09.2026).
 --   4. Ueberall eigenes Mesh: der Kanal, dessen staerkstes eigenes Mesh am
 --      schwaechsten ist (lieber -88 dBm als -60 dBm).
 --   5. Liefert der Scan nichts (manche Treiber scannen nicht, solange das
@@ -240,6 +242,13 @@ end
 -- Erfuellt der aktuelle Kanal die Kriterien genauso gut, bleibt er, damit nichts
 -- grundlos wechselt; weniger fremde Netze zaehlen erst danach.
 -- Gezaehlt wird nur der Primaerkanal einer Zelle, wie ihn der Scan meldet.
+
+-- DFS nach Frequenz: 5250 bis 5725 MHz, Kanaele 52 bis 144 (ETSI). iwinfo
+-- liefert kein DFS-Kennzeichen.
+function is_dfs(ch)
+	ch = tonumber(ch)
+	return ch ~= nil and ch >= 52 and ch <= 144
+end
 
 local allowed_cache = {}
 function allowed_channels(r)
@@ -319,8 +328,13 @@ function autofix(band, r)
 		for _, ch in ipairs({ 1, 3, 5, 7, 9, 11 }) do if allowed[ch] then table.insert(primary, ch) end end
 		for _, ch in ipairs({ 2, 4, 6, 8, 10 }) do if allowed[ch] then table.insert(fallback, ch) end end
 	else
+		-- 5 GHz: erst 36 bis 48, DFS (52 bis 144) nur als Ausweg. Auf DFS kommt
+		-- das 5-GHz-Mesh nicht hoch (Schulstrasse 7, 7 von 7, MT7981 wie
+		-- ath10k): der Knoten waere auf 5 GHz kein Rettungsanker mehr.
 		for _, ch in ipairs(allowed_channels(r)) do
-			if ch % 2 == 0 then table.insert(primary, ch) end
+			if ch % 2 == 0 then
+				table.insert(is_dfs(ch) and fallback or primary, ch)
+			end
 		end
 	end
 	local current = tonumber(r.channel)
@@ -364,7 +378,8 @@ function autofix(band, r)
 		why = 'kein eigenes Mesh'
 	elseif #fallback > 0 then
 		choice = pick_free(fallback)
-		why = choice and 'kein eigenes Mesh (Ausweichkanal gerade)'
+		why = choice and (band == '2g' and 'kein eigenes Mesh (Ausweichkanal gerade)'
+			or 'kein eigenes Mesh, aber nur auf DFS frei')
 	end
 	if not choice then
 		local all = {}
@@ -380,6 +395,9 @@ function autofix(band, r)
 	end
 	if not choice then
 		die(LABEL[band] .. ': kein Kandidat (freqlist leer?)')
+	end
+	if band == '5g' and is_dfs(choice) then
+		why = why .. ' - ACHTUNG: auf DFS kein 5-GHz-Mesh, der Knoten ist auf 5 GHz kein Rettungsanker mehr'
 	end
 	if choice and st(choice).ff > 0 and why == 'kein eigenes Mesh' then
 		why = why .. ', aber ' .. st(choice).ff .. 'x Freifunk'

@@ -126,7 +126,9 @@ It also installs these commands (all listed by `help`):
   radio has which band (`wireless.<radio>.band`); `auto` for autochannel, `-`
   leaves a band as it is. `autofix` (also `fixauto`) picks a channel by scan
   on which the node's own mesh is not heard (fewest other Freifunk next,
-  random if the scan returns nothing); `channel autofix` alone does all
+  random if the scan returns nothing); on 5 GHz it takes 36-48 first and DFS
+  (52-144) only as a way out, and says so, because the 5 GHz mesh does not come
+  up on DFS channels (measured on MT7981 and ath10k); `channel autofix` alone does all
   bands, `channel - autofix` only 5 GHz, `channel autofix -` only 2.4 GHz.
   `mesh` is the opposite, for a node that is offline or barely reached by
   mesh: it switches the radio's mesh on if it is off and moves to the channel
