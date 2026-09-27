@@ -66,7 +66,7 @@ local function usage()
 Aufruf: channel [2,4-GHz-Kanal [5-GHz-Kanal]] [-n] [--no-keep] [-f]
   ohne Kanal: anzeigen
   Kanal: Zahl, "auto" oder "-" (Band nicht aendern)
-  Kanal "autofix": per Scan einen Kanal ohne das eigene Mesh waehlen
+  Kanal "autofix" (auch "fixauto"): per Scan einen Kanal ohne das eigene Mesh waehlen
   -n         nur zeigen, was passieren wuerde (mit autofix: die Auswertung)
   --no-keep  Kanal nicht ueber Updates behalten (kein preserve_channels_<band>)
   -f         auch wenn Mesh-Nachbarn an diesem Radio haengen
@@ -169,6 +169,9 @@ end
 
 local values, keep, force, dry = {}, true, false, false
 for _, a in ipairs(arg) do
+	-- tolerant: AUTO, Autofix, und "fixauto" fuer alle, die es andersherum tippen
+	a = a:lower()
+	if a == 'fixauto' then a = 'autofix' end
 	if a == '--no-keep' then keep = false
 	elseif a == '-f' or a == '--force' then force = true
 	elseif a == '-n' or a == '--dry-run' then dry = true
