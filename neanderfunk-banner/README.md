@@ -37,6 +37,11 @@ actually running, not just what is configured:
   domain, as Gluon's `200-wireless` would set it) while neither
   `preserve_channels` nor `preserve_channels_<band>` keeps that band - the
   next update would reset it
+- ports outside Gluon's LAN/WAN groups get their own row (label `Port`):
+  ports with their own `gluon.iface_*` section (e.g. `eth2` on x86), ports
+  hung into `br-client` or batman by hand without a Gluon role (role with `*`
+  and a warning: they are gone after the next `gluon-reconfigure`, i.e. the
+  next update), and on x86 or with a link, ports with no role at all (`-`)
 - on devices without wifi (x86, ERX, ...) a port table in its place: per port
   link, traffic since boot and error counters, per role group mesh state and
   neighbours; on swconfig switches the real link per switch port.

@@ -444,6 +444,15 @@ local function resolve_ports(name)
 	return t
 end
 
+-- CPU-Ports der swconfig-Switches (board.json), hier schon gebraucht; die
+-- Pruefung weiter unten nutzt dieselbe Liste
+local cpu_ports_early = {}
+for _, sw in pairs(type(board.switch) == 'table' and board.switch or {}) do
+	for _, p in ipairs(type(sw) == 'table' and type(sw.ports) == 'table' and sw.ports or {}) do
+		if type(p) == 'table' and p.device then cpu_ports_early[p.device] = true end
+	end
+end
+
 local extra_groups, used_by, taken = {}, {}, {}
 local function use(ports, sec)
 	for _, p in ipairs(ports) do
@@ -471,6 +480,65 @@ uci:foreach('network', 'interface', function(s)
 		end
 	end
 end)
+
+-- Ports mit Wirkung, aber ohne Gluon-Rolle: von Hand in br-client gehaengt
+-- (network.client.ifname) oder direkt in batman. Das laeuft, bis zum
+-- naechsten gluon-reconfigure - also bis zum naechsten Update: 020-interfaces
+-- loescht alle network-Interfaces, 110-network baut sie nur aus den Rollen
+-- neu (am Kollektor-Gluon 839d am 27.09.2026 so passiert). Sie bekommen eine
+-- eigene Zeile mit "*" an der Rolle und eine Warnung.
+local function physical(dev)
+	local base = '/sys/class/net/' .. dev .. '/'
+	return exists(base .. 'device')
+		and not (readfile(base .. 'uevent') or ''):find('DEVTYPE=wlan')
+		and not exists(base .. 'dsa') and not cpu_ports_early[dev]
+end
+do
+	local manual = {}
+	for m in sh('ls /sys/class/net/br-client/brif'):gmatch('%S+') do
+		if not used_by[m] and not taken[m] and physical(m) then
+			table.insert(manual, { dev = m, role = 'client' })
+		end
+	end
+	for name in pairs(batif) do
+		if not used_by[name] and not taken[name] and physical(name) then
+			table.insert(manual, { dev = name, role = 'mesh' })
+		end
+	end
+	table.sort(manual, function(x, y) return x.dev < y.dev end)
+	for _, m in ipairs(manual) do
+		table.insert(extra_groups, { role = m.role .. '*', devs = { m.dev }, manual = true })
+		taken[m.dev] = true
+		warn('yellow', m.dev .. ' haengt von Hand als ' .. m.role .. ' drin (keine Gluon-Rolle, * in der Tabelle)'
+			.. ' und fehlt nach dem naechsten Update. Dauerhaft: portrole ' .. m.dev .. ' ' .. m.role)
+	end
+end
+
+-- Ethernet-Ports ganz ohne Rolle, etwa eth2 an x86: Gluons board.json kennt
+-- dort nur eth0 (LAN) und eth1 (WAN), jeder weitere Port gehoert zu keiner
+-- Gruppe und tut nichts, bis er eine eigene Sektion bekommt.
+do
+	local board_devs = {}
+	for _, key in ipairs({ 'lan', 'wan' }) do
+		local net = board.network and board.network[key]
+		for _, d in ipairs((net and (net.ports or (net.device and { net.device }))) or {}) do board_devs[d] = true end
+	end
+	-- Nur mit Link oder auf x86: manche Router haben eine zweite, intern
+	-- verdrahtete Netzwerkschnittstelle ohne Buchse, die hier nichts zu suchen hat.
+	local x86 = (readfile('/etc/openwrt_release') or ''):find("DISTRIB_TARGET='x86/") ~= nil
+	local idle = {}
+	for dev in sh('ls /sys/class/net'):gmatch('%S+') do
+		if not board_devs[dev] and not used_by[dev] and not taken[dev] and physical(dev)
+				and (x86 or readline('/sys/class/net/' .. dev .. '/carrier') == '1') then
+			table.insert(idle, dev)
+		end
+	end
+	table.sort(idle)
+	for _, dev in ipairs(idle) do
+		table.insert(extra_groups, { role = '-', devs = { dev }, idle = true })
+		taken[dev] = true
+	end
+end
 
 -- Ein Port in mehreren Sektionen mit Rolle: Gluon und netifd nehmen dann
 -- eine davon, welche, ist nicht festgelegt.
@@ -517,13 +585,20 @@ end
 
 -- Zeilen-Label einer Zusatzgruppe: WAN, wenn alle Ports WAN-Ports sind
 local function extra_label(g)
-	local wan = {}
-	local net = board.network and board.network.wan
-	for _, d in ipairs((net and (net.ports or (net.device and { net.device }))) or {}) do wan[d] = true end
-	for _, d in ipairs(g.devs) do
-		if not wan[d] then return 'LAN' end
+	local wan, lan = {}, {}
+	for key, set in pairs({ wan = wan, lan = lan }) do
+		local net = board.network and board.network[key]
+		for _, d in ipairs((net and (net.ports or (net.device and { net.device }))) or {}) do set[d] = true end
 	end
-	return 'WAN'
+	local all_wan, any_board = true, false
+	for _, d in ipairs(g.devs) do
+		local base = d:gsub('%..*$', '')
+		if wan[d] or lan[d] or wan[base] or lan[base] then any_board = true end
+		if not wan[d] then all_wan = false end
+	end
+	if all_wan then return 'WAN' end
+	-- Ports ausserhalb der Board-Gruppen (x86 eth2 ...) sind weder LAN noch WAN
+	return any_board and 'LAN' or 'Port'
 end
 
 local function speedtxt(speed, duplex)
