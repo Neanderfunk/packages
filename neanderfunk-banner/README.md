@@ -105,7 +105,11 @@ It also installs these commands (all listed by `help`):
   channel survives updates, mesh neighbours. With arguments it sets the
   channels: the first value is always 2.4 GHz, the second 5 GHz, whichever
   radio has which band (`wireless.<radio>.band`); `auto` for autochannel, `-`
-  leaves a band as it is. A channel the radio cannot use (`iwinfo freqlist`)
+  leaves a band as it is. `autofix` (also `fixauto`) picks a channel by scan
+  on which the node's own mesh is not heard (fewest other Freifunk next,
+  random if the scan returns nothing); `channel autofix` alone does all
+  bands, `channel - autofix` only 5 GHz, `channel autofix -` only 2.4 GHz.
+  `-n` shows what would happen. A channel the radio cannot use (`iwinfo freqlist`)
   is refused, 5 GHz in outdoor mode is left to Gluon. The width stays. Unless
   `--no-keep` is given, each changed band gets
   `gluon.wireless.preserve_channels_<band>=1`, which

@@ -8,8 +8,9 @@
 --     channel 6 44          2,4 GHz auf 6, 5 GHz auf 44
 --     channel - 44          nur 5 GHz ("-" laesst ein Band, wie es ist)
 --     channel auto auto     beide auf Autochannel
---     channel autofix       2,4 GHz per Scan auf einen Kanal ohne eigenes Mesh
---                           (siehe autofix weiter unten); -n zeigt nur
+--     channel autofix       alle Baender per Scan auf einen Kanal ohne eigenes
+--                           Mesh (siehe autofix weiter unten); -n zeigt nur
+--     channel - autofix     nur 5 GHz, "channel autofix -" nur 2,4 GHz
 --
 -- Der erste Wert gilt immer fuer 2,4 GHz, der zweite fuer 5 GHz - egal welches
 -- Radio (radio0/radio1) welches Band hat; die Zuordnung kommt aus
@@ -66,7 +67,8 @@ local function usage()
 Aufruf: channel [2,4-GHz-Kanal [5-GHz-Kanal]] [-n] [--no-keep] [-f]
   ohne Kanal: anzeigen
   Kanal: Zahl, "auto" oder "-" (Band nicht aendern)
-  Kanal "autofix" (auch "fixauto"): per Scan einen Kanal ohne das eigene Mesh waehlen
+  Kanal "autofix" (auch "fixauto"): per Scan einen Kanal ohne das eigene Mesh waehlen;
+             "channel autofix" allein: alle Baender, "channel - autofix": nur 5 GHz
   -n         nur zeigen, was passieren wuerde (mit autofix: die Auswertung)
   --no-keep  Kanal nicht ueber Updates behalten (kein preserve_channels_<band>)
   -f         auch wenn Mesh-Nachbarn an diesem Radio haengen
@@ -183,6 +185,12 @@ for _, a in ipairs(arg) do
 	end
 end
 if #values > #BANDS then usage() end
+-- "channel autofix" allein gilt fuer alle Baender (adorfer); nur ein Band mit
+-- "-" an der anderen Stelle: "channel autofix -" bzw. "channel - autofix".
+-- Eine einzelne Zahl oder "auto" gilt weiter nur fuer 2,4 GHz.
+if #values == 1 and values[1] == 'autofix' then
+	for i = 2, #BANDS do values[i] = 'autofix' end
+end
 
 if #values == 0 then
 	show()

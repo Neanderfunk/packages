@@ -21,6 +21,8 @@ WLAN
   iwinfo                Radios und Interfaces, Kanal, Sendeleistung
   channel [2g [5g]]     Kanal je Band zeigen oder setzen (auto, - = lassen);
                         bleibt ueber Updates, ausser mit --no-keep
+  channel autofix       Kanal ohne eigenes Mesh per Scan, alle Baender;
+                        nur ein Band: channel autofix - / channel - autofix
 Netz
   myip                  Adressen im Client-Netz, eigene SSH-Verbindung
   ip a / ip r s t all   alle Adressen / alle Routing-Tabellen
