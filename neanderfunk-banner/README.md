@@ -126,6 +126,12 @@ It also installs these commands (all listed by `help`):
   only its own options to `/etc/config` (a renamed copy, so runtime changes in
   the uci delta such as the offline SSID stay out of the flash), then runs
   `wifi reload`.
+- `offlinescan` - scans on all radios for neighbouring nodes that fell into
+  the offline SSID, by this node's ssid-changer prefixes (`prefix`,
+  `prefix_owe`). One line per node and channel: name (the SSID suffix: node
+  name, MAC or nothing), band, channel, signal, BSSID, strongest first. Such a
+  node's mesh is on the same channel, so a neighbour can reconnect it via wifi
+  mesh with `channel <channel>`.
 - `flash <url|directory-url|file> [sysupgrade options]` - downloads a
   firmware image to `/tmp` (an `https://` URL is fetched as `http://`, not
   every node has TLS), shows size, free RAM and sha256, checks it with

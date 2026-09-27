@@ -25,6 +25,8 @@ WLAN
                         nur ein Band: channel autofix - / channel - autofix
   channel mesh          umgekehrt: Mesh an, Kanal mit dem staerksten eigenen
                         Mesh (Knoten offline/knapp versorgt); auch mesh -, - mesh
+  offlinescan           Knoten in der Nachbarschaft in der Offline-SSID:
+                        Name, Band, Kanal, Pegel (alle Radios)
 Netz
   myip                  Adressen im Client-Netz, eigene SSH-Verbindung
   ip a / ip r s t all   alle Adressen / alle Routing-Tabellen

@@ -1,0 +1,105 @@
+#!/usr/bin/lua
+-- offlinescan - Knoten in der Nachbarschaft finden, die in die Offline-SSID
+-- gefallen sind.
+--
+-- Scannt auf allen Radios (iwinfo scan) nach SSIDs, die mit dem Offline-Praefix
+-- des ssid-changers beginnen - so, wie er auf DIESEM Knoten eingestellt ist:
+-- ssid-changer.settings.prefix (Standard FF_Offline_) und prefix_owe
+-- (FF_Off_OWE_). Hinter dem Praefix steht, je nach suffix-Einstellung der
+-- Community, der Knotenname (bei langen Namen in der Mitte mit "..."
+-- gekuerzt), die MAC oder nichts.
+--
+-- Je Zeile ein Knoten auf einem Kanal: Name, Band, Kanal, Pegel, BSSID,
+-- staerkste zuerst. Ein Knoten mit beiden Baendern steht zweimal da; die
+-- OWE-Variante derselben SSID wird zusammengefasst.
+--
+-- Wozu: Ein Knoten in der Offline-SSID hat keinen Gateway-Pfad mehr. Sein
+-- Mesh funkt auf demselben Kanal wie diese SSID (dasselbe Radio). Ein Nachbar,
+-- der hier zu hoeren ist, kann ihn mit "channel <kanal>" auf diesem Kanal per
+-- WLAN-Mesh notduerftig wieder anbinden - etwa wenn Richtfunk, Powerline oder
+-- ein Kabel im LAN-Mesh ausgefallen ist.
+
+local uci = require('simple-uci').cursor()
+local iwinfo = require('iwinfo')
+
+local LABEL = { ['2g'] = '2,4', ['5g'] = '5', ['6g'] = '6' }
+
+if arg[1] == '-h' or arg[1] == '--help' then
+	print('Aufruf: offlinescan   (sucht auf allen Radios nach Knoten in der Offline-SSID)')
+	os.exit(0)
+end
+
+local prefixes = {}
+for _, p in ipairs({
+	uci:get('ssid-changer', 'settings', 'prefix') or 'FF_Offline_',
+	uci:get('ssid-changer', 'settings', 'prefix_owe') or 'FF_Off_OWE_',
+}) do
+	if p ~= '' then table.insert(prefixes, p) end
+end
+
+local function offline_name(ssid)
+	for _, p in ipairs(prefixes) do
+		if ssid:sub(1, #p) == p then
+			return ssid:sub(#p + 1), p
+		end
+	end
+end
+
+local radios = {}
+uci:foreach('wireless', 'wifi-device', function(s)
+	table.insert(radios, { name = s['.name'], band = s.band, disabled = s.disabled == '1' })
+end)
+table.sort(radios, function(a, b) return (a.band or '') < (b.band or '') end)
+if #radios == 0 then
+	print('offlinescan: kein WLAN-Radio')
+	os.exit(1)
+end
+
+io.write('offlinescan: suche ' .. table.concat(prefixes, '* / ') .. '* auf')
+for _, r in ipairs(radios) do io.write(' ' .. r.name) end
+print(' ...')
+io.stdout:flush()
+
+local found, seen = {}, {}
+for _, r in ipairs(radios) do
+	if r.disabled then
+		print('offlinescan: ' .. r.name .. ' ist abgeschaltet, nicht gescannt')
+	else
+		local cells = iwinfo.nl80211.scanlist(r.name) or {}
+		if #cells == 0 then
+			print('offlinescan: ' .. r.name .. ': Scan ohne Ergebnis (Treiber scannt nicht, solange das Radio sendet?)')
+		end
+		for _, c in ipairs(cells) do
+			local name = offline_name(c.ssid or '')
+			if name then
+				-- Name+Kanal fasst die OWE-Variante zusammen; ohne Namen (suffix
+				-- none) gaebe das nur eine Zeile fuer alle, dann nach BSSID
+				local key = (name ~= '' and name or tostring(c.bssid)) .. '|' .. tostring(c.channel)
+				local sig = c.signal or -100
+				if not seen[key] then
+					seen[key] = { name = name ~= '' and name or '(ohne Namen)', band = r.band,
+						channel = c.channel, signal = sig, bssid = c.bssid }
+					table.insert(found, seen[key])
+				elseif sig > seen[key].signal then
+					seen[key].signal, seen[key].bssid = sig, c.bssid
+				end
+			end
+		end
+	end
+end
+
+if #found == 0 then
+	print('offlinescan: keine Knoten in der Offline-SSID zu hoeren')
+	os.exit(0)
+end
+
+table.sort(found, function(a, b) return a.signal > b.signal end)
+local w = 4
+for _, f in ipairs(found) do if #f.name > w then w = #f.name end end
+print(string.format('%-' .. w .. 's  %-4s  %-5s  %-8s  %s', 'Name', 'Band', 'Kanal', 'Pegel', 'BSSID'))
+for _, f in ipairs(found) do
+	print(string.format('%-' .. w .. 's  %-4s  %-5s  %-8s  %s', f.name, LABEL[f.band] or '?',
+		tostring(f.channel), f.signal .. ' dBm', f.bssid or ''))
+end
+print('Anbinden per WLAN-Mesh: diesen Knoten mit "channel <kanal> -" (2,4 GHz) bzw.'
+	.. ' "channel - <kanal>" (5 GHz) auf den Kanal holen, gleiche Mesh-ID vorausgesetzt.')
