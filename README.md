@@ -25,7 +25,9 @@ where 2025.1 makes them necessary.
 >   above all the radio naming and whether `rf_regval` still exists under mt76
 >   in OpenWrt 24.10. (`mt7915-backlog` is gone from this branch — see below.)
 >
-> **Removed on this branch:** `neanderfunk-mt7915-backlog`. OpenWrt 24.10 as
+> **Removed on this branch:** `neanderfunk-erx-migrate` (only for the
+> intermediate Gluon 2023.2 image of the EdgeRouter X migration; no EdgeRouter X
+> images on 2025.1 for now) and `neanderfunk-mt7915-backlog`. OpenWrt 24.10 as
 > shipped with Gluon 2025.1 carries an in-driver fix for stuck mt7915 PLE queues
 > (`patches/openwrt/0012-mt7915-detect-and-purge-stuck-PLE-queues.patch`), which
 > is what that package worked around. It still exists on `v2023.2.x`.
