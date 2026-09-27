@@ -78,11 +78,20 @@ It also installs these commands (all listed by `help`):
   there is no answer.
 - `switchstatus` - the port table with MAC, MTU, bridge, link changes since
   boot and drops per port; `-r` shows the raw swconfig output.
-- `lanrole` / `wanrole` - show or set `gluon.iface_<lan|wan>.role`, checked
+- `portrole [lan|wan|single|<port>|<section> [roles] [-y]]` - without
+  arguments it lists every role section, own mesh ports and ethernet ports
+  without any section. With an interface it shows or sets its roles, checked
   like Gluon's Advanced Settings (client only alone, uplink+mesh allowed).
-  Removing the last uplink or a mesh role asks first (`-y` to skip). Without
-  arguments it lists every role section including own mesh ports; it refuses
-  (also with `-y`) to give ports a role they already have elsewhere.
+  Besides Gluon's groups lan/wan/single it takes a port name: Gluon only knows
+  the ports in `board.json` (on x86 `eth0` LAN and `eth1` WAN); any further
+  port such as `eth2` needs its own `gluon.iface_<port>` section, which
+  `portrole eth2 client` creates (`.` becomes `_`) and `portrole eth2 none`
+  removes. Only such a section survives `gluon-reconfigure`; a port hung into
+  `network.client` by hand is gone after the next update. Ports that sit in
+  the LAN or WAN group (DSA `lan3`) are refused, see the workshop guide for
+  splitting LAN ports. Removing the last uplink or a mesh role asks first
+  (`-y` to skip); it refuses (also with `-y`) to give ports a role they
+  already have elsewhere. Replaces `lanrole`/`wanrole`.
 - `reconf` - `gluon-reconfigure` and then reboot, detached in the background
   (survives the SSH session ending); log in `/tmp/reconf.log`, no reboot if
   the reconfigure fails.

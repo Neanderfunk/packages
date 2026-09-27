@@ -18,8 +18,8 @@ else
 	[ -f /etc/banner ] && cat /etc/banner
 fi
 
-# Kurzbefehle, alle nur lesend - siehe "help". Die schreibenden (lanrole,
-# wanrole, reconf, v4up) sind eigene Skripte mit Pruefungen.
+# Kurzbefehle, alle nur lesend - siehe "help". Die schreibenden (portrole,
+# reconf, v4up) sind eigene Skripte mit Pruefungen.
 alias cd..='cd ..'
 alias status='nodestatus'
 alias ports='nodestatus ports'

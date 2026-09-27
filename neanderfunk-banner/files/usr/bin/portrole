@@ -1,11 +1,23 @@
 #!/bin/sh
 # portrole - zeigt oder setzt die Gluon-Rolle eines Interfaces.
 #
-#   lanrole                  aktuelle Rollen aller Interfaces zeigen
-#   lanrole mesh             LAN auf Mesh
-#   wanrole uplink mesh      WAN auf Uplink und Mesh (Mesh-on-WAN)
-#   lanrole none             LAN ohne Rolle
-#   ... -y                   ohne Rueckfrage, auch bei riskanten Wechseln
+#   portrole                   Rollen aller Interfaces zeigen, dazu Ports ohne Sektion
+#   portrole lan mesh          LAN auf Mesh
+#   portrole wan uplink mesh   WAN auf Uplink und Mesh (Mesh-on-WAN)
+#   portrole lan none          LAN ohne Rolle
+#   portrole eth2 client       weiterer Port (x86 eth2, VLAN eth0.8 ...) als Client
+#   portrole eth2 none         dessen Sektion wieder entfernen
+#   ... -y                     ohne Rueckfrage, auch bei riskanten Wechseln
+#
+# Ersetzt lanrole/wanrole (bis September 2026).
+#
+# Gluon kennt nur drei Gruppen aus board.json: /lan, /wan, /single. Jeder
+# weitere Port (auf x86 alles ab eth2) gehoert zu keiner und tut nichts, bis
+# er eine eigene Sektion gluon.iface_<port> mit Rolle hat ("." wird "_").
+# Nur so uebersteht er gluon-reconfigure - ein Port, der von Hand in
+# network.client steht, ist nach dem naechsten Update weg (Kollektor-Gluon
+# 839d, 27.09.2026). Ports, die in der LAN- oder WAN-Gruppe stecken (DSA lan3),
+# lassen sich so nicht herausnehmen: Werkstatt-Anleitung "LAN-Ports trennen".
 #
 # Rollen wie in Gluons Erweiterten Einstellungen: uplink, mesh, client;
 # client nur allein, uplink+mesh geht. Geschrieben wird gluon.iface_<if>.role,
@@ -17,15 +29,19 @@
 # setzt es nicht.
 
 NAME=${0##*/}
-IF=${NAME%role}
-case "$IF" in
-	lan|wan|single) ;;
-	*) IF=$1; shift ;;
+usage() {
+	echo "Aufruf: portrole [lan|wan|single|<port>|<sektion> [uplink|mesh|client|none ...] [-y]]" >&2
+	echo "        ohne Argument: Rollen aller Interfaces zeigen" >&2
+	exit 1
+}
+case "${1:-}" in
+	-h|--help) usage ;;
+	-*) usage ;;
 esac
-case "$IF" in
-	lan|wan|single) ;;
-	*) echo "Aufruf: lanrole|wanrole [uplink|mesh|client|none ...] [-y]" >&2; exit 1 ;;
-esac
+# ohne Argument nur anzeigen (dafuer reicht irgendeine gueltige Sektion)
+ARGC=$#
+IF=${1:-lan}
+[ $# -gt 0 ] && shift
 
 YES=0
 ROLES=
@@ -65,6 +81,24 @@ show() {
 	for s in $(own_mesh_sections); do
 		printf '%-12s %-14s %s\n' "$s" 'mesh (eigen)' "$(uci -q get network.$s.ifname || uci -q get network.$s.device)"
 	done
+	# Ethernet-Ports ohne Sektion (x86 eth2 ...): kein WLAN, kein DSA-Conduit
+	local known p
+	# echo ohne Anfuehrungszeichen macht aus Zeilenumbruechen Leerzeichen
+	known=" $(echo $(for s in $(gluon_sections); do ports_of $s; done) $(for s in $(own_mesh_sections); do uci -q get network.$s.ifname; uci -q get network.$s.device; done)) "
+	for p in $(ls /sys/class/net); do
+		[ -e /sys/class/net/$p/device ] || continue
+		[ -e /sys/class/net/$p/dsa ] && continue
+		grep -q DEVTYPE=wlan /sys/class/net/$p/uevent 2>/dev/null && continue
+		case "$known" in *" $p "*) continue ;; esac
+		# Traeger von VLANs mit Rolle (swconfig: eth0 unter eth0.1/eth0.2)
+		case "$known" in *" $p."*) continue ;; esac
+		# wie nodestatus: nur auf x86 oder mit Link - manche Router haben eine
+		# zweite, intern verdrahtete Schnittstelle ohne Buchse (MT7621 eth1)
+		if ! grep -q "DISTRIB_TARGET='x86/" /etc/openwrt_release 2>/dev/null; then
+			[ "$(cat /sys/class/net/$p/carrier 2>/dev/null)" = 1 ] || continue
+		fi
+		printf '%-12s %-14s %s\n' "$p" '(ohne Sektion)' "setzen: portrole $p <rolle>"
+	done
 }
 
 # Ports, die ausser $1 schon eine Rolle haben: andere Gluon-Sektionen mit
@@ -80,22 +114,47 @@ ports_elsewhere() {
 	done
 }
 
-SEC=iface_$IF
-if ! uci -q get gluon.$SEC >/dev/null; then
-	if uci -q get gluon.iface_single >/dev/null; then
-		echo "Geraet mit nur einem Port: es gibt nur iface_single."
-		SEC=iface_single
-		IF=single
-	else
-		echo "gluon.$SEC gibt es nicht." >&2
-		exit 1
-	fi
-fi
+SEC=iface_$(echo "$IF" | tr '.-' '__')
+NEWSEC=0
+case "$IF" in
+	lan|wan|single)
+		if ! uci -q get gluon.$SEC >/dev/null; then
+			if uci -q get gluon.iface_single >/dev/null; then
+				[ $ARGC -gt 0 ] && echo "Geraet mit nur einem Port: es gibt nur iface_single."
+				SEC=iface_single
+				IF=single
+			else
+				echo "gluon.$SEC gibt es nicht." >&2
+				exit 1
+			fi
+		fi
+		;;
+	*)
+		# weitere Sektion (iface_eth2, iface_mesh aus der Anleitung ...) oder
+		# ein Port, fuer den es noch keine gibt
+		if ! uci -q get gluon.$SEC >/dev/null; then
+			if [ ! -e "/sys/class/net/$IF" ] && [ ! -e "/sys/class/net/${IF%%.*}" ]; then
+				echo "$IF: weder eine Sektion gluon.$SEC noch ein Port dieses Namens." >&2
+				echo "Belegung und freie Ports zeigt: portrole" >&2
+				exit 1
+			fi
+			NEWSEC=1
+		fi
+		;;
+esac
 
 if [ -z "$(echo $ROLES)" ]; then
 	show
 	exit 0
 fi
+
+# Neue Sektion: der Port selbst ist ihr Name
+if [ $NEWSEC = 1 ]; then
+	PORTNAME=$IF
+fi
+ports_of_target() {
+	if [ $NEWSEC = 1 ]; then echo "$PORTNAME"; else ports_of $SEC; fi
+}
 
 # pruefen und normalisieren (Reihenfolge wie in Gluon: uplink mesh client)
 NEW=
@@ -129,7 +188,7 @@ fi
 if [ -n "$NEW" ]; then
 	ELSE=" $(echo $(ports_elsewhere $SEC)) "
 	CLASH=
-	for p in $(ports_of $SEC); do
+	for p in $(ports_of_target); do
 		case "$ELSE" in *" $p "*) CLASH="$CLASH $p" ;; esac
 	done
 	if [ -n "$CLASH" ]; then
@@ -170,7 +229,26 @@ if [ -n "$RISK" ] && [ $YES = 0 ]; then
 	fi
 fi
 
-uci -q delete gluon.$SEC.role
-for r in $NEW; do uci add_list gluon.$SEC.role=$r; done
+case "$SEC" in
+	iface_lan|iface_wan|iface_single)
+		uci -q delete gluon.$SEC.role
+		for r in $NEW; do uci add_list gluon.$SEC.role=$r; done
+		;;
+	*)
+		if [ -z "$NEW" ]; then
+			# Zusatzsektion ohne Rolle hat keinen Zweck: ganz weg
+			uci -q delete gluon.$SEC
+			echo "gluon.$SEC entfernt."
+		else
+			if [ $NEWSEC = 1 ]; then
+				uci set gluon.$SEC=interface
+				uci set gluon.$SEC.name="$PORTNAME"
+				echo "gluon.$SEC angelegt (name=$PORTNAME)."
+			fi
+			uci -q delete gluon.$SEC.role
+			for r in $NEW; do uci add_list gluon.$SEC.role=$r; done
+		fi
+		;;
+esac
 uci commit gluon
 echo "Gesetzt. Wirksam nach gluon-reconfigure und Neustart: reconf"

@@ -30,7 +30,7 @@ define Package/$(PKG_NAME)/description
 	VPN, gateway, clients, radios (live channel, width, mode, tx power) and
 	mesh neighbours - followed by warnings. Also installs admin commands:
 	nodestatus, nodeinfo (details), switch0/switchstatus (port table, also
-	on DSA), lanrole/wanrole (show or set the Gluon interface role), reconf
+	on DSA), portrole (show or set the Gluon interface role, also for extra ports like eth2), reconf
 	(gluon-reconfigure and reboot in the background), v4up (IPv4 via the
 	mesh, refused if the uplink has IPv4), vpn (show or switch the mesh VPN
 	on/off persistently), routername (show or set the node name), flash

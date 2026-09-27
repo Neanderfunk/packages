@@ -1,3 +1,0 @@
-#!/bin/sh
-# lanrole - Rolle des LAN zeigen oder setzen, siehe portrole.
-exec /usr/bin/portrole lan "$@"

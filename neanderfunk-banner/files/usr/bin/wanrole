@@ -1,3 +1,0 @@
-#!/bin/sh
-# wanrole - Rolle des WAN zeigen oder setzen, siehe portrole.
-exec /usr/bin/portrole wan "$@"
