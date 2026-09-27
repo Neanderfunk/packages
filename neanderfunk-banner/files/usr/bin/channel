@@ -8,6 +8,8 @@
 --     channel 6 44          2,4 GHz auf 6, 5 GHz auf 44
 --     channel - 44          nur 5 GHz ("-" laesst ein Band, wie es ist)
 --     channel auto auto     beide auf Autochannel
+--     channel autofix       2,4 GHz per Scan auf einen Kanal ohne eigenes Mesh
+--                           (siehe autofix weiter unten); -n zeigt nur
 --
 -- Der erste Wert gilt immer fuer 2,4 GHz, der zweite fuer 5 GHz - egal welches
 -- Radio (radio0/radio1) welches Band hat; die Zuordnung kommt aus
@@ -37,6 +39,7 @@
 -- Delta aus /tmp/.uci bei jedem Cursor mit, auch mit eigenem savedir. Deshalb
 -- wird eine Kopie der Konfiguration unter anderem Namen geaendert (fuer die gibt
 -- es kein Delta) und zurueckkopiert; das Delta bleibt und gilt weiter obenauf.
+-- Danach startet es nur die geaenderten Radios neu (wifi up <radio>).
 
 local uci = require('simple-uci').cursor()
 local rawuci = require('uci')
@@ -60,9 +63,11 @@ end
 
 local function usage()
 	io.stderr:write([==[
-Aufruf: channel [2,4-GHz-Kanal [5-GHz-Kanal]] [--no-keep] [-f]
+Aufruf: channel [2,4-GHz-Kanal [5-GHz-Kanal]] [-n] [--no-keep] [-f]
   ohne Kanal: anzeigen
   Kanal: Zahl, "auto" oder "-" (Band nicht aendern)
+  Kanal "autofix": per Scan einen Kanal ohne das eigene Mesh waehlen
+  -n         nur zeigen, was passieren wuerde (mit autofix: die Auswertung)
   --no-keep  Kanal nicht ueber Updates behalten (kein preserve_channels_<band>)
   -f         auch wenn Mesh-Nachbarn an diesem Radio haengen
 ]==])
@@ -162,12 +167,13 @@ end
 
 -- --- Argumente ---------------------------------------------------------------
 
-local values, keep, force = {}, true, false
+local values, keep, force, dry = {}, true, false, false
 for _, a in ipairs(arg) do
 	if a == '--no-keep' then keep = false
 	elseif a == '-f' or a == '--force' then force = true
+	elseif a == '-n' or a == '--dry-run' then dry = true
 	elseif a == '-h' or a == '--help' then usage()
-	elseif a == '-' or a == 'auto' or a:match('^%d+$') then table.insert(values, a)
+	elseif a == '-' or a == 'auto' or a == 'autofix' or a:match('^%d+$') then table.insert(values, a)
 	else
 		io.stderr:write('channel: unbekanntes Argument "' .. a .. '"\n')
 		usage()
@@ -178,6 +184,177 @@ if #values > #BANDS then usage() end
 if #values == 0 then
 	show()
 	os.exit(0)
+end
+
+-- --- autofix -------------------------------------------------------------------
+--
+-- Waehlt per Scan einen Kanal, auf dem das eigene Mesh NICHT zu hoeren ist -
+-- fuer Knoten, die nicht ins WLAN-Mesh der Nachbarn sollen (Uplink per Kabel
+-- oder VPN). Reihenfolge (adorfer, 27.09.2026):
+--   1. Kandidaten: 2,4 GHz die ungeraden 1-11 (ohne 13), 5 GHz die geraden,
+--      die das Radio kann (auch DFS).
+--   2. Kein eigenes Mesh (Mesh Point mit der eigenen mesh_id). Sind mehrere
+--      frei, moeglichst auch kein weiteres Freifunk: SSID mit "freifunk", die
+--      eigene Client-SSID, die Offline-SSID, fremde Meshes (Mesh Point mit
+--      anderer ID, Ad-Hoc). Danach weniger fremde Netze.
+--   3. Auf 2,4 GHz notfalls die geraden 2-10, gleiche Regeln.
+--   4. Ueberall eigenes Mesh: der Kanal, dessen staerkstes eigenes Mesh am
+--      schwaechsten ist (lieber -88 dBm als -60 dBm).
+--   5. Liefert der Scan nichts (manche Treiber scannen nicht, solange das
+--      Radio sendet): zufaellig unter den Kandidaten aus 1.
+-- Erfuellt der aktuelle Kanal die Kriterien genauso gut, bleibt er, damit nichts
+-- grundlos wechselt; weniger fremde Netze zaehlen erst danach.
+-- Gezaehlt wird nur der Primaerkanal einer Zelle, wie ihn der Scan meldet.
+
+local allowed_cache = {}
+function allowed_channels(r)
+	if not allowed_cache[r.name] then
+		local list = {}
+		local phy = sh('iwinfo nl80211 phyname ' .. r.name):match('%S+')
+		for _, f in ipairs(phy and require('iwinfo').nl80211.freqlist(phy) or {}) do
+			if not f.restricted then table.insert(list, f.channel) end
+		end
+		allowed_cache[r.name] = list
+	end
+	return allowed_cache[r.name]
+end
+
+local function mesh_id(r)
+	local id
+	uci:foreach('wireless', 'wifi-iface', function(s)
+		if s.device == r.name and s.mode == 'mesh' and s.mesh_id then id = s.mesh_id end
+	end)
+	return id
+end
+
+local function ff_names(r)
+	local names = {}
+	uci:foreach('wireless', 'wifi-iface', function(s)
+		if s.device == r.name and s.ssid then names[s.ssid] = true end
+	end)
+	return names, uci:get('ssid-changer', 'settings', 'prefix') or 'FF_Offline_'
+end
+
+function autofix(band, r)
+	local own = mesh_id(r)
+	local names, offline_prefix = ff_names(r)
+	print(string.format('channel: %s: Scan auf %s ...', LABEL[band], r.name))
+	io.stdout:flush()
+	-- Manche Treiber scannen nicht (oder nicht, solange das Radio sendet).
+	-- Ohne Scan: zufaellig unter den ersten Kandidaten (adorfer).
+	local cells = require('iwinfo').nl80211.scanlist(r.name) or {}
+
+	local stat = {}
+	local function st(ch)
+		stat[ch] = stat[ch] or { own = 0, own_max = nil, ff = 0, other = 0 }
+		return stat[ch]
+	end
+	for _, c in ipairs(cells) do
+		local ch, ssid, mode = tonumber(c.channel), c.ssid or '', c.mode or ''
+		if ch then
+			local t = st(ch)
+			local is_mesh = mode == 'Mesh Point' or mode == 'Ad-Hoc'
+			if mode == 'Mesh Point' and own and ssid == own then
+				t.own = t.own + 1
+				if not t.own_max or (c.signal or -100) > t.own_max then t.own_max = c.signal or -100 end
+			elseif is_mesh or names[ssid] or ssid:lower():find('freifunk', 1, true)
+					or ssid:sub(1, #offline_prefix) == offline_prefix then
+				t.ff = t.ff + 1
+			else
+				t.other = t.other + 1
+			end
+		end
+	end
+
+	local allowed = {}
+	for _, ch in ipairs(allowed_channels(r)) do allowed[ch] = true end
+	local primary, fallback = {}, {}
+	if band == '2g' then
+		for _, ch in ipairs({ 1, 3, 5, 7, 9, 11 }) do if allowed[ch] then table.insert(primary, ch) end end
+		for _, ch in ipairs({ 2, 4, 6, 8, 10 }) do if allowed[ch] then table.insert(fallback, ch) end end
+	else
+		for _, ch in ipairs(allowed_channels(r)) do
+			if ch % 2 == 0 then table.insert(primary, ch) end
+		end
+	end
+	local current = tonumber(r.channel)
+
+	if #cells == 0 then
+		if #primary == 0 then
+			die(LABEL[band] .. ': kein Kandidat (freqlist leer?)')
+		end
+		local f = io.open('/dev/urandom', 'rb')
+		local seed = f and f:read(4) or tostring(os.time())
+		if f then f:close() end
+		local n = 0
+		for i = 1, #seed do n = n * 256 + seed:byte(i) end
+		math.randomseed(n % 2147483647)
+		local choice = primary[math.random(#primary)]
+		print(string.format('channel: %s: Scan ohne Ergebnis, autofix waehlt zufaellig Kanal %d (aus %s)',
+			LABEL[band], choice, table.concat(primary, ' ')))
+		return tostring(choice)
+	end
+
+	-- bessere Wahl zuerst: ohne Freifunk, weniger Freifunk, dann der aktuelle
+	-- Kanal (erfuellt er beide Kriterien, wird nicht gewechselt), dann weniger
+	-- fremde Netze
+	local function better_free(a, b)
+		local sa, sb = st(a), st(b)
+		if (sa.ff > 0) ~= (sb.ff > 0) then return sa.ff == 0 end
+		if sa.ff ~= sb.ff then return sa.ff < sb.ff end
+		if (a == current) ~= (b == current) then return a == current end
+		if sa.other ~= sb.other then return sa.other < sb.other end
+		return a < b
+	end
+	local function pick_free(list)
+		local free = {}
+		for _, ch in ipairs(list) do if st(ch).own == 0 then table.insert(free, ch) end end
+		table.sort(free, better_free)
+		return free[1]
+	end
+
+	local choice, why = pick_free(primary), nil
+	if choice then
+		why = 'kein eigenes Mesh'
+	elseif #fallback > 0 then
+		choice = pick_free(fallback)
+		why = choice and 'kein eigenes Mesh (Ausweichkanal gerade)'
+	end
+	if not choice then
+		local all = {}
+		for _, ch in ipairs(primary) do table.insert(all, ch) end
+		for _, ch in ipairs(fallback) do table.insert(all, ch) end
+		table.sort(all, function(a, b)
+			local sa, sb = st(a), st(b)
+			if sa.own_max ~= sb.own_max then return (sa.own_max or -200) < (sb.own_max or -200) end
+			return better_free(a, b)
+		end)
+		choice = all[1]
+		why = choice and ('ueberall eigenes Mesh, hier am schwaechsten (' .. tostring(st(choice).own_max) .. ' dBm)')
+	end
+	if not choice then
+		die(LABEL[band] .. ': kein Kandidat (freqlist leer?)')
+	end
+	if choice and st(choice).ff > 0 and why == 'kein eigenes Mesh' then
+		why = why .. ', aber ' .. st(choice).ff .. 'x Freifunk'
+	elseif why == 'kein eigenes Mesh' then
+		why = why .. ', kein Freifunk'
+	end
+
+	-- Auswertung zeigen
+	local shown = {}
+	for _, ch in ipairs(primary) do table.insert(shown, ch) end
+	for _, ch in ipairs(fallback) do table.insert(shown, ch) end
+	print(string.format('  %d Zellen, eigenes Mesh "%s"', #cells, tostring(own)))
+	print('  Kanal  eigenes Mesh (staerkstes)  Freifunk  andere')
+	for _, ch in ipairs(shown) do
+		local t = st(ch)
+		print(string.format('  %-5s  %-25s  %-8d  %d%s', ch,
+			t.own > 0 and (t.own .. 'x (' .. t.own_max .. ' dBm)') or '-', t.ff, t.other,
+			(ch == choice and '   <- gewaehlt' or '') .. (ch == current and '   (aktuell)' or '')))
+	end
+	print(string.format('channel: %s: autofix waehlt Kanal %d - %s', LABEL[band], choice, why))
+	return tostring(choice)
 end
 
 -- --- Pruefen: erst alles, dann schreiben ---------------------------------------
@@ -194,15 +371,17 @@ for i, v in ipairs(values) do
 	elseif band == '5g' and outdoor then
 		print('channel: ' .. LABEL[band] .. ' ist im Outdoor-Modus, Gluon waehlt den Kanal aus der Kanalliste - nicht geaendert')
 	else
+		if v == 'autofix' then
+			v = autofix(band, r)
+		end
 		local ok = v == 'auto'
 		if not ok then
-			local phy = sh('iwinfo nl80211 phyname ' .. r.name):match('%S+')
 			local n = tonumber(v)
-			for _, f in ipairs(phy and require('iwinfo').nl80211.freqlist(phy) or {}) do
-				if f.channel == n and not f.restricted then ok = true end
+			for _, ch in ipairs(allowed_channels(r)) do
+				if ch == n then ok = true end
 			end
 			if not ok then
-				die(LABEL[band] .. ': Kanal ' .. v .. ' kann ' .. r.name .. ' hier nicht (iwinfo ' .. (phy or r.name) .. ' freqlist)')
+				die(LABEL[band] .. ': Kanal ' .. v .. ' kann ' .. r.name .. ' hier nicht (iwinfo freqlist)')
 			end
 		end
 		local nb = r.mesh and r.mesh_enabled and neighbours[r.mesh] or 0
@@ -217,6 +396,13 @@ for i, v in ipairs(values) do
 end
 if refused then
 	os.exit(1)
+end
+if dry then
+	for _, ch in ipairs(changes) do
+		print(string.format('channel: -n: %s (%s) %s -> %s, nichts geschrieben', LABEL[ch.band], ch.radio,
+			tostring(ch.from), ch.to))
+	end
+	os.exit(0)
 end
 
 -- --- Schreiben -----------------------------------------------------------------
@@ -299,11 +485,20 @@ os.execute('logger -t channel -- "' .. table.concat((function()
 	return t
 end)(), ' ') .. '"')
 
+-- Nur das geaenderte Radio neu starten, und zwar mit "wifi up <radio>", nicht
+-- "wifi reload": nach reload mit neuem Kanal zieht das Mesh mit, der AP aber
+-- verliert seine hostapd-BSS und sendet nicht mehr (COVR X1860/MT7915,
+-- 4 von 4 Versuchen; mi4a/mt76x2 auf 5 GHz 2 von 2, 27.09.2026). "wifi up"
+-- baut das Radio neu auf. Unter demselben Lock wie ssid-changer, hotfix,
+-- linkcheck und wifi-blackout, damit kein Neustart in einen anderen faellt;
+-- hier wartend (busybox-flock kennt kein -w), die anderen halten ihn kurz.
 if #wireless_sets > 0 then
-	print('channel: wifi reload ...')
-	io.stdout:flush()
-	os.execute('wifi reload')
-	os.execute('sleep 5')
+	for _, s in ipairs(wireless_sets) do
+		print('channel: wifi up ' .. s[1] .. ' ...')
+		io.stdout:flush()
+		os.execute("flock /var/lock/neanderfunk-wifi.lock -c 'wifi up " .. s[1] .. "'")
+	end
+	os.execute('sleep 10')
 end
 -- Anzeige mit frisch gelesenem Stand
 io.stdout:flush()
