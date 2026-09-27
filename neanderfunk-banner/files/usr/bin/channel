@@ -1,20 +1,20 @@
 #!/usr/bin/lua
--- channel [2,4-GHz-Kanal [5-GHz-Kanal]] [--no-keep] [-f] - WLAN-Kanaele zeigen
+-- channel [2.4-GHz-Kanal [5-GHz-Kanal]] [--no-keep] [-f] - WLAN-Kanaele zeigen
 -- oder setzen.
 --
 --     channel               je Radio: Band, Kanal (live und uci), HT-Mode,
 --                           ob der Kanal Updates uebersteht, Mesh-Nachbarn
---     channel 6             2,4 GHz auf Kanal 6
---     channel 6 44          2,4 GHz auf 6, 5 GHz auf 44
+--     channel 6             2.4 GHz auf Kanal 6
+--     channel 6 44          2.4 GHz auf 6, 5 GHz auf 44
 --     channel - 44          nur 5 GHz ("-" laesst ein Band, wie es ist)
 --     channel auto auto     beide auf Autochannel
 --     channel autofix       alle Baender per Scan auf einen Kanal ohne eigenes
 --                           Mesh (siehe autofix weiter unten); -n zeigt nur
---     channel - autofix     nur 5 GHz, "channel autofix -" nur 2,4 GHz
+--     channel - autofix     nur 5 GHz, "channel autofix -" nur 2.4 GHz
 --     channel mesh          umgekehrt: Mesh an und auf den Kanal mit dem
 --                           staerksten eigenen Mesh (siehe mesh weiter unten)
 --
--- Der erste Wert gilt immer fuer 2,4 GHz, der zweite fuer 5 GHz - egal welches
+-- Der erste Wert gilt immer fuer 2.4 GHz, der zweite fuer 5 GHz - egal welches
 -- Radio (radio0/radio1) welches Band hat; die Zuordnung kommt aus
 -- wireless.<radio>.band. Die Breite (HT-Mode) bleibt, wie sie ist.
 --
@@ -48,7 +48,7 @@ local uci = require('simple-uci').cursor()
 local rawuci = require('uci')
 
 local BANDS = { '2g', '5g' }
-local LABEL = { ['2g'] = '2,4 GHz', ['5g'] = '5 GHz' }
+local LABEL = { ['2g'] = '2.4 GHz', ['5g'] = '5 GHz' }
 local TMPDIR = '/tmp/nf-channel'
 
 local function sh(cmd)
@@ -66,7 +66,7 @@ end
 
 local function usage()
 	io.stderr:write([==[
-Aufruf: channel [2,4-GHz-Kanal [5-GHz-Kanal]] [-n] [--no-keep] [-f]
+Aufruf: channel [2.4-GHz-Kanal [5-GHz-Kanal]] [-n] [--no-keep] [-f]
   ohne Kanal: anzeigen
   Kanal: Zahl, "auto" oder "-" (Band nicht aendern)
   Kanal "autofix" (auch "fixauto"): per Scan einen Kanal ohne das eigene Mesh waehlen;
@@ -193,7 +193,7 @@ end
 if #values > #BANDS then usage() end
 -- "channel autofix" allein gilt fuer alle Baender (adorfer); nur ein Band mit
 -- "-" an der anderen Stelle: "channel autofix -" bzw. "channel - autofix".
--- Eine einzelne Zahl oder "auto" gilt weiter nur fuer 2,4 GHz.
+-- Eine einzelne Zahl oder "auto" gilt weiter nur fuer 2.4 GHz.
 if #values == 1 and (values[1] == 'autofix' or values[1] == 'mesh') then
 	for i = 2, #BANDS do values[i] = values[1] end
 end
@@ -208,13 +208,13 @@ end
 -- Waehlt per Scan einen Kanal, auf dem das eigene Mesh NICHT zu hoeren ist -
 -- fuer Knoten, die nicht ins WLAN-Mesh der Nachbarn sollen (Uplink per Kabel
 -- oder VPN). Reihenfolge (adorfer, 27.09.2026):
---   1. Kandidaten: 2,4 GHz die ungeraden 1-11 (ohne 13), 5 GHz die geraden,
+--   1. Kandidaten: 2.4 GHz die ungeraden 1-11 (ohne 13), 5 GHz die geraden,
 --      die das Radio kann (auch DFS).
 --   2. Kein eigenes Mesh (Mesh Point mit der eigenen mesh_id). Sind mehrere
 --      frei, moeglichst auch kein weiteres Freifunk: SSID mit "freifunk", die
 --      eigene Client-SSID, die Offline-SSID, fremde Meshes (Mesh Point mit
 --      anderer ID, Ad-Hoc). Danach weniger fremde Netze.
---   3. Auf 2,4 GHz notfalls die geraden 2-10, gleiche Regeln.
+--   3. Auf 2.4 GHz notfalls die geraden 2-10, gleiche Regeln.
 --   4. Ueberall eigenes Mesh: der Kanal, dessen staerkstes eigenes Mesh am
 --      schwaechsten ist (lieber -88 dBm als -60 dBm).
 --   5. Liefert der Scan nichts (manche Treiber scannen nicht, solange das

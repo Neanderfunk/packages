@@ -22,7 +22,7 @@
 local uci = require('simple-uci').cursor()
 local iwinfo = require('iwinfo')
 
-local LABEL = { ['2g'] = '2,4', ['5g'] = '5', ['6g'] = '6' }
+local LABEL = { ['2g'] = '2.4', ['5g'] = '5', ['6g'] = '6' }
 
 if arg[1] == '-h' or arg[1] == '--help' then
 	print('Aufruf: offlinescan   (sucht auf allen Radios nach Knoten in der Offline-SSID)')
@@ -101,5 +101,5 @@ for _, f in ipairs(found) do
 	print(string.format('%-' .. w .. 's  %-4s  %-5s  %-8s  %s', f.name, LABEL[f.band] or '?',
 		tostring(f.channel), f.signal .. ' dBm', f.bssid or ''))
 end
-print('Anbinden per WLAN-Mesh: diesen Knoten mit "channel <kanal> -" (2,4 GHz) bzw.'
+print('Anbinden per WLAN-Mesh: diesen Knoten mit "channel <kanal> -" (2.4 GHz) bzw.'
 	.. ' "channel - <kanal>" (5 GHz) auf den Kanal holen, gleiche Mesh-ID vorausgesetzt.')
