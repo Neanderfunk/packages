@@ -120,7 +120,10 @@ It also installs these commands (all listed by `help`):
   `gluon.wireless.preserve_channels_<band>=1`, which
   neanderfunk-preserve-wifichannel honours in addition to Gluon's global
   `preserve_channels`; a global switch still set to 1 is carried over into the
-  per-band keys (all bands 1, global 0). If mesh neighbours hang on a radio's
+  per-band keys (all bands 1, global 0). If the path to the selected gateway
+  (`batctl gwl`) goes out via a radio's mesh interface, that radio's channel
+  is only changed with `-f`, always, also for `autofix` and `mesh` (the node
+  would probably lose its best path to the gateway). If mesh neighbours hang on a radio's
   mesh interface, that radio is only changed with `-f` - a channel change
   cuts those links, possibly the one the SSH session runs over. It writes
   only its own options to `/etc/config` (a renamed copy, so runtime changes in

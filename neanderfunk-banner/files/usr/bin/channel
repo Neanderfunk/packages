@@ -28,7 +28,9 @@
 -- von da an laesst sich je Band entscheiden. Wer ihn spaeter wieder auf 1
 -- setzt, haelt wie bisher alle Baender fest.
 --
--- Schutz vor dem Aussperren: Haengen am Mesh-Interface eines Radios Nachbarn,
+-- Schutz vor dem Aussperren: Laeuft der Weg zum gewaehlten Gateway (batctl gwl)
+-- ueber das Mesh-Interface eines Radios, aendert channel dessen Kanal nur mit
+-- -f - immer, auch bei autofix und mesh. Haengen am Mesh-Interface Nachbarn,
 -- reisst ein Kanalwechsel diese Links ab - ueber genau diese Links kann auch
 -- die eigene SSH-Sitzung laufen, und der neue Kanal ist dauerhaft gespeichert.
 -- Dann aendert channel das Radio nur mit -f. Ebenso "auto" auf einem Radio mit
@@ -120,6 +122,13 @@ local neighbours = {}
 for line in sh('batctl n -H'):gmatch('[^\n]+') do
 	local ifname = line:match('^%s*(%S+)%s+%x%x:')
 	if ifname then neighbours[ifname] = (neighbours[ifname] or 0) + 1 end
+end
+
+-- Weg zum gewaehlten Gateway (batctl gwl: "* <gw> (<tq>) <nexthop> [ <if>]: ...")
+local gw = {}
+for line in sh('batctl gwl -H'):gmatch('[^\n]+') do
+	local g, tq, hop, ifname = line:match('^%s*%*%s+(%S+)%s+%(%s*(%d+)%)%s+(%S+)%s+%[%s*([^%]%s]+)%s*%]')
+	if g then gw = { mac = g, tq = tq, hop = hop, ifname = ifname } end
 end
 
 local function live(r)
@@ -471,7 +480,14 @@ for i, v in ipairs(values) do
 			end
 		end
 		local nb = r.mesh and r.mesh_enabled and neighbours[r.mesh] or 0
-		if v ~= r.channel and nb > 0 and not force and not improve then
+		if v ~= r.channel and gw.ifname and gw.ifname == r.mesh and not force then
+			-- Der Gateway-Weg laeuft ueber genau dieses Radio: immer nur mit -f,
+			-- auch wenn mesh anderswo ein staerkeres Mesh hoert
+			print(string.format('channel: %s: ACHTUNG, der Knoten verliert damit vermutlich seinen besten Weg'
+				.. ' zum Gateway (%s, TQ %s, ueber %s an %s). Wenn wirklich gewollt: noch einmal mit -f',
+				LABEL[band], gw.mac, gw.tq, gw.hop, r.mesh))
+			refused = true
+		elseif v ~= r.channel and nb > 0 and not force and not improve then
 			print(string.format('channel: %s: %d Mesh-Nachbarn an %s verlieren mit dem Wechsel den Link%s - nur mit -f',
 				LABEL[band], nb, r.mesh, v == 'auto' and ' (auf auto kommt das Mesh nicht hoch)' or ''))
 			refused = true
