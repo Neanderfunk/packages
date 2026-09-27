@@ -114,10 +114,13 @@ It also installs these commands (all listed by `help`):
   are stopped (respondd, uhttpd, cron, micrond ...), at the end
   `upgrade.d` (wifi down, network stopped, bat0 removed) and sysupgrade run
   detached from the session - "wifi down" cuts an SSH session over wifi or
-  mesh. Without that, stage2 starves on 64 MB devices (Archer C25: the wifi
-  drivers keep their RX buffers until the watchdog resets, nothing flashed).
-  Log in `/tmp/flash.log` and syslog (`logread -e flash`); if sysupgrade
-  returns, `abort.d` brings network and services back. `--hooks` forces
+  mesh. Log in `/tmp/flash.log` and syslog (`logread -e flash`).
+  sysupgrade is exec'ed, as the autoupdater does: nothing of `flash` runs
+  after it. (Until September 2026 `flash` cleaned up after sysupgrade
+  returned. sysupgrade returns as soon as it has handed over to procd, while
+  stage2 reads the image seconds later, so `flash` deleted the image it had
+  downloaded under stage2's feet and the node came back on the old firmware,
+  on any device.) `--hooks` forces
   this path, `--no-hooks` disables it (anywhere on the command line, not
   passed to sysupgrade; also via `FLASH_HOOKS=1`/`0`). `flash -h` explains
   all of this; in interactive shells `sysupgrade -h` prints OpenWrt's help
