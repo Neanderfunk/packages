@@ -259,9 +259,12 @@ if n <= setting('restarts_before_reboot', 1) then
 	-- Erfolg: faellt der Neustart wegen der Sperre aus, waere sonst ein
 	-- Versuch verbucht, den es nie gab - und beim naechsten Mal ginge es
 	-- gleich zum Reboot.
+	-- Kein "wifi config" zwischen down und up: das erkennt unter OpenWrt 23.05
+	-- neue Radios und macht dabei "uci commit wireless" - samt offener
+	-- Laufzeit-Aenderungen (Offline-SSID, ap-timer). Fuer den Neustart unnoetig.
 	local rc = os.execute("flock -n /var/lock/neanderfunk-wifi.lock -c '" ..
 		"wifi down; killall hostapd >/dev/null 2>&1; " ..
-		"rm -f /var/run/wifi-*.pid >/dev/null 2>&1; wifi config; wifi up'")
+		"rm -f /var/run/wifi-*.pid >/dev/null 2>&1; wifi up'")
 	if type(rc) == 'number' and rc ~= 0 then
 		log('wifi restart skipped, another check is already restarting wifi - retrying next run')
 		os.exit(0)

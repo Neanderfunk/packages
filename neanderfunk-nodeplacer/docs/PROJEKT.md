@@ -31,14 +31,21 @@ UCI-Config, der site.conf-Block und die Steuerdatei. Arbeitstitel war
 ## Status
 
 Paket vorhanden (`neanderfunk-nodeplacer/`), auf x86-64 gebaut und getestet, siehe
-[docs/TESTING.md](docs/TESTING.md). Erstes Ziel ist ein Release fuer
+[docs/TESTING.md](docs/TESTING.md). **Am 18.09.2026 erstmals vollstaendig auf
+echter Hardware durchgelaufen** (Xiaomi Mi 4A Gigabit, ath79/mt76): Umzug
+`nef-21_dias` -> `nef-48_rdvw` und zurueck, beide Richtungen ueber den
+regulaeren stuendlichen Cron, rund drei Minuten je Richtung, Konfiguration
+erhalten. Erstes Ziel ist ein Release fuer
 Single-Domain-Firmware (Methode `firmware`); Multidomain ist bis danach
 zurueckgestellt (D-026). Bisher primaer bei Neanderfunk getestet - Erfahrung
-mit anderen Site-Konfigurationen und Communities fehlt noch (D-038).
+mit anderen Site-Konfigurationen und Communities fehlt noch (D-038); der
+Communitywechsel mit Zwischenfirmware ist beschrieben, aber **noch nicht an
+Geraeten erprobt** (siehe [docs/HOWTO.md](docs/HOWTO.md)).
 **PRs and suggestions welcome!**
 
 | Dokument | Inhalt |
 |---|---|
+| [docs/HOWTO.md](docs/HOWTO.md) | **Hier anfangen.** Kurzanleitung fuer den eiligen Admin: die beiden Standardfaelle, Communitywechsel mit Zwischenfirmware, Stolpersteine |
 | [neanderfunk-nodeplacer/](neanderfunk-nodeplacer/) | das Paket selbst, inklusive Config-Mode-Tab "Nodeplacer" unter "Advanced settings" (per site.conf abschaltbar, D-039) |
 | [docs/DESIGN.md](docs/DESIGN.md) | Ziel, Mechanismus, Betriebsmodi, Sicherheits- und Robustheitsueberlegungen, offene Fragen |
 | [docs/MANIFEST-FORMAT.md](docs/MANIFEST-FORMAT.md) | Entwurf des Steuerdatei-Formats |

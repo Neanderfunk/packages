@@ -1,0 +1,335 @@
+#!/bin/sh
+# flash <url|verzeichnis-url|datei> [sysupgrade-optionen] - Firmware laden und
+# flashen.
+#
+#     flash https://imageslive.ffdus.de/.../gluon-...-sysupgrade.bin
+#     flash https://imageslive.ffdus.de/.../21_dias/sysupgrade/      # sucht selbst
+#     flash http://.../gluon-...-sysupgrade.bin -n     # ohne Konfiguration
+#     flash /tmp/image.bin                             # schon geladen
+#
+# Entspricht "cd /tmp && wget <url> && sysupgrade <optionen> <datei>", mit
+# Pruefungen dazwischen:
+#   - https:// wird zu http://: Die URL kommt meist aus der Zwischenablage,
+#     und nicht jeder Knoten kann TLS (tiny-Geraete haben kein gluon-tls).
+#   - Eine URL ohne Dateinamen (endet auf / oder der letzte Teil hat keinen
+#     Punkt) gilt als Verzeichnis. Dann sucht flash das Image fuer dieses
+#     Geraet selbst: zuerst im Autoupdater-Manifest (<branch>.manifest, die
+#     eingestellte Branch zuerst), das auch die sha256 liefert, gegen die der
+#     Download geprueft wird; sonst in der Verzeichnisliste nach
+#     "-<imagename>-sysupgrade.". Den Image-Namen kennt Gluon
+#     (platform_info, derselbe wie im Manifest).
+#   - Nach dem Laden stehen Groesse, freier RAM und sha256 da - /tmp liegt im
+#     RAM.
+#   - "sysupgrade -T" prueft vorher, ob das Image zu diesem Geraet passt.
+#     Passt es nicht, wird nichts geflasht.
+#   - Bei wenig RAM (MemAvailable unter 32 MB vor dem Download oder unter
+#     16 MB danach) geht flash vor wie der Autoupdater: vorher die Dienste
+#     aus /usr/lib/autoupdater/download.d anhalten (respondd, uhttpd, cron,
+#     micrond ...), zuletzt upgrade.d (wifi down, Netz aus, bat0 weg) und dann
+#     sysupgrade. Das spart RAM fuer Download und Image in /tmp. upgrade.d und
+#     sysupgrade laufen dann losgeloest von der Sitzung, denn "wifi down"/
+#     "Netz aus" kappt SSH ueber WLAN oder Mesh. Log in /tmp/flash.log und im
+#     Syslog (Tag flash). --hooks erzwingt diesen Weg, --no-hooks schaltet ihn
+#     ab (beliebige Stelle, gehen nicht an sysupgrade; gleichwertig
+#     FLASH_HOOKS=1/0).
+#   - sysupgrade wird per exec aufgerufen, wie es der Autoupdater tut: Nach
+#     dem Aufruf laeuft von flash nichts mehr. Frueher kam hier noch
+#     Aufraeumen, und das hat jedes Upgrade mit selbst geladenem Image
+#     zerstoert: sysupgrade endet mit "ubus call system sysupgrade", procd
+#     ersetzt sich per exec durch upgraded, der ubus-Aufruf kehrt sofort mit
+#     "Command failed: Connection failed" (10) zurueck - waehrend stage2 das
+#     Image erst rund zehn Sekunden spaeter liest. flash hielt das fuer
+#     "nichts geflasht" und loeschte das Image; stage2 brach mit
+#     "do_stage2: line 96: can't open /tmp/...: no such file" ab und der
+#     Knoten startete mit der alten Firmware neu. Nachgestellt in QEMU (x86-64,
+#     27.09.2026), vorher auf dem Archer C25 und einer x86-VM im Feld; mit
+#     RAM hatte das nichts zu tun. Kehrt sysupgrade doch vor der Uebergabe
+#     zurueck (praktisch ausgeschlossen, -T lief vorher), bleiben Image und
+#     angehaltene Dienste wie beim Autoupdater stehen - der naechste Reboot
+#     raeumt beides.
+# Optionen duerfen vor oder hinter der URL stehen ("flash -T <url>" wie
+# "flash <url> -T"); sie gehen unveraendert an sysupgrade, und zwar VOR die
+# Datei, wie sysupgrade es erwartet (z.B. -n, -F, -v).
+#   - -T: nur pruefen. flash laedt, vergleicht sha256, laesst sysupgrade -T
+#     laufen und raeumt danach auf (Datei weg, angehaltene Dienste wieder an).
+#   - Eine Datei, die flash selbst geladen hat, wird immer geloescht, wenn nicht
+#     geflasht wird (-T, Ablehnung, sha256-Fehler) -
+#     /tmp ist RAM, auf 64-MB-Geraeten zaehlt jedes MB. Eine uebergebene lokale
+#     Datei bleibt liegen.
+
+HOOKDIR=/usr/lib/autoupdater
+LOWMEM_KB=32768		# MemAvailable vor dem Download
+LOWMEM_AFTER_KB=16384	# MemAvailable mit dem Image in /tmp
+LOG=/tmp/flash.log
+
+usage() {
+	echo "Aufruf: flash [sysupgrade-optionen] <url|verzeichnis-url|datei> [--hooks|--no-hooks] [sysupgrade-optionen]" >&2
+	echo "  z.B.  flash http://server/pfad/sysupgrade/ -n" >&2
+	exit 1
+}
+
+# run_hooks <download|upgrade|abort>: die Skripte des Autoupdaters
+run_hooks() {
+	local s
+	for s in "$HOOKDIR/$1.d"/*; do
+		[ -f "$s" ] && [ -x "$s" ] || continue
+		"$s"
+	done
+}
+
+mem_avail() {
+	awk '/^MemAvailable:/ {print $2}' /proc/meminfo
+}
+
+say() {
+	echo "flash: $*"
+	logger -t flash -- "$*"
+}
+
+# Auch am Ende von "sysupgrade -h" in der interaktiven Shell (profile.gluon).
+help() {
+	cat <<'EOF_HELP'
+flash / sysupgrade in der interaktiven Shell (neanderfunk-banner):
+
+  sysupgrade <url|verzeichnis-url|datei> [--hooks|--no-hooks] [optionen]
+  flash      <url|verzeichnis-url|datei> [--hooks|--no-hooks] [optionen]
+
+  - https:// wird zu http:// (nicht jeder Knoten kann TLS)
+  - URL auf ein Verzeichnis (z.B. .../sysupgrade/): sucht das Image fuer
+    dieses Geraet im Manifest (sha256 wird verglichen), sonst in der
+    Verzeichnisliste
+  - zeigt Groesse, freien RAM und sha256, prueft vorher mit sysupgrade -T
+  - Optionen duerfen vor oder hinter dem Image stehen (-n, -F, -v, -T ...)
+  - -T: nur pruefen, danach Datei weg und Dienste wieder an
+  - wenig RAM (unter 32 MB frei): haelt die Dienste an wie der Autoupdater,
+    der Rest laeuft ohne Sitzung - die Verbindung bricht ab.
+    Log: /tmp/flash.log, logread -e flash
+  - --hooks erzwingt das, --no-hooks schaltet es ab
+  - flash geht auch ohne Login-Shell: ssh knoten flash <url>
+  - das Original ohne all das: command sysupgrade ... (oder /sbin/sysupgrade)
+EOF_HELP
+}
+
+# Zweiter Teil, losgeloest von der Sitzung (siehe unten): upgrade.d und
+# sysupgrade. exec wie im Autoupdater, danach darf nichts mehr kommen (Kopf).
+if [ "$1" = --detached ]; then
+	shift
+	file="$1"
+	shift
+	trap '' HUP PIPE
+	exec >> "$LOG" 2>&1 < /dev/null
+	say "upgrade.d (wifi down, Netz aus), dann sysupgrade $* $file"
+	run_hooks upgrade
+	say "RAM verfuegbar $(mem_avail) KiB"
+	exec /sbin/sysupgrade "$@" "$file"
+fi
+
+# Wenig RAM: die Dienste anhalten wie der Autoupdater vor dem Download.
+# Danach muss jeder Abbruch abort.d laufen lassen (fail).
+stopped=''
+stop_services() {
+	[ -n "$stopped" ] && return
+	if [ "${FLASH_HOOKS:-auto}" = 1 ]; then
+		say "mit --hooks: halte Dienste an wie der Autoupdater (download.d)"
+	else
+		say "wenig RAM ($(mem_avail) KiB verfuegbar): halte Dienste an wie der Autoupdater (download.d)"
+	fi
+	run_hooks download
+	stopped=1
+}
+
+owned=''
+drop_file() {
+	if [ -n "$owned" ] && [ -n "$file" ] && [ -e "$file" ]; then
+		rm -f "$file"
+		echo "flash: $file geloescht (RAM wieder frei)" >&2
+	fi
+}
+
+fail() {
+	echo "flash: $*" >&2
+	drop_file
+	if [ -n "$stopped" ]; then
+		echo "flash: starte die angehaltenen Dienste wieder (abort.d)" >&2
+		run_hooks abort
+	fi
+	exit 1
+}
+
+# find_image <verzeichnis-url>: setzt src (Datei-URL) und want_sha (leer, wenn
+# nur aus der Verzeichnisliste gefunden)
+find_image() {
+	local dir="$1" img br tried=' ' mf=/tmp/flash.manifest line name
+	img="$(lua -e 'print(require("platform_info").get_image_name())' 2>/dev/null)"
+	if [ -z "$img" ] ; then
+		echo "flash: kann den Image-Namen dieses Geraets nicht bestimmen." >&2
+		return 1
+	fi
+	echo "flash: suche das Image fuer $img in $dir/"
+
+	for br in $(uci -q get autoupdater.settings.branch) \
+			$(uci -q show autoupdater | sed -n "s/^autoupdater\.[^.]*\.name='\(.*\)'$/\1/p") \
+			stable beta experimental testing broken nightly ; do
+		case "$tried" in *" $br "*) continue ;; esac
+		tried="$tried$br "
+		rm -f "$mf"
+		wget -q -O "$mf" "$dir/$br.manifest" 2>/dev/null || continue
+		# Manche Server (imageslive) liefern fuer jeden Pfad 200 mit HTML:
+		# ein Manifest ist es nur mit BRANCH-Zeile.
+		grep -q "^BRANCH=" "$mf" || continue
+		line="$(awk -v img="$img" '$1 == img && NF == 5 { print; exit }' "$mf")"
+		[ -n "$line" ] || continue
+		set -- $line
+		src="$dir/$5"
+		want_sha="$3"
+		echo "flash: gefunden in $br.manifest: $5 (Version $2)"
+		rm -f "$mf"
+		return 0
+	done
+	rm -f "$mf"
+
+	# Rueckfall: Verzeichnisliste des Servers
+	if wget -q -O /tmp/flash.index "$dir/" 2>/dev/null ; then
+		name="$(grep -o "[^\"'/<> ]*-$img-sysupgrade\.[^\"'<> ]*" /tmp/flash.index | head -n 1)"
+		rm -f /tmp/flash.index
+		if [ -n "$name" ] ; then
+			src="$dir/$name"
+			want_sha=''
+			echo "flash: gefunden in der Verzeichnisliste: $name (ohne Manifest, keine sha256 zum Vergleich)"
+			return 0
+		fi
+	fi
+	echo "flash: kein Image fuer $img in $dir/ gefunden - nichts geflasht." >&2
+	return 1
+}
+
+# --hooks / --no-hooks gehoeren flash, nicht sysupgrade (das bricht bei
+# unbekannten Optionen ab): herausnehmen, egal wo sie stehen.
+i=0
+for a in "$@"; do
+	i=$((i + 1))
+	[ "$i" -eq 1 ] && set --
+	case "$a" in
+		--hooks) FLASH_HOOKS=1 ;;
+		--no-hooks) FLASH_HOOKS=0 ;;
+		*) set -- "$@" "$a" ;;
+	esac
+done
+
+# Das Image darf an beliebiger Stelle stehen ("flash -T <url>" wie "flash <url>
+# -T"): das erste Argument, das keine Option ist - dabei die Werte von Optionen
+# ueberspringen, die einen haben (sysupgrade -d/-f/-b/-r). Der Rest geht in
+# seiner Reihenfolge an sysupgrade. -T merken: dann nur pruefen.
+src='' test_only='' skip=''
+i=0
+for a in "$@"; do
+	i=$((i + 1))
+	[ "$i" -eq 1 ] && set --
+	if [ -n "$skip" ]; then skip=''; set -- "$@" "$a"; continue; fi
+	case "$a" in
+		-h|--help) help; exit 0 ;;
+		-d|-f|-b|-r|--create-backup|--restore-backup) skip=1; set -- "$@" "$a" ;;
+		-T) test_only=1; set -- "$@" "$a" ;;
+		-*) set -- "$@" "$a" ;;
+		*)
+			if [ -z "$src" ]; then src="$a"; else set -- "$@" "$a"; fi
+			;;
+	esac
+done
+[ -n "$src" ] || usage
+want_sha=''
+
+case "$src" in
+	https://*)
+		src="http://${src#https://}"
+		echo "flash: lade per http statt https: $src"
+		;;
+esac
+
+case "${FLASH_HOOKS:-auto}" in
+	1) hooks=1 ;;
+	0) hooks='' ;;
+	*) hooks=''; [ "$(mem_avail)" -lt "$LOWMEM_KB" ] 2>/dev/null && hooks=1 ;;
+esac
+
+case "$src" in
+	http://*)
+		last="${src%/}"
+		last="${last##*/}"
+		case "$src" in
+			*/) find_image "${src%/}" || exit 1 ;;
+			*)
+				case "$last" in
+					*.*) ;;
+					*) find_image "$src" || exit 1 ;;
+				esac
+				;;
+		esac
+		name="${src##*/}"
+		name="${name%%\?*}"
+		[ -n "$name" ] || name=sysupgrade.bin
+		file="/tmp/$name"
+		rm -f "$file"
+		owned=1
+		[ -n "$hooks" ] && stop_services
+		echo "flash: lade nach $file"
+		if ! wget -O "$file" "$src" ; then
+			fail "Download fehlgeschlagen - nichts geflasht."
+		fi
+		;;
+	*)
+		file="$src"
+		[ -f "$file" ] || { echo "flash: $file gibt es nicht." >&2; exit 1; }
+		[ -n "$hooks" ] && stop_services
+		;;
+esac
+
+size=$(wc -c < "$file")
+avail=$(mem_avail)
+sha=$(sha256sum "$file" | cut -d' ' -f1)
+echo "flash: $file, $((size / 1024)) KiB, RAM verfuegbar noch ${avail:-?} KiB"
+echo "flash: sha256 $sha"
+
+if [ -n "$want_sha" ] && [ "$sha" != "$want_sha" ] ; then
+	fail "sha256 passt nicht zum Manifest ($want_sha) - nichts geflasht."
+fi
+
+# -T steht dann schon in "$@"; doppelt schadet nicht
+if ! sysupgrade -T "$@" "$file" ; then
+	fail "sysupgrade -T lehnt das Image ab - nichts geflasht."
+fi
+
+# Nur pruefen: aufraeumen und fertig, ohne upgrade.d
+if [ -n "$test_only" ]; then
+	echo "flash: Test bestanden (-T) - nichts geflasht."
+	drop_file
+	if [ -n "$stopped" ]; then
+		echo "flash: starte die angehaltenen Dienste wieder (abort.d)"
+		run_hooks abort
+	fi
+	exit 0
+fi
+
+# Erst mit dem Image in /tmp knapp geworden: die Dienste jetzt anhalten.
+if [ -z "$hooks" ] && [ "${FLASH_HOOKS:-auto}" != 0 ] && [ "${avail:-0}" -lt "$LOWMEM_AFTER_KB" ] 2>/dev/null; then
+	hooks=1
+	stop_services
+fi
+
+if [ -z "$hooks" ]; then
+	echo "flash: Image passt. sysupgrade $* $file"
+	# exec: Aufraeumen danach loeschte das Image unter stage2 weg (Kopf)
+	exec /sbin/sysupgrade "$@" "$file"
+fi
+
+say "Image passt. Weiter ohne diese Sitzung: gleich gehen WLAN und Netz aus"
+echo "flash: (wie beim Autoupdater), die Verbindung bricht ab. Danach flasht der"
+echo "flash: Knoten und startet neu. Log: $LOG und logread -e flash."
+: > "$LOG"
+# -b: eigene Session, ueberlebt das Ende der SSH-Sitzung. Mit frischem
+# Pidfile, denn ohne vergleicht start-stop-daemon ueber das Programm, und
+# /bin/sh ist busybox - jede laufende Shell gaelte als "laeuft schon".
+rm -f /tmp/flash.pid
+start-stop-daemon -S -b -m -p /tmp/flash.pid -x /bin/sh -- "$0" --detached "$file" "$@" ||
+	fail "konnte den Rest nicht losgeloest starten - nichts geflasht."
+exit 0

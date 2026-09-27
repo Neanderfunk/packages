@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-banner
-PKG_VERSION:=2
+PKG_VERSION:=3
 PKG_RELEASE:=$(GLUON_VERSION).$(GLUON_SITE_CODE)-$(GLUON_RELEASE).$(GLUON_CONFIG_VERSION)
 
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
@@ -12,7 +12,7 @@ define Package/$(PKG_NAME)
   SECTION:=neanderfunk
   CATEGORY:=Customization
   TITLE:=Banner file replacement
-  DEPENDS:=+gluon-core +busybox
+  DEPENDS:=+gluon-core +gluon-neighbour-info +busybox
   # ffmuc-custom-banner also owns /etc/banner.gluon and also replaces the login
   # banner, just by templating it from an upgrade script instead of symlinking.
   # Both installed at once would clobber each other's file.
@@ -24,9 +24,19 @@ endef
 
 define Package/$(PKG_NAME)/description
 	Replaces /etc/banner and /etc/profile (as reversible symlinks, restored
-	on removal) with a Gluon login banner and a status line summarizing
-	uptime, gateway, VPN, wifi and mesh state. Also installs a few admin
-	shortcuts: nodeinfo, help, switch0, switchstatus, v4up.
+	on removal) with a Gluon login banner. The profile runs OpenWrt's own
+	profile first and then, in interactive shells only, nodestatus: an
+	80-column overview of what is actually running - node, firmware, ports,
+	VPN, gateway, clients, radios (live channel, width, mode, tx power) and
+	mesh neighbours - followed by warnings. Also installs admin commands:
+	nodestatus, nodeinfo (details), switch0/switchstatus (port table, also
+	on DSA), portrole (show or set the Gluon interface role, also for extra ports like eth2), reconf
+	(gluon-reconfigure and reboot in the background), v4up (IPv4 via the
+	mesh, refused if the uplink has IPv4), vpn (show or switch the mesh VPN
+	on/off persistently), routername (show or set the node name), flash
+	(download a firmware image by URL, or find it in a directory URL, check
+	it, stop services like the autoupdater when RAM is low, sysupgrade; in
+	interactive shells "sysupgrade <url>" does the same), help.
 endef
 
 define Build/Prepare

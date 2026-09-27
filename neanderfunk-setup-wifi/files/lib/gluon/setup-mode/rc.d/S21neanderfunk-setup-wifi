@@ -1,0 +1,75 @@
+#!/bin/sh /etc/rc.common
+# SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Setup-WLAN im Setup-Mode: AP, Bridge br-setupwifi, eigener dnsmasq und der
+# Timeout. Laeuft nach S20network (dort startet netifd mit
+# -c /var/gluon/setup-mode/config) und vor S60dnsmasq.
+#
+# boot:  bei setup_mode.wifi.start = 'boot' sofort an; bei 'button' nur
+#        vorbereitet, an geht es per Kurzdruck (ctl button); bei 'off' nichts.
+# start: baut auf, wenn $SW_ACTIVE existiert - so ruft ctl es auch auf. Ein
+#        neuer Zeitpunkt in $SW_ACTIVE aendert die Kommandozeile der
+#        Timeout-Instanz, procd startet sie also neu: der Timeout beginnt
+#        von vorn.
+#
+# Der erste dnsmasq (S60dnsmasq) muss an br-setup gebunden sein, damit dieser
+# zweite an br-setupwifi laufen kann - das bleibt ein Firmware-Patch.
+
+START=21
+USE_PROCD=1
+
+. /lib/gluon/neanderfunk-setup-wifi/lib.sh
+
+boot() {
+	sw_legacy_patch && {
+		sw_log 'firmware still carries the setup-mode-wifi patch - package stays out'
+		return 0
+	}
+	sw_conf
+	[ "$SW_START" = boot ] && date +%s > "$SW_ACTIVE"
+	start "$@"
+}
+
+start_service() {
+	sw_legacy_patch && return 0
+	[ -f "$SW_ACTIVE" ] || return 0
+	sw_conf
+	[ "$SW_START" = off ] && return 0
+	sw_names
+
+	if ! sw_prepare_config; then
+		sw_log 'no radio - no setup WLAN'
+		rm -f "$SW_ACTIVE"
+		return 0
+	fi
+
+	# netifd liest network und wireless aus dem Setup-Verzeichnis neu ein;
+	# beim Boot ist er eben erst gestartet (S20network).
+	ubus -t 10 wait_for network >/dev/null 2>&1
+	ubus call network reload
+	/sbin/wifi up
+
+	procd_open_instance dnsmasq
+	# Jeder Name zeigt auf den Knoten, die Default-Route auch - wie bei den
+	# Einrichtungs-APs von IoT-Geraeten; die Portal-Erkennung der Handys
+	# oeffnet so die Setup-Seite. --local=/#/, damit AAAA leer beantwortet
+	# wird statt REFUSED.
+	procd_set_param command /usr/sbin/dnsmasq -k -p 53 \
+		--interface=br-setupwifi --except-interface=lo --bind-dynamic \
+		--no-resolv --no-hosts --address=/#/$SW_ADDR --local=/#/ \
+		-F "${SW_ADDR%.*}.2,${SW_ADDR%.*}.254" \
+		-l /tmp/dhcp-setupwifi.leases -x /var/run/dnsmasq-setupwifi.pid
+	procd_set_param respawn
+	procd_close_instance
+
+	# Der Zeitpunkt aus $SW_ACTIVE steht mit in der Kommandozeile: Nur eine
+	# geaenderte Kommandozeile laesst procd die Instanz neu starten (eine
+	# geaenderte env uebernimmt es, startet aber nicht neu - am C25 gesehen),
+	# und nur so beginnt der Timeout beim naechsten Tastendruck von vorn.
+	procd_open_instance timeout
+	procd_set_param command /lib/gluon/neanderfunk-setup-wifi/ctl timeout "$SW_TIMEOUT" "$(cat "$SW_ACTIVE")"
+	procd_close_instance
+
+	sw_led fast
+}

@@ -59,7 +59,9 @@ if [ -z "$C_MACS" ] ; then
     wifi down
     killall hostapd >/dev/null 2>&1
     rm -f /var/run/wifi-*.pid >/dev/null 2>&1
-    wifi config
+    # Kein "wifi config" zwischen down und up: das erkennt unter OpenWrt 23.05
+    # neue Radios und macht dabei "uci commit wireless" - samt offener
+    # Laufzeit-Aenderungen (Offline-SSID, ap-timer). Fuer den Neustart unnoetig.
     wifi up
     wifi_unlock
   fi

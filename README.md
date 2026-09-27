@@ -41,6 +41,68 @@ Which devices in the field drive their LAN ports via DSA and which via swconfig,
 and whether Gluon 2025.1 changes that:
 [docs/feldgeraete-dsa-swconfig.md](docs/feldgeraete-dsa-swconfig.md).
 
+## Using this feed
+
+Add the feed to your site's `modules` file (next to `site.conf`):
+
+```
+GLUON_SITE_FEEDS="neanderfunk"
+PACKAGES_NEANDERFUNK_REPO=https://github.com/Neanderfunk/packages.git
+PACKAGES_NEANDERFUNK_BRANCH=v2023.2.x
+PACKAGES_NEANDERFUNK_COMMIT=<commit>
+```
+
+Replace `<commit>` with a commit of the `v2023.2.x` branch. If your site
+already uses other feeds, append `neanderfunk` to the existing
+`GLUON_SITE_FEEDS` instead of replacing it - in particular do not reuse the
+name `community`, that is the feed of freifunk-gluon/community-packages. Then
+add the packages you want to `site.mk` or `image-customization.lua`.
+
+Several packages are forks of a community or ffac package and declare
+`CONFLICTS` with the original; take the original out of your package list.
+`neanderfunk-config-mode-theme` replaces Gluon's theme, so the site has to
+drop it with `'-gluon-config-mode-theme'`. Which site.conf keys a package
+reads, and whether it needs any, is in its own README.
+
+How Gluon's `gluon-reconfigure` works, and what upgrade scripts in this feed
+rely on: [docs/gluon-reconfigure.md](docs/gluon-reconfigure.md).
+
+Which devices in the field drive their LAN ports via DSA and which via swconfig,
+and whether Gluon 2025.1 changes that:
+[docs/feldgeraete-dsa-swconfig.md](docs/feldgeraete-dsa-swconfig.md).
+
+Flash and RAM of the devices in the field, grouped by how soon a Gluon
+release may drop them: [docs/feldgeraete-flash-ram.md](docs/feldgeraete-flash-ram.md).
+
+Calling `sysupgrade` from a script: exec it and do nothing afterwards. It
+returns as soon as it has handed over to procd, seconds before stage2 reads
+the image, so any cleanup after it breaks the upgrade:
+[docs/sysupgrade-aus-skripten.md](docs/sysupgrade-aus-skripten.md).
+
+### neanderfunk-config-mode-theme ###
+
+replaces gluon-config-mode-theme: config mode layout and stylesheet,
+responsive down to phone width, dark mode following the browser, Freifunk
+colours, system fonts only. Covers every page of the config mode. The site
+has to drop Gluon's theme (`'-gluon-config-mode-theme'`). See
+[](neanderfunk-config-mode-theme/README.md).
+
+### neanderfunk-setup-mode ###
+
+the whole config mode on one page: the wizard on top, every form of
+"Advanced settings" below as a collapsed group, one "Save & restart". All
+forms valid or nothing is written, only changed forms are written, the wizard
+last. The forms stay Gluon's and the packages' own. Needs
+neanderfunk-config-mode-theme. See [](neanderfunk-setup-mode/README.md).
+
+### neanderfunk-respondd ###
+
+respondd module in C that adds `neanderfunk` to nodeinfo (CPU model, flash
+size, BIOS, preserve_channels) and statistics (live channel, HT mode, SSID,
+tx power per radio; offline-SSID counters; link, speed, duplex and a
+damaged-cable hint per ethernet port) - the values the status page shows on
+top of Gluon's respondd. See [](neanderfunk-respondd/README.md).
+
 ### neanderfunk-wifi-blackout ###
 
 detects a wifi blackout - the radios are up, but not a single station is

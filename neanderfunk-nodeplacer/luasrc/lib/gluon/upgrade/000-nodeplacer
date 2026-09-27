@@ -1,0 +1,29 @@
+#!/usr/bin/lua
+-- SPDX-License-Identifier: BSD-2-Clause
+--
+-- Runs before 001-reset-uci (D-041). A "firmware" move overrides the
+-- autoupdater branch section for one autoupdater run, in the uci delta
+-- only (D-012/D-033). gluon-reconfigure starts with a "uci commit" of
+-- everything, so a reconfigure during that run - by hand, via reconf, or
+-- the config mode - would store the override on flash. Branches defined in
+-- site.conf are rewritten by 500-autoupdater anyway; a branch known only
+-- from the manifest would stay, with its mirrors, keys and threshold, and
+-- show up in the config mode's autoupdater page.
+--
+-- nodeplacer names the section it overrides in the marker; drop that
+-- section's delta here. The autoupdater already running has read its
+-- configuration and is not affected.
+
+local MARKER = '/tmp/nodeplacer.autoupdater-override'
+
+local f = io.open(MARKER, 'r')
+if not f then
+	os.exit(0)
+end
+local branch = f:read('*l')
+f:close()
+os.remove(MARKER)
+
+if branch and branch:match('^[%w_]+$') then
+	os.execute('uci -q revert autoupdater.' .. branch)
+end

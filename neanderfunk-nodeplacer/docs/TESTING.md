@@ -383,3 +383,57 @@ nur die Paketgrenze hat sich seither verschoben, die getesteten
 Verhaltensweisen (Rendering, Uebersetzung, Schreiblogik) sind unveraendert
 gueltig. Host-Tests (`tests/test_web_nodeplacer.lua`, jetzt gegen den
 neuen Pfad) und luacheck laufen gruen.
+
+### Protokoll 2026-09-14: Signaturschwelle aus der site.conf, echter Domainwechsel im Serienimage
+
+Auftrag adorfer (RC 2023.2.6): noch einmal belegen, dass Nodeplacer auch mit
+weniger Signaturen arbeitet - und dass zu wenige abgewiesen werden. Ohne
+eigenen Build (adorfer: vorhandenes Image nehmen), mit dem Serienimage
+`gluon-nef-21_dias-26091411bro-x86-64` (Feed 377c7f5) aus dem horst-Lauf
+images-1789377119.
+
+Aufbau:
+* QEMU/KVM in der WSL, 256 MB, zwei virtio-NICs im Usermode-Netz, **eigene
+  MACs** `02:4e:50:14:09:01/02` (node_id `024e50140901`, nicht die QEMU-Vorgabe,
+  vgl. locktest-4711), Mesh-VPN aus (`gluon.mesh_vpn.enabled=0`): der Gast war
+  nie im echten Mesh.
+* site.json im Overlay des Gasts geaendert, dann `gluon-reconfigure`:
+  Autoupdater-Branch `nptest` (Mirror auf dem Test-Mirror, die drei
+  Testschluessel aus `keys/`, `good_signatures=2`), im `nodeplacer`-Block
+  Mirror auf den Test-Mirror und `good_signatures=2` (21_dias hat dort
+  sonst Mirror firmware.ffnef.de/firmware/nodeplacer und 3), aktiver Branch
+  `nptest`.
+* Test-Mirror: uhttpd auf der Collector-VM dias-x86-64-test, Port 8081,
+  Ablage `/mnt/nfdata/www/nptest/{21_dias,48_rdvw,variants}`,
+  UCI-Firewallregel `nf_nptest` (wan, tcp 8081, nur 192.168.158.0/24).
+  Ziel: das Serienimage `gluon-nef-48_rdvw-26091411bro-x86-64-sysupgrade`
+  mit eigenem `nptest.manifest`. Signiert mit `ecdsautil` aus dem
+  Gluon-Container; dazu ein vierter, fremder Schluessel.
+* Steuerdatei: `024e50140901 firmware branch=nptest
+  mirror=http://192.168.158.106:8081/nptest/48_rdvw target=nef-48_rdvw`.
+
+Ergebnis:
+
+| Fall | Steuerdatei | Ziel-Manifest | Ergebnis |
+| --- | --- | --- | --- |
+| a1 | 1 gueltige Signatur | - | abgewiesen: "only carried 1 valid signatures, 2 are required", nodeplacer-fetch Exit 3 |
+| a2 | 1 gueltige + 1 fremder Schluessel | - | abgewiesen, ebenso 1 gueltige gezaehlt |
+| c | 2 gueltige | 1 gueltige | Steuerdatei angenommen ("branch nptest: 3 pubkeys, 2 signatures required"), Autoupdater lehnt das Ziel-Manifest ab (1 von 2) - dieselbe Schwelle, D-032 |
+| b, `-n` | 2 gueltige | 2 gueltige | Image geladen, sysupgrade-Pruefung bestanden, "Aborting successful upgrade because simulation was requested", Dienste wieder an |
+| b | 2 gueltige | 2 gueltige | **Domainwechsel**: Autoupdater flasht, nach dem Neustart `site_code` nef-48_rdvw, Release 26091411bro aus 48_rdvw |
+| Autoupdater allein | - | 1 bzw. 2 gueltige (Branch `nptest`) | 1: "only carried 1 valid signatures, 2 are required"; 2: angenommen (Trockenlauf) |
+
+Nach dem Wechsel: Konfiguration erhalten (Hostname, Mesh-VPN aus),
+`/tmp/nodeplacer*` leer, `nodeplacer.settings` aus der site.conf von 48_rdvw
+(eigener Mirror, 3 Signaturen) - die Test-Mirror und -Schwelle standen nur in
+der geaenderten site.json von 21_dias. Die Branch-Section `nptest` und
+`autoupdater.settings.branch=nptest` blieben dagegen stehen: die hatte der
+Testaufbau selbst per `gluon-reconfigure`/`uci commit` ins Flash
+geschrieben, und Gluon laesst nicht aus der Site stammende Branches beim
+Update stehen. Kein Nodeplacer-Rueckstand (seine Overrides stehen nur im
+Delta, D-012/D-033).
+
+Damit belegt: Die Schwelle kommt aus der site.conf (hier 2 statt der 3 von
+stable), weniger gueltige Signaturen - auch mit einer zusaetzlichen fremden -
+werden abgewiesen, und dieselbe Schwelle gilt fuer das Firmware-Manifest der
+Zieldomain.

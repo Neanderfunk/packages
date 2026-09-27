@@ -32,6 +32,8 @@ Before any check may act:
 - br-client without an address from the site's own (ULA) `prefix6` - the node
   is meshing, but cannot show its status page or fetch updates
 - respondd or dropbear gone: something very strange happened to the system
+- ethernet TX hung after a transmit timeout (mtk_soc_eth: filogic, MT7621,
+  MT7622, mt76x8, mt7620; by default only logged)
 - micrond itself dying, caught by a deadman watchdog (see below)
 
 Manual installation
@@ -105,6 +107,8 @@ set on the node - so a local `uci set` always wins over the site default:
   hotfix = {
     check_uptime_min  = 5,                  -- optional, minutes, default 5
     reboot_uptime_min = 60,                 -- optional, minutes, default 60
+    eth_tx_stall_dry_run = 0,               -- optional, let eth_tx_stall reboot (default: only log)
+    load_per_cpu = 2,                       -- optional, load threshold per core (integer, default 2)
     disabled_checks = { 'load', 'tunneldigger' },  -- optional
   },
 ```
@@ -149,8 +153,22 @@ The others keep it deliberately:
   boot. Both also recur - the Freifunk forum reports page allocation failures
   every 5 to 10 seconds - so nothing is lost by waiting, and the node limps
   rather than dying outright.
-* **`load`** - right after a boot the load is legitimately high, and the 5
-  minute average is not meaningful before the node has been up 5 minutes.
+* **`load`** - right after a boot the load is legitimately high, and the 15
+  minute average is not meaningful before the node has been up a while.
+
+`load` reads the 15 minute average (field 3 of `/proc/loadavg`) and compares
+it with `hotfix.load.per_cpu` (default 2) times the cores, counted fork-free
+from `/sys/devices/system/cpu/online`. A reboot needs two healthcheck runs in a
+row above that. Until 14.09.2026 it was a fixed "above 2" regardless of the
+cores, on the first hit, and the message spoke of the 5 minute average: that
+rebooted a dual-core MT7981 (Schulstr7 AP01) in a load test with nine wget
+loops and uhttpd - legitimate user-space load, 1 minute load 1.5-3.1.
+Single-core devices keep the threshold 2, now with the confirmation. Per node:
+
+```
+uci set hotfix.load.per_cpu='3'
+uci commit hotfix
+```
 
 Changeable per node in either direction:
 
@@ -174,11 +192,14 @@ Checks
 | `dfs_failcheck` | hostapd failing its DFS check | wifi restart |
 | `tunneldigger` | too many tunneldigger watchdogs/instances | reboot |
 | `br_client_ipv6` | br-client without an address from the site prefix | reboot |
-| `load` | 5 minute load average above 2 | reboot |
+| `load` | 15 minute load average above `hotfix.load.per_cpu` x cores (default 2 x cores) in two runs in a row (~7 min) | reboot |
 | `respondd` | respondd not running | reboot |
 | `dropbear` | dropbear not running | reboot |
 | `no_wifi_clients` | clients were seen and then all disappeared | wifi restart |
 | `wifi_firmware` | mt76 wifi firmware crashed, see below | reboot |
+| `ath10k_rxhang` | ath10k rx ring corrupted, or a firmware restart loop, 5 GHz stuck | reboot |
+| `eth_tx_stall` | ethernet TX hung after a transmit timeout, see below | reboot, by default only logged |
+| `logremote` | remote syslog socket with a stale or no source address, see below | restart of the logread instance |
 | `watchdog` | deadman switch for micrond itself, see below | reboot |
 
 hostapd not serving an AP interface (`hostapd_pids`)
@@ -288,6 +309,233 @@ mt76-generic. On chips that do not export `rf_regval` (a Xiaomi 4A Gigabit with
 `mt7603e`/`mt76x2e`) nothing matches and the check does nothing. Worth knowing,
 because on that device the original's `cat` fails too: only its `ls` guard kept
 it from rebooting the node every two minutes.
+
+Ethernet TX hung after a transmit timeout (`eth_tx_stall`)
+---------------------------------------------------------
+
+For `mtk_soc_eth` (MT7981/MT7986), after
+[openwrt/openwrt#17505](https://github.com/openwrt/openwrt/issues/17505): first
+`NETDEV WATCHDOG: eth0 (mtk_soc_eth): transmit queue 0 timed out`, then
+`warm reset failed`, after which both GMACs stay dead. Reported to us for a Cudy
+TR3000 whose 2.5G WAN (RTL8221B over 2500base-x) dies and does not come back.
+**Not yet confirmed on our own nodes** - the dmesg of a hung node is still
+outstanding.
+
+What the kernel does (5.15 with the backports `729-19` to `729-21`):
+
+* `dev_watchdog()` finds a TX queue stopped for longer than `watchdog_timeo`
+  (5 s for this driver), counts `/sys/class/net/<dev>/queues/tx-N/tx_timeout`
+  up and calls the driver - every 5 s for as long as the queue stays stuck. The
+  WARN appears only once per boot, the counter keeps rising.
+* `mtk_tx_timeout()` only schedules a reset when `mtk_hw_reset_check()` finds
+  error bits in the frame engine's interrupt status. Otherwise it returns
+  silently, and the queue may simply stay stuck.
+* A reset that fails logs `warm reset failed`.
+
+The check, every minute:
+
+| situation | reaction |
+| --- | --- |
+| no netdev of a listed driver, or all `tx_timeout` counters 0 and no episode running | ends after a few globs and reads, no process started, no uci |
+| the `tx_timeout` sum of a netdev rose | log once, watch that netdev |
+| watched, `tx_packets` did not move **and the timeouts kept rising** | one strike (a stuck queue is re-reported by the kernel every 5 s); `warm reset failed` in the dmesg makes it two |
+| watched, `tx_packets` did not move, no new timeouts, but `warm reset failed` | strikes too - a dead GMAC need not have carrier any more |
+| `hotfix.eth_tx_stall.strikes` reached (default 3, i.e. about 3 minutes) | reboot - **only if switched on**, see below; otherwise "dry run, would reboot", reason with netdev, counters, BQL inflight, carrier and the last two matching dmesg lines |
+| watched, `tx_packets` moves and no new timeouts | "recovered" logged, episode over, no action |
+| watched, `tx_packets` stands but no new timeouts | episode closed, no action: the reset worked and the port is just quiet, or the cable is out |
+| timeouts while `tx_packets` still moves | logged once, never acted on (one queue stuck while others send) |
+
+Without carrier the kernel watchdog does not fire at all, so a pulled cable
+never starts an episode in the first place.
+
+**Port reset before the reboot** (adorfer, 14.09.2026). When the strikes are
+reached, the check first runs `ethtool -r <dev>` (restart autoneg), as if the
+cable had been pulled and plugged back in - on the Cudy TR3000 with its
+RTL8221B only that ever helped, a reboot with the cable in often did not:
+
+| step | what | in dry run |
+| --- | --- | --- |
+| 1 | `ethtool -r`, if `ethtool` is installed and `hotfix.eth_tx_stall.soft_reset` is not `0`; logged to the syslog only | runs as well - harmless and informative |
+| - | TX comes back | "recovered after ethtool -r", done |
+| - | `ethtool -r` fails (fixed link, driver without nway_reset) | straight on to step 2 in the same run |
+| 2 | strikes reached again within the hour | reboot | "would reboot ..., ethtool -r did not help" |
+
+One port reset per port counts for 60 minutes, so a port that goes quiet after
+the reset cannot keep the check from escalating. Without `ethtool` (it is only
+in the images of the RTL8221B devices, firmware 8b8041b) step 2 follows
+directly, as before. There is deliberately no `ip link down/up` as a
+substitute: it would cut across netifd and `br-wan`.
+
+**Second trigger, only for RTL8221B uplinks** (Cudy TR3000, WR3000H, M3000):
+a GMAC whose `phydev` is bound to an RTL8221B driver (compared fork-free with
+`[ -ef ]`) and which is a port of `br-wan`. Carrier up but `rx_packets` does
+not move for `hotfix.eth_tx_stall.rx_strikes` runs (default 5, i.e. about 5
+minutes): that is the "booted with the cable already in, SerDes mode wrong"
+case, which need not produce a single TX timeout. An uplink receives something
+every few seconds (ARP, router advertisements, VPN keepalives); five minutes of
+nothing with link up is not idle. Reaction: only `ethtool -r`, **never a
+reboot**, from the same once-per-hour budget per port. RX moving again is
+logged as recovered. On these devices the check therefore always runs its full
+path (with uci), elsewhere the process-free exit stays.
+
+```
+uci set hotfix.eth_tx_stall.soft_reset='0'   # no port reset
+uci set hotfix.eth_tx_stall.rx_strikes='10'  # RTL8221B trigger after 10 min
+uci commit hotfix
+```
+
+Not tested on a real RTL8221B - there is none among our test devices; the
+logic was played back with a fake sysfs including a bound RTL8221B driver.
+
+**Only logs by default.** The reaction is unproven: no hung node has been
+seen yet, the tests ran on played-back counters. Switching it on:
+
+```
+uci set hotfix.eth_tx_stall.dry_run='0'
+uci commit hotfix
+```
+
+or for the whole community in the `site.conf` (seeded by
+`500-neanderfunk-hotfix` if the node has no value of its own):
+
+```lua
+  hotfix = {
+    eth_tx_stall_dry_run = 0,
+  },
+```
+
+**Scope.** Only the netdevs the driver itself registers are looked at - the
+GMACs, found as `/sys/bus/*/drivers/<driver>/*/net/*` - not the DSA ports
+behind them. On a Cudy WR3000S that is `eth0` alone (16 TX queues), with
+`lan1`-`lan4` on the switch. `mtk_soc_eth` is the driver name not only on
+filogic (MT7981/MT7986) but also on MT7621, MT7622 and, from OpenWrt's own
+ramips driver, mt76x8 and mt7620: on 14.09.2026 263 of 1112 online nodes,
+among them the 64 MB mt76x8 devices (19 Netgear R6120, Archer C50 v3, Cudy
+WR1000). That is why a node without any timeout since boot starts no process
+for this check. The analysis of the reset path above is for the mediatek
+driver; the ramips one is only covered by the generic logic. Further drivers
+are added with
+
+```
+uci add_list hotfix.eth_tx_stall.driver='<driver>'
+uci commit hotfix
+```
+
+The list is read straight from `/etc/config/hotfix` without starting `uci`,
+because the entry runs every minute on every node and most of them do not
+have this driver; a driver added without `uci commit` is therefore not seen.
+
+The reboot goes through `now_reboot()` like every other check: held back below
+`reboot_uptime_min`, never while the autoupdater runs, and written to the
+shared reboot log. Whether a warm reboot helps at all is open: the TR3000's
+operator reports the WAN staying dead across warm reboots. Then the check
+cannot cure it, and the hold-off limits it to one reboot per hour - on a node
+that may still be meshing over wifi. One more reason for the dry-run default.
+
+Testing without rebooting anything: the environment variables
+`HOTFIX_DRYRUN=1`/`=0`, `HOTFIX_SYSFS=<fake sysfs root>`,
+`HOTFIX_DMESG=<file>`, `HOTFIX_STATE=<state prefix>` and
+`HOTFIX_ETHTOOL=<command>` play the counters back
+from `/tmp`. Tested that way on 14.09.2026 on a Cudy WR3000S v1 (MT7981,
+26091317bro), with `now_reboot` also removed from the copy under test:
+arming, three strikes with rising counters, a quiet port after a successful
+reset (no action), recovery, timeouts while TX moves, `warm reset failed`
+without carrier, counters going backwards, dry run by default and switched
+on; against the real sysfs with all counters 0: no process started, no state
+file written. `eth0` found and all `queues/tx-*/tx_timeout` readable also on
+MT7621 (COVR-X1860, Xiaomi 4A Gigabit). The port reset (14.09.2026, same way,
+`ethtool` replaced by `echo` and `false`): reset at the third strike,
+recovery after it, reboot stage when it did not help, a failing `ethtool`
+going straight to the reboot stage, no `ethtool` at all; the RTL8221B trigger
+after five minutes without RX, no reaction without carrier, no second reset
+within the hour.
+
+Remote syslog socket (`logremote`)
+----------------------------------
+
+With `system.@system[0].log_ip` set, `logread -r` connects its UDP socket once,
+when it starts - and at boot that is too early. Either the `connect()` fails
+silently and logread keeps running without ever sending, or it succeeds with the
+source address that existed at that moment, usually only the domain's ULA,
+before the public prefix arrives by router advertisement. Packets from a ULA to
+a public address are dropped by the supernode. Seen on 15.09.2026 on all 13
+Schulstr7 devices and on a MERCUSYS MR90X after their firmware update: nothing
+arrived, `logread` claimed "connected". The same happens when the public prefix
+changes later (supernode takeover). The procd instance `logremote` has no
+respawn.
+
+Every healthcheck run (`*/7`) compares the source address of logread's socket
+(`netstat -anup`) with the one the kernel would pick now (`ip route get
+<log_ip>`). If they differ, or there is no socket, only the `logremote`
+instance is restarted: the logread process is killed and `/etc/init.d/log
+start` brings it back - no reboot, `logd` and its buffer stay. Without a route
+to `log_ip` (no uplink) it does nothing, and a host name instead of an address
+is left alone. Nodes without `log_ip`, nearly the whole fleet, start no process
+for this: `/etc/config/system` is read with `read`.
+
+ath10k hangs (`ath10k_rxhang`)
+------------------------------
+
+Two failure modes of the ath10k (qca988x/qca9887, the 5 GHz radio on e.g. the
+Archer C7 and C25). Both leave 5 GHz dead with no self-recovery, both appeared
+under wifi load with `vm.min_free_kbytes=2048` and never with 8192 (C25,
+15./16.09.2026).
+
+**`rxring`** - `ath10k_pci ...: rx ring became corrupted: -5`. The ath10k
+refills its RX DMA ring buffers in interrupt context with `GFP_ATOMIC`. If the
+atomic reserve is too small under load, the ring goes corrupt and the chip
+hangs. A `wifi` restart did not bring it back (the interface vanished), only a
+reboot did; reproduced three times. **One line is enough to trigger** - the
+ring does not repair itself.
+
+**`fwloop`** - `ath10k_pci ...: failed to send pdev bss chan info request,
+restarting hardware` followed by `already restarting`, repeating every ~9
+seconds. The chip firmware crashes and the driver's restart never completes.
+Here the check **counts**: a single `restarting hardware` can be a one-off the
+driver recovers from, so it takes `hotfix.settings.ath10k_restart_min`
+occurrences (default 3) in the ring buffer before this counts as a loop.
+
+The reboot message names which one it was (`rxring:` or `fwloop:`), so an
+evaluation of `reboot.log` later does not just read "ath10k".
+
+The `wifi_firmware` check only covers mt76 (`rf_regval`); ath10k had none.
+Like the other dmesg checks: after the reboot the ring buffer is empty, so
+there is no loop, and `reboot_uptime_min` applies so a device that throws the
+error right at boot does not reboot-loop. On devices without ath10k neither
+pattern ever matches - mt76 lines mentioning "restarting hardware" do not,
+because both patterns require `ath10k` on the same line.
+
+Limit of the check: during the `fwloop` on 16.09. the node later became
+unreachable entirely - serial console silent, no network. The hardware watchdog
+(procd holds `/dev/watchdog`, 30 s timeout, fed every 5 s) did **not** fire, so
+it was not a kernel freeze: procd kept running and feeding while console,
+network and wifi were dead. micrond no longer got its turn either, so in that
+end state the check can do nothing - it has to catch the restart loop while the
+system is still alive.
+
+Before the flash: our own processes get out of the way
+------------------------------------------------------
+
+`files/usr/lib/autoupdater/upgrade.d/20neanderfunk-hotfix` runs right before
+sysupgrade writes. Besides setting the "flashing" marker it now stops our own
+long-running processes: the node-whisperer service through its init script
+(killing it would only make procd respawn it) and the watchdog through
+`/tmp/hotfix.watchdog.pid` (TERM, one second, then KILL).
+
+Reason: sysupgrade pivots into a ramdisk and wants to release `/overlay`. A
+process of ours that survives keeps it busy - `mount ... on /overlay failed:
+Resource busy` - and stage2 then cannot read the image any more. The node
+reboots and stays on the old firmware, without ever writing to the flash.
+
+On an R6120 in the field two of three attempts failed that way; the one that
+worked differed only in that `watchdog.sh` had been killed by hand. Free memory
+was not the difference: 22.9 MB failed, 23.9 MB succeeded, 13.4 MB failed.
+
+The periodic scripts from our micron.d entries are deliberately left alone:
+they run for seconds, micrond is already stopped by `download.d`, and killing
+one mid-run could interrupt it between `uci set` and `uci commit`. If an
+upgrade still fails with "Resource busy", find out in stage2 which process
+actually holds the overlay instead of killing on suspicion.
 
 Watchdog (micrond deadman switch)
 ---------------------------------

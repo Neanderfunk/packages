@@ -16,16 +16,16 @@ This only matters for nodes upgrading from a firmware old enough to still
 carry one of those branch settings; on a clean/current install there's
 nothing to migrate.
 
-Create a file `modules` with the following content in your `./gluon/site/`
-directory and add these lines:
+Add the feed to your site's `modules` file (next to `site.conf`):
 
 ```
-GLUON_SITE_FEEDS="eulenfunk"
-PACKAGES_EULENFUNK_REPO=https://github.com/eulenfunk/packages.git
-PACKAGES_EULENFUNK_COMMIT=*/missing/*
-PACKAGES_EULENFUNK_BRANCH=v2023.2.x
+GLUON_SITE_FEEDS="neanderfunk"
+PACKAGES_NEANDERFUNK_REPO=https://github.com/Neanderfunk/packages.git
+PACKAGES_NEANDERFUNK_BRANCH=v2023.2.x
+PACKAGES_NEANDERFUNK_COMMIT=<commit>
 ```
 
-With this done you can add the package `neanderfunk-migrate-updatebranch` to
-your `site.mk` (`*/missing/*` has to be replaced by the github-commit-ID of
-the version you want to use, you have to pick it manually.)
+Then add `neanderfunk-migrate-updatebranch` to your `site.mk` or `image-customization.lua`. Replace
+`<commit>` with a commit of the `v2023.2.x` branch. If your site already uses
+other feeds, append `neanderfunk` to the existing `GLUON_SITE_FEEDS` instead
+of replacing it. See also [Using this feed](../README.md#using-this-feed).

@@ -1,0 +1,53 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# ctl up|button|down|timeout <s>|status - Setup-WLAN schalten, nur im
+# Setup-Mode.
+#
+#   up, button  an bzw. Timeout neu starten (button: vom Kurzdruck, siehe
+#               /etc/hotplug.d/button/60-neanderfunk-setup-wifi)
+#   down        aus: wifi down, LED zurueck auf Setup-Mode-Takt. Kein
+#               Neustart - ein unkonfigurierter Knoten kaeme wieder in den
+#               Setup-Mode, am Kabel floege man aus der Eingabe.
+#   timeout s [zeitpunkt]  wartet s Sekunden, dann down (die Timeout-Instanz
+#               von S21; der Zeitpunkt macht nur die Kommandozeile eindeutig)
+#   status      zeigt Einstellung und Zustand
+
+. /lib/gluon/neanderfunk-setup-wifi/lib.sh
+
+case "$1" in
+	up|button)
+		sw_in_setup_mode || { echo 'ctl: nur im Setup-Mode' >&2; exit 1; }
+		sw_legacy_patch && exit 0
+		sw_conf
+		[ "$SW_START" = off ] && exit 0
+		date +%s > "$SW_ACTIVE"
+		sw_log "setup WLAN on ($1), off again after $SW_TIMEOUT s"
+		/lib/gluon/setup-mode/rc.d/S21neanderfunk-setup-wifi start
+		;;
+	timeout)
+		sleep "${2:-1200}"
+		sw_log "setup WLAN switched off after ${2:-1200} s"
+		"$0" down
+		;;
+	down)
+		rm -f "$SW_ACTIVE"
+		/sbin/wifi down
+		sw_led slow
+		;;
+	status)
+		sw_conf
+		sw_names
+		echo "start=$SW_START security=$SW_SECURITY timeout=${SW_TIMEOUT}s ssid=$SW_SSID"
+		if [ -f "$SW_ACTIVE" ]; then
+			echo "an seit $(( $(date +%s) - $(cat "$SW_ACTIVE") )) s"
+		else
+			echo 'aus'
+		fi
+		;;
+	*)
+		echo 'Aufruf: ctl up|button|down|timeout <s>|status' >&2
+		exit 1
+		;;
+esac

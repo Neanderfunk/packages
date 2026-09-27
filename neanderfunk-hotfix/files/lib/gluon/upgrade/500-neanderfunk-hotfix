@@ -7,6 +7,8 @@
 #   hotfix = {
 #     check_uptime_min  = 5,
 #     reboot_uptime_min = 60,                        -- optional, minutes
+#     eth_tx_stall_dry_run = 0,                      -- optional, eth_tx_stall darf rebooten
+#     load_per_cpu = 2,                              -- optional, Load-Schwelle je Kern
 #     disabled_checks = { 'load', 'tunneldigger' },  -- optional
 #   },
 
@@ -21,7 +23,7 @@
 # der dokumentierte Ausschalter des neuesten Checks funktionierte damit nicht.
 CHECKS='kernel_bug ath_malloc ksoftirqd_malloc hostapd_pids dfs_failcheck
 	tunneldigger load respondd dropbear watchdog no_wifi_clients
-	br_client_ipv6 wifi_firmware'
+	br_client_ipv6 wifi_firmware eth_tx_stall logremote ath10k_rxhang'
 
 # Sektionen, die es einmal gab und die ersatzlos entfallen sind. Sie liegen
 # sonst bis in alle Ewigkeit im uci und lassen `uci show hotfix` Checks
@@ -60,6 +62,25 @@ fi
 if [ -z "$(uci -q get hotfix.settings.reboot_uptime_min)" ] ; then
 	v="$(jsonfilter -i "$sitefile" -e '@.hotfix.reboot_uptime_min' 2>/dev/null)"
 	[ -n "$v" ] && uci -q set hotfix.settings.reboot_uptime_min="$v"
+fi
+
+# eth_tx_stall loggt ohne Einstellung nur (dry run). Die Community kann es per
+# site.conf scharf schalten (eth_tx_stall_dry_run = 0); ein Wert am Knoten
+# gewinnt wie immer.
+if [ -z "$(uci -q get hotfix.eth_tx_stall.dry_run)" ] ; then
+	v="$(jsonfilter -i "$sitefile" -e '@.hotfix.eth_tx_stall_dry_run' 2>/dev/null)"
+	case "$v" in
+		0|1) uci -q set hotfix.eth_tx_stall.dry_run="$v" ;;
+	esac
+fi
+
+# Load-Schwelle je Kern (Vorgabe im Check: 2), ganze Zahl
+if [ -z "$(uci -q get hotfix.load.per_cpu)" ] ; then
+	v="$(jsonfilter -i "$sitefile" -e '@.hotfix.load_per_cpu' 2>/dev/null)"
+	case "$v" in
+		''|0|*[!0-9]*) ;;
+		*) uci -q set hotfix.load.per_cpu="$v" ;;
+	esac
 fi
 
 # checks the community wants switched off by default

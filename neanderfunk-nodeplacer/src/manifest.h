@@ -36,10 +36,23 @@ struct manifest {
 	size_t n_signatures;
 	ecdsa_signature_t **signatures;
 	ecdsa_sha256_context_t hash_ctx;
+
+	/* Lines in the signature area that are not hex. Counted and reported
+	 * once with this count, rather than one log line each: what a mirror
+	 * sends is not ours to decide, so the amount of log it can cause has to
+	 * be. */
+	size_t garbage_sigs;
 };
+
+
+/* A manifest carries at most this many signatures. Verification never needs
+ * more than there are public keys, which is a handful, and every signature
+ * line costs an allocation. */
+#define MAX_SIGNATURES 64
 
 
 void clear_manifest(struct manifest *m);
 
-/* returns false if the body would exceed max_body bytes */
+/* False means "stop, this cannot become a manifest of ours": the body would
+ * exceed max_body bytes, or there are more signatures than MAX_SIGNATURES. */
 bool parse_line(char *line, struct manifest *m, size_t max_body);

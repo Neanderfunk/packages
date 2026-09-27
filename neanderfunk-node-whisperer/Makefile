@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-node-whisperer
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 # Upstream bleibt gepinnt und unveraendert; unsere Aenderungen liegen als
 # Patches daneben. Ein Backport ist damit: PKG_SOURCE_VERSION/-DATE hochziehen,

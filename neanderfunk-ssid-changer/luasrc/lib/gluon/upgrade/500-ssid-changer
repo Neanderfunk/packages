@@ -4,6 +4,9 @@ local site = require 'gluon.site'
 
 local uci = require('simple-uci').cursor()
 
+-- Immer wahr: gluon.site liefert fuer einen fehlenden Key ein leeres Objekt,
+-- nie nil. Ohne Block in der site.conf gelten also die Vorgaben unten, und
+-- der ssid-changer ist aktiv (enabled = 1).
 if site.ssid_changer ~= nil then
 	local site_enabled = site.ssid_changer.enabled() or '1'
 
@@ -17,7 +20,9 @@ if site.ssid_changer ~= nil then
 		tq_limit_enabled  = site.ssid_changer.tq_limit_enabled() or false,
 		tq_limit_max      = site.ssid_changer.tq_limit_max() or 45,
 		tq_limit_min      = site.ssid_changer.tq_limit_min() or 35,
-		gwofflinemaxcount = uci:get('ssid-changer', 'settings', 'gwofflinemaxcount') or 3,
+		-- wie enabled: ein lokal gesetzter Wert gewinnt, sonst die site.conf
+		gwofflinemaxcount = uci:get('ssid-changer', 'settings', 'gwofflinemaxcount')
+			or site.ssid_changer.gwofflinemaxcount() or 3,
 	})
 	uci:save('ssid-changer')
 end

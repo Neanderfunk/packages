@@ -61,7 +61,7 @@ if ! check_disabled no_gateway && [ -z "$(batctl gwl -H 2>/dev/null)" ] ; then
 		reboot_if_old no_gateway "no batman gateway for 4 checks"
 	fi
 else
-	touch /tmp/linkcheck.gw-seen
+	: > /tmp/linkcheck.gw-seen
 	unstrike /tmp/linkcheck.gw-gone
 fi
 
@@ -79,11 +79,12 @@ fi
 # faellt schon durch "scope global" weg), und wenn es mehrere gibt, reicht es,
 # wenn eines antwortet.
 anycast_prefixes() {
+	# ein awk statt "awk | sed | grep -v | cut | awk": Adresse ohne Laenge,
+	# ULA (fc/fd) weg, die ersten vier Gruppen, jede nur einmal
 	ip -6 -o addr show dev br-client scope global 2>/dev/null \
-		| awk '{print $4}' | sed 's#/.*##' \
-		| grep -v -i '^f[cd]' \
-		| cut -d: -f1-4 \
-		| awk '!seen[$0]++'
+		| awk '{ split($4, a, "/"); p = tolower(a[1]); if (p ~ /^f[cd]/) next;
+			split(a[1], g, ":"); x = g[1] ":" g[2] ":" g[3] ":" g[4];
+			if (!seen[x]++) print x }'
 }
 
 # --- oeffentliches Prefix ueberhaupt vorhanden? ---------------------------
@@ -95,9 +96,12 @@ anycast_prefixes() {
 #
 # Scharf erst, wenn es einmal eines gab: ein Knoten, der noch nie ein RA gesehen
 # hat, rebootet dadurch nicht.
+# einmal je Lauf, fuer beide Checks unten
+prefixes="$(anycast_prefixes)"
+
 if ! check_disabled public_prefix ; then
-	if [ -n "$(anycast_prefixes)" ] ; then
-		touch /tmp/linkcheck.pubprefix-seen
+	if [ -n "$prefixes" ] ; then
+		: > /tmp/linkcheck.pubprefix-seen
 		unstrike /tmp/linkcheck.pubprefix-gone
 	elif [ -f /tmp/linkcheck.pubprefix-seen ] ; then
 		logger -s -t "neanderfunk-linkcheck" -p 5 "[public_prefix] no public IPv6 prefix on br-client any more"
@@ -109,7 +113,7 @@ fi
 
 ipv6_subnet=""
 returnval=1
-for pfx in $(anycast_prefixes) ; do
+for pfx in $prefixes ; do
 	[ -z "$ipv6_subnet" ] && ipv6_subnet="$pfx"   # nur fuer die Logmeldung
 	if ping6 "${pfx}::ac1" -c 10 -w 15 >/dev/null 2>&1 ; then
 		ipv6_subnet="$pfx"
@@ -126,7 +130,7 @@ if ! check_disabled ipv6_anycast && { [ "$returnval" -ne 0 ] || [ -z "$ipv6_subn
 		fi
 	fi
 else
-	touch /tmp/linkcheck.ip6anycast-seen
+	: > /tmp/linkcheck.ip6anycast-seen
 	unstrike /tmp/linkcheck.ip6anycast-gone
 fi
 

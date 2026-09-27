@@ -10,25 +10,25 @@ local uci = require('simple-uci').cursor()
 
 local cronfile = '/usr/lib/micron.d/nodeplacer'
 
-if site.nodeplacer() == nil then
-	-- package installed, but site.conf has no nodeplacer block: stay inert
-	uci:delete('nodeplacer', 'settings', 'mirror')
-	uci:delete('nodeplacer', 'settings', 'good_signatures')
-	uci:delete('nodeplacer', 'settings', 'pubkey')
-	uci:save('nodeplacer')
-	os.remove(cronfile)
-	os.exit(0)
-end
+-- Installed means active (D-042): without a nodeplacer block in site.conf,
+-- or with parts of it missing, the defaults apply - the mirrors, keys and
+-- threshold of the autoupdater branch the node is running, resolved at run
+-- time by nodeplacer-fetch. site.nodeplacer.<key>() returns nil for a
+-- missing block just like for a missing key.
 
 -- mirrors, good_signatures and pubkeys are rewritten from site.conf on
--- every upgrade, like the autoupdater branch sections
-uci:section('nodeplacer', 'nodeplacer', 'settings', {
-	mirror = site.nodeplacer.mirrors(),
-})
+-- every upgrade, like the autoupdater branch sections; where site.conf says
+-- nothing, the option is removed so the fallback applies
+uci:section('nodeplacer', 'nodeplacer', 'settings', {})
 
--- Keys and threshold are optional overrides. Where site.conf says nothing,
--- the option is removed so that nodeplacer-fetch falls back to the
--- autoupdater branch the node is running (D-031).
+local mirrors = site.nodeplacer.mirrors()
+if mirrors then
+	uci:set('nodeplacer', 'settings', 'mirror', mirrors)
+else
+	uci:delete('nodeplacer', 'settings', 'mirror')
+end
+
+-- Keys and threshold are optional overrides as well (D-031).
 local good_signatures = site.nodeplacer.good_signatures()
 if good_signatures then
 	uci:set('nodeplacer', 'settings', 'good_signatures', good_signatures)

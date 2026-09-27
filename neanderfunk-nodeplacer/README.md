@@ -31,12 +31,21 @@ the signature under `nodeplacer.manifest` is the only trust anchor of this
 mechanism.
 
 Nothing is written to flash for an attempt; state lives in `/tmp`. Attempts
-are limited to 3 per 7 days per target (rolling window).
+are limited to 3 per 7 days per target (rolling window). A gluon-reconfigure
+during a firmware move does not store the temporary autoupdater branch
+override either: `000-nodeplacer` drops it before `001-reset-uci` commits
+(D-041).
 
 ## site.conf
 
+The whole block is optional: an installed package is active (D-042). Every
+value left out defaults to the autoupdater branch the node is running - its
+mirrors (the manifest then sits next to the firmware manifest,
+`<autoupdater-mirror>/nodeplacer.manifest`), its keys and its threshold.
+
 ```lua
 nodeplacer = {
+  -- optional; default: the mirrors of the autoupdater branch
   mirrors = {
     'http://firmware.example.org/nodeplacer',
     'http://[2001:db8::1]/nodeplacer',

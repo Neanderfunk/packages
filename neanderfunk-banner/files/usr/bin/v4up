@@ -1,5 +1,37 @@
 #!/bin/sh
-ping -q -w 6 -4 8.8.8.8 &>/dev/null  || udhcpc -i br-client -q -S -n
-echo -n "### IP :  "
-ifconfig br-wan
-ifconfig br-client
+# v4up - holt per DHCP eine IPv4-Adresse ins Client-Netz (br-client), fuer
+# IPv4-Tests ueber das Mesh auf einem Knoten ohne eigenen IPv4-Uplink.
+#
+# Nur, wenn der Uplink (WAN, br-wan) KEIN IPv4 hat. Sonst kaeme eine zweite
+# IPv4-Default-Route ueber br-client dazu, der Tunnel zum Broker liefe ins
+# Mesh - und ohne weiteren Uplink dort saegt der Knoten am eigenen Ast.
+# Laesst sich der Zustand nicht feststellen, wird aus Vorsicht abgebrochen.
+
+command -v ubus >/dev/null 2>&1 && command -v jsonfilter >/dev/null 2>&1 || {
+	echo "v4up: ubus/jsonfilter fehlen - Zustand des Uplinks unbekannt, abgebrochen." >&2
+	exit 1
+}
+
+if ubus list network.interface.wan >/dev/null 2>&1; then
+	WAN4=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null)
+	if [ -n "$WAN4" ]; then
+		echo "v4up: abgebrochen - der Uplink hat schon IPv4 ($WAN4)." >&2
+		echo "      Eine zweite IPv4-Default-Route ueber br-client zoege den Tunnel ins" >&2
+		echo "      Mesh; ohne weiteren Uplink dort saegt der Knoten am eigenen Ast." >&2
+		exit 1
+	fi
+fi
+
+CUR=$(ip -4 addr show dev br-client 2>/dev/null | awk '/inet /{print $2}')
+if [ -n "$CUR" ]; then
+	echo "br-client hat schon IPv4: $CUR"
+	exit 0
+fi
+
+echo "Kein IPv4 am Uplink - frage DHCP im Mesh (br-client) ..."
+if ! udhcpc -i br-client -q -S -n -t 3 -T 3; then
+	echo "v4up: keine Antwort vom DHCP im Mesh." >&2
+	exit 1
+fi
+echo "br-client: $(ip -4 addr show dev br-client | awk '/inet /{print $2}')"
+ip -4 route show

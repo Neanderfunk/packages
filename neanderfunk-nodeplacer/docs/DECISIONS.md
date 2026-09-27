@@ -725,3 +725,60 @@ ist DEPENDS-Syntax; OpenWrt entfernt es nur dort.
 * Merke fuer alle Makefiles dieses Projekts: das `+` gehoert nur in
   `DEPENDS`. In `CONFLICTS` und `PROVIDES` steht der reine Paketname.
 
+## D-041 Branch-Ueberschreibung vor gluon-reconfigure verwerfen
+
+* Status: **entschieden** (adorfer, 2026-09-12)
+* Anlass: Die Autoupdater-Branch fuer einen `firmware`-Umzug steht nur im
+  UCI-Delta (D-012/D-033). Committet waehrend des Laufs jemand anderes -
+  ein nacktes `uci commit`, `uci commit autoupdater`, oder ein
+  `gluon-reconfigure`, dessen `001-reset-uci` als Erstes alles committet -,
+  landet sie im Flash. Site-Branches schreibt `500-autoupdater` beim
+  naechsten Reconfigure neu; eine nur aus dem Manifest bekannte Branch
+  bliebe mit dessen Mirrors, Schluesseln und Schwelle stehen und waere im
+  Config-Mode auswaehlbar. Dasselbe Muster wie beim ssid-changer und
+  ap-timer im Feed ("Freak accident", aber billig zu verhindern).
+* Umsetzung: `nodeplacer` schreibt vor dem Delta den Branch-Namen nach
+  `/tmp/nodeplacer.autoupdater-override` und entfernt die Datei in
+  `restore()`. Neues `/lib/gluon/upgrade/000-nodeplacer` laeuft vor `001`
+  und verwirft bei vorhandener Datei genau das Delta dieser Section
+  (`uci revert autoupdater.<branch>`). Der schon laufende Autoupdater hat
+  seine Konfiguration gelesen und ist nicht betroffen.
+* Ergaenzend verweigert die `uci`-Huelle von `neanderfunk-banner` in
+  interaktiven Shells ein nacktes `uci commit` bzw. `uci commit
+  autoupdater`, solange die Datei existiert.
+
+## D-042 Installiert heisst aktiv: Voreinstellungen ohne Site-Block
+
+* Status: **entschieden** (adorfer, 2026-09-12): "Wenn die Site keinen
+  Nodeplacer-Block hat, das Paket aber geladen ist, dann sollte es den
+  Block geben und der Nodeplacer mit den Default-Werten aktiviert sein."
+* Bisher: ohne `nodeplacer`-Block blieb das Paket untaetig (keine Mirrors,
+  kein Cron), respondd meldete trotzdem `enabled`, der Config-Mode zeigte
+  den Tab. `check_site.lua` verlangte die Mirrors sogar zwingend.
+* Jetzt ist der ganze Block optional. Fehlt ein Wert, gilt die
+  Voreinstellung, aufgeloest zur Laufzeit vom aktiven Autoupdater-Branch:
+  * Schluessel und Schwelle wie bisher (D-031),
+  * **Mirrors neu**: die Mirrors dieses Branches. Das Manifest liegt dann
+    neben dem Firmware-Manifest: `<autoupdater-mirror>/nodeplacer.manifest`,
+    also je Branch-Verzeichnis (bei Neanderfunk je Domain) eine Datei.
+  * `disable` 0, Cron immer eingerichtet, Config-Mode-Tab wie bisher per
+    `config_mode` (Voreinstellung an).
+* Zur Laufzeit statt beim Upgrade aufgeloest, damit ein Branch-Wechsel im
+  Config-Mode (der kein Reconfigure ausloest) sofort gilt.
+* `nodeplacer-fetch` lud die Autoupdater-Konfiguration dabei zweimal in
+  denselben UCI-Kontext (Mirrors, dann Schluessel); das zweite
+  `uci_load()` scheitert. Behoben ueber `uci_lookup_package()`.
+* Am WDR3600 geprueft (nur RAM-Deltas): Rueckfall greift, ohne jede
+  Mirror-Quelle Exit 1 mit klarer Meldung.
+
+## D-043 Antwort ohne "---" ist kein Manifest, sondern keins
+
+* Status: **entschieden** (2026-09-12, Folge von D-042)
+* Manche Webserver beantworten jeden Pfad mit 200 und einer HTML-Seite
+  (firmware.ffnef.de unter `/firmware/stable/.../sysupgrade/`). Das
+  wurde als Manifest mit 0 gueltigen Signaturen abgelehnt (Exit 3) und
+  waere mit den Voreinstellungen aus D-042 auf jedem Knoten stuendlich
+  ins Log gegangen.
+* Jetzt: fehlt die Zeile `---` ganz, gilt der Mirror als "kein Manifest"
+  (Exit 2, leise, naechster Mirror). Ein echtes Manifest ohne Signaturen
+  hat den Trenner und wird weiter abgelehnt.

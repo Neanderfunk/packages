@@ -40,6 +40,19 @@ The parameter `first` defines a learning phase after reboot (in minutes)
 during which the SSID may be changed to the Offline-SSID **every
 minute**.
 
+The Offline-SSID only ever lives in the uncommitted uci delta (`uci save`,
+reverted with `uci revert`); nothing is written to flash. A **manual
+`uci commit` during the offline phase** writes it into `/etc/config/wireless`
+anyway, and the revert then lands on the Offline-SSID again. The script
+notices this, puts the site SSID back as a delta (per band, like Gluon's
+`320-gluon-client-bridge-wireless`) and logs
+`offline ssid is stored in /etc/config/wireless`; `gluon-reconfigure` fixes
+the stored config for good. A `gluon-reconfigure` or sysupgrade during the
+offline phase is harmless: 320 recreates `client_radio*` with the site SSID.
+With `neanderfunk-banner`, a bare `uci commit` in an interactive shell is
+refused while such a delta is pending, and `nodestatus` warns about a stored
+Offline-SSID.
+
 # site.conf
 
 Adapt and add this block to your `site.conf`:
@@ -83,16 +96,19 @@ offline: <https://github.com/freifunk-kiel/gluon-ssid-notifier/>
 
 # Implement this package in your firmware
 
-Create a file \"modules\" with the following content in your site
-directory:
+Add the feed to your site's `modules` file (next to `site.conf`):
 
-    GLUON_SITE_FEEDS="eulenfunk"
-    PACKAGES_SSIDCHANGER_REPO=https://github.com/eulenfunk/packages.git
-    PACKAGES_SSIDCHANGER_COMMIT=/FILL-IN/ # <-- set the newest commit ID here
-    PACKAGES_SSIDCHANGER_BRANCH=v2023.2.x
+```
+GLUON_SITE_FEEDS="neanderfunk"
+PACKAGES_NEANDERFUNK_REPO=https://github.com/Neanderfunk/packages.git
+PACKAGES_NEANDERFUNK_BRANCH=v2023.2.x
+PACKAGES_NEANDERFUNK_COMMIT=<commit>
+```
 
-With this done you can add the package `neanderfunk-ssid-changer` to your
-`site.mk`
+Then add `neanderfunk-ssid-changer` to your `site.mk` or `image-customization.lua`. Replace
+`<commit>` with a commit of the `v2023.2.x` branch. If your site already uses
+other feeds, append `neanderfunk` to the existing `GLUON_SITE_FEEDS` instead
+of replacing it. See also [Using this feed](../README.md#using-this-feed).
 
 # History
 

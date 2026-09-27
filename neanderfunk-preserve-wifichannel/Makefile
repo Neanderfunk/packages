@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-preserve-wifichannel
-PKG_VERSION:=1
+PKG_VERSION:=2
 
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
 
@@ -27,6 +27,9 @@ define Package/$(PKG_NAME)/description
     channels are applied once, gluon.wireless.preserve_channels stays as it is
   - outdoor mode (or an outdoor channel width) changed: the 5 GHz channels are
     applied once, the other bands and gluon.wireless.preserve_channels stay
+  - per band, in addition to the global switch: gluon.wireless.
+    preserve_channels_2g / _5g keep channel, channel list and width of that
+    band only (set by the "channel" command of neanderfunk-banner)
 endef
 
 define Build/Prepare

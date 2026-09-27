@@ -28,7 +28,9 @@ define Package/neanderfunk-nodeplacer/description
 	the target domain's firmware via the regular autoupdater. Adds a tab
 	to the config-mode "Advanced settings" page so node owners can opt out
 	(nodeplacer.settings.disable); set nodeplacer.config_mode = false in
-	site.conf to not register that tab at all.
+	site.conf to not register that tab at all. Without a nodeplacer block
+	in site.conf the package is active with defaults: mirrors, keys and
+	threshold of the autoupdater branch the node is running.
 endef
 
 define Package/neanderfunk-nodeplacer/conffiles

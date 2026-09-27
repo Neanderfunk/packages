@@ -1,17 +1,58 @@
-echo " autoupdater -f                    // Firmware-Update erzwingen
- logread      // logread -f        // syslog Ausgabe auf Konsole
- ping 8.8.8.8                      // google-DNS wenn IPv4 lokal 
- ip a s                            // alle IPs anzeigen
- ip r s t all                      // gesamte Routingtabelle
- traceroute -n 10.155.0.254        // Traceroute via IP zu einem gateway
- batctl gwl                        // batman-gateways inkl. Gewaehltes
- batctl -m bat0 tr 10.155.0.254    // Traceroute via batman-adv
- batctl o                          // batman Domain-Nachbarn anzeigen
- batctl tl |grep W |wc -l          // batman Clients zählen
- batctl if                         // baman interfaces anzeigen
- brctl show                        // alle bridges anzeigen
- iwinfo                            // wlan-paramter anzeigen
- iw dev client0 station dump       // WLAN Nachbarn mit Details
- nodeinfo                          // diverse infos ausgegeben
- v4up                              // ipv4 holen, wenn kein vpnuplink"
- switchstatus  // switch0          // show port status of eth ifs 
+#!/bin/sh
+# help - Spickzettel fuer die Kommandozeile eines Gluon-Knotens
+cat <<'HILFE'
+Status
+  status / nodestatus   Uebersicht wie beim Login
+  nodeinfo              dazu Nachbarn einzeln, Gateways, VPN-Broker, Adressen,
+                        oeffentliche IPv4 mit rDNS und ASN (Provider)
+  switch0 / ports       Port-Tabelle (auch DSA): Link, Rolle, Mesh, Traffic,
+                        oeffentliche IPv4 mit rDNS und ASN
+  switchstatus [-r]     Ports ausfuehrlich: MAC, MTU, Link-Wechsel, Drops;
+                        -r: rohe swconfig-Ausgabe
+Mesh (batman-adv)
+  gwl                   Gateways, der gewaehlte mit *       (batctl gwl)
+  nb                    direkte Nachbarn je Interface       (batctl n)
+  batctl o              alle Knoten der Domain mit Weg und TQ
+  batctl if             batman-Interfaces
+  gwtr                  batman-Traceroute zum gewaehlten Gateway
+  batctl tl | tg        Clients lokal | im ganzen Mesh
+WLAN
+  wlc                   verbundene WLAN-Clients je Interface
+  iwinfo                Radios und Interfaces, Kanal, Sendeleistung
+  channel [2g [5g]]     Kanal je Band zeigen oder setzen (auto, - = lassen);
+                        bleibt ueber Updates, ausser mit --no-keep
+  channel autofix       Kanal ohne eigenes Mesh per Scan, alle Baender;
+                        nur ein Band: channel autofix - / channel - autofix
+  channel mesh          umgekehrt: Mesh an, Kanal mit dem staerksten eigenen
+                        Mesh (Knoten offline/knapp versorgt); auch mesh -, - mesh
+  offlinescan           Knoten in der Nachbarschaft in der Offline-SSID:
+                        Name, Band, Kanal, Pegel (alle Radios)
+Netz
+  myip                  Adressen im Client-Netz, eigene SSH-Verbindung
+  ip a / ip r s t all   alle Adressen / alle Routing-Tabellen
+  brctl show            Bridges
+  ping6 / traceroute6   IPv6 zuerst - IPv4 hat ein Knoten oft nur ueber WAN
+Logs
+  logf                  Syslog laufend                      (logread -f)
+  logerr                letzte Fehler und Warnungen im Syslog
+  vpnlog                letzte Meldungen des VPN (tunneldigger, fastd, wg)
+Firmware
+  autoupdater -n        pruefen und laden, aber NICHT flashen
+  autoupdater -f        Update erzwingen
+  sysupgrade <url> ...  Image laden (https wird http), pruefen, flashen;
+                        URL auf ein Verzeichnis: sucht das Image selbst;
+                        Optionen auch hinter der URL, z.B. -n ohne Konfig.
+                        wenig RAM: Dienste aus wie der Autoupdater, Rest
+                        ohne Sitzung (Log /tmp/flash.log, logread -e flash)
+                        --hooks / --no-hooks erzwingt das bzw. schaltet es ab
+  flash <url> [opt]     dasselbe als Befehl, auch "ssh knoten flash <url>"
+                        alles im Detail: flash -h bzw. sysupgrade -h
+Eingriffe (schreiben, wirksam nach "reconf")
+  portrole              Rollen aller Interfaces, dazu Ports ohne Rolle
+  portrole <if> [rolle] Rolle setzen: if = lan, wan, eth2, lan3 ...;
+                        rolle = uplink, mesh, client, none; z.B. "portrole wan uplink mesh"
+  reconf                gluon-reconfigure + Neustart im Hintergrund
+  v4up                  IPv4 per DHCP aus dem Mesh - nur ohne IPv4 am Uplink
+  vpn [on|off]          Mesh-VPN zeigen, dauerhaft an/aus (sofort wirksam)
+  routername [name]     Knotennamen zeigen/setzen (Leerzeichen, Umlaute ok)
+HILFE

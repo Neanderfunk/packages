@@ -1,0 +1,151 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"PO-Revision-Date: 2026-09-12 05:00+0200\n"
+"Language-Team: French\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "%d changes, not saved yet"
+msgstr ""
+
+msgid "%d fields need a correction. Nothing was saved."
+msgstr ""
+
+msgid "%d SSH keys"
+msgstr ""
+
+msgid "1 change, not saved yet"
+msgstr ""
+
+msgid "1 SSH key"
+msgstr ""
+
+msgid "A number from %s to %s."
+msgstr ""
+
+msgid "A whole number from %s to %s."
+msgstr ""
+
+msgid "Advanced settings"
+msgstr ""
+
+msgid "At least %s characters."
+msgstr ""
+
+msgid "At most %s characters."
+msgstr ""
+
+msgid "changed"
+msgstr ""
+
+msgid "Client"
+msgstr ""
+
+msgid "collapsed, open only when needed"
+msgstr ""
+
+msgid "Information and firmware upgrade: at the very top right."
+msgstr ""
+
+msgid "Internet connection"
+msgstr ""
+
+msgid "Location"
+msgstr ""
+
+msgid "Log in with the SSH keys above only. Without keys there is no remote access at all."
+msgstr ""
+
+msgid "Mesh"
+msgstr ""
+
+msgid "new password"
+msgstr ""
+
+msgid "No changes"
+msgstr ""
+
+msgid "no client"
+msgstr ""
+
+msgid "no password"
+msgstr ""
+
+msgid "No SSH keys"
+msgstr ""
+
+msgid "Node"
+msgstr ""
+
+msgid "Not a valid IP address."
+msgstr ""
+
+msgid "Not a valid IPv4 address."
+msgstr ""
+
+msgid "Not a valid IPv6 address."
+msgstr ""
+
+msgid "Not everything could be saved, see the marked section. The node was not restarted."
+msgstr ""
+
+msgid "Off"
+msgstr ""
+
+msgid "On"
+msgstr ""
+
+msgid "One field needs a correction. Nothing was saved."
+msgstr ""
+
+msgid "Open it on its own page"
+msgstr ""
+
+msgid "Outdoor installation"
+msgstr ""
+
+msgid "password set"
+msgstr ""
+
+msgid "password will be removed"
+msgstr ""
+
+msgid "Please check this input."
+msgstr ""
+
+msgid "Please enter a number."
+msgstr ""
+
+msgid "Please enter a whole number."
+msgstr ""
+
+msgid "Remove password"
+msgstr ""
+
+msgid "Save & restart"
+msgstr ""
+
+msgid "Saving..."
+msgstr ""
+
+msgid "Setup"
+msgstr ""
+
+msgid "Some fields need a correction, they are marked. Nothing was saved."
+msgstr ""
+
+msgid "The key needs 8 to 63 characters."
+msgstr ""
+
+msgid "The passwords do not match."
+msgstr ""
+
+msgid "This field is required."
+msgstr ""
+
+msgid "This section could not be loaded."
+msgstr ""
