@@ -94,12 +94,18 @@ local function operup(name)
 	return name and readline('/sys/class/net/' .. name .. '/operstate') == 'up'
 end
 
--- Radios nach Band; je Radio die Interfaces nach Rolle
-local radios = {}
+-- Radios nach Band; je Radio die Interfaces nach Rolle. Hat ein Band mehrere
+-- Radios (Tri-Band mit zwei 5-GHz-Radios, ab Gluon 2025.1 moeglich), fasst
+-- channel vorerst nur das erste an und sagt das; die richtige Wahl (Mesh- bzw.
+-- Client-Radio) kommt mit dem ersten solchen Geraet im Netz.
+local radios, extra_radios = {}, {}
 uci:foreach('wireless', 'wifi-device', function(s)
 	if s.band and not radios[s.band] then
-		radios[s.band] = { name = s['.name'], channel = s.channel, htmode = s.htmode,
+		radios[s.band] = { name = s['.name'], band = s.band, channel = s.channel, htmode = s.htmode,
 			disabled = s.disabled == '1' }
+	elseif s.band then
+		-- Tri-Band (zwei 5-GHz-Radios): vorerst nur das erste, siehe Kopf
+		extra_radios[s.band] = (extra_radios[s.band] and (extra_radios[s.band] .. ' ') or '') .. s['.name']
 	end
 end)
 uci:foreach('wireless', 'wifi-iface', function(s)
@@ -180,6 +186,9 @@ local function show()
 	if not any then
 		print('kein WLAN-Radio')
 	end
+	for band, names in pairs(extra_radios) do
+		print(string.format('Hinweis: weitere %s-Radios (%s) zeigt und aendert channel noch nicht', LABEL[band] or band, names))
+	end
 end
 
 -- --- Argumente ---------------------------------------------------------------
@@ -237,8 +246,19 @@ function allowed_channels(r)
 	if not allowed_cache[r.name] then
 		local list = {}
 		local phy = sh('iwinfo nl80211 phyname ' .. r.name):match('%S+')
+		-- Nach Frequenz aufs Band des Radios filtern: ab OpenWrt 24.10 kann ein
+		-- phy mehrere Baender tragen (Wi-Fi 7), dann stuenden in der freqlist
+		-- Kanaele aller Baender - und 6-GHz-Kanalnummern ueberschneiden sich
+		-- mit denen von 2.4 und 5 GHz.
+		local lo, hi = 0, 99999
+		if r.band == '2g' then lo, hi = 2400, 2500
+		elseif r.band == '5g' then lo, hi = 5150, 5925
+		elseif r.band == '6g' then lo, hi = 5925, 7125 end
 		for _, f in ipairs(phy and require('iwinfo').nl80211.freqlist(phy) or {}) do
-			if not f.restricted then table.insert(list, f.channel) end
+			local mhz = tonumber(f.mhz) or 0
+			if not f.restricted and (mhz == 0 or (mhz >= lo and mhz < hi)) then
+				table.insert(list, f.channel)
+			end
 		end
 		allowed_cache[r.name] = list
 	end
