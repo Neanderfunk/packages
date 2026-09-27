@@ -11,6 +11,8 @@
 --     channel autofix       alle Baender per Scan auf einen Kanal ohne eigenes
 --                           Mesh (siehe autofix weiter unten); -n zeigt nur
 --     channel - autofix     nur 5 GHz, "channel autofix -" nur 2,4 GHz
+--     channel mesh          umgekehrt: Mesh an und auf den Kanal mit dem
+--                           staerksten eigenen Mesh (siehe mesh weiter unten)
 --
 -- Der erste Wert gilt immer fuer 2,4 GHz, der zweite fuer 5 GHz - egal welches
 -- Radio (radio0/radio1) welches Band hat; die Zuordnung kommt aus
@@ -69,6 +71,8 @@ Aufruf: channel [2,4-GHz-Kanal [5-GHz-Kanal]] [-n] [--no-keep] [-f]
   Kanal: Zahl, "auto" oder "-" (Band nicht aendern)
   Kanal "autofix" (auch "fixauto"): per Scan einen Kanal ohne das eigene Mesh waehlen;
              "channel autofix" allein: alle Baender, "channel - autofix": nur 5 GHz
+  Kanal "mesh": Mesh einschalten und den Kanal mit dem staerksten eigenen Mesh
+             waehlen ("channel mesh", "channel mesh -", "channel - mesh")
   -n         nur zeigen, was passieren wuerde (mit autofix: die Auswertung)
   --no-keep  Kanal nicht ueber Updates behalten (kein preserve_channels_<band>)
   -f         auch wenn Mesh-Nachbarn an diesem Radio haengen
@@ -103,6 +107,8 @@ uci:foreach('wireless', 'wifi-iface', function(s)
 			table.insert(r.ifaces, s.ifname)
 			if s.mode == 'mesh' then
 				r.mesh = s.ifname
+				r.mesh_section = s['.name']
+				r.mesh_id = s.mesh_id
 				r.mesh_enabled = s.disabled ~= '1'
 			end
 		end
@@ -178,7 +184,7 @@ for _, a in ipairs(arg) do
 	elseif a == '-f' or a == '--force' then force = true
 	elseif a == '-n' or a == '--dry-run' then dry = true
 	elseif a == '-h' or a == '--help' then usage()
-	elseif a == '-' or a == 'auto' or a == 'autofix' or a:match('^%d+$') then table.insert(values, a)
+	elseif a == '-' or a == 'auto' or a == 'autofix' or a == 'mesh' or a:match('^%d+$') then table.insert(values, a)
 	else
 		io.stderr:write('channel: unbekanntes Argument "' .. a .. '"\n')
 		usage()
@@ -188,8 +194,8 @@ if #values > #BANDS then usage() end
 -- "channel autofix" allein gilt fuer alle Baender (adorfer); nur ein Band mit
 -- "-" an der anderen Stelle: "channel autofix -" bzw. "channel - autofix".
 -- Eine einzelne Zahl oder "auto" gilt weiter nur fuer 2,4 GHz.
-if #values == 1 and values[1] == 'autofix' then
-	for i = 2, #BANDS do values[i] = 'autofix' end
+if #values == 1 and (values[1] == 'autofix' or values[1] == 'mesh') then
+	for i = 2, #BANDS do values[i] = values[1] end
 end
 
 if #values == 0 then
@@ -368,6 +374,65 @@ function autofix(band, r)
 	return tostring(choice)
 end
 
+-- --- mesh ----------------------------------------------------------------------
+--
+-- Das Gegenstueck zu autofix: der Knoten sucht sich den Kanal, auf dem er sein
+-- eigenes Mesh am besten hoert. Fuer den Fall, dass man mit Laptop oder Tablet
+-- an einem Knoten steht, der offline ist oder nur noch knapp per Mesh versorgt
+-- wird ("such dir den besten Meshpartner"). Je Band:
+--   1. Ist das Mesh auf diesem Radio abgeschaltet, wird es eingeschaltet.
+--   2. Scan; gesucht sind Mesh Points mit der mesh_id DIESES Radios (sie kann
+--      je Band verschieden sein). Gewaehlt wird der Kanal mit dem staerksten.
+--      Hoert der Knoten keins, bleibt der Kanal.
+-- Die Mesh-Sperre (-f) entfaellt, wenn der neue Kanal ein staerkeres eigenes
+-- Mesh hat als der aktuelle: dann ist der Wechsel eine Verbesserung. Der AP
+-- desselben Radios wandert mit - ein Laptop an diesem Band verbindet neu.
+
+function meshfind(band, r)
+	if not r.mesh then
+		print(string.format('channel: %s: %s hat kein Mesh-Interface - nicht geaendert', LABEL[band], r.name))
+		return nil
+	end
+	local own = r.mesh_id
+	print(string.format('channel: %s: Scan auf %s nach Mesh "%s" ...', LABEL[band], r.name, tostring(own)))
+	io.stdout:flush()
+	local cells = require('iwinfo').nl80211.scanlist(r.name) or {}
+	local best, count = {}, {}
+	for _, c in ipairs(cells) do
+		local ch = tonumber(c.channel)
+		if ch and c.mode == 'Mesh Point' and own and c.ssid == own then
+			count[ch] = (count[ch] or 0) + 1
+			if not best[ch] or (c.signal or -100) > best[ch] then best[ch] = c.signal or -100 end
+		end
+	end
+	local chans = {}
+	for ch in pairs(best) do table.insert(chans, ch) end
+	table.sort(chans, function(a, b) return best[a] > best[b] end)
+	local current = tonumber(r.channel)
+	if #cells == 0 then
+		print(string.format('channel: %s: Scan ohne Ergebnis - Kanal bleibt %s', LABEL[band], tostring(r.channel)))
+		return r.channel, false
+	end
+	if #chans == 0 then
+		print(string.format('channel: %s: %d Zellen, aber kein Mesh "%s" zu hoeren - Kanal bleibt %s',
+			LABEL[band], #cells, tostring(own), tostring(r.channel)))
+		return r.channel, false
+	end
+	print('  Kanal  eigenes Mesh  staerkstes')
+	for _, ch in ipairs(chans) do
+		print(string.format('  %-5d  %-12d  %d dBm%s%s', ch, count[ch], best[ch],
+			ch == chans[1] and '   <- gewaehlt' or '', ch == current and '   (aktuell)' or ''))
+	end
+	local choice = chans[1]
+	-- Gleich stark wie auf dem aktuellen Kanal: bleiben
+	if current and best[current] and best[current] >= best[choice] then
+		choice = current
+	end
+	local improve = choice ~= current and (not current or not best[current] or best[choice] > best[current])
+	print(string.format('channel: %s: mesh waehlt Kanal %d (%d dBm)', LABEL[band], choice, best[choice]))
+	return tostring(choice), improve
+end
+
 -- --- Pruefen: erst alles, dann schreiben ---------------------------------------
 
 local changes = {}
@@ -380,10 +445,20 @@ for i, v in ipairs(values) do
 	elseif not r then
 		die('kein ' .. LABEL[band] .. '-Radio auf diesem Geraet (mit "-" auslassen)')
 	elseif band == '5g' and outdoor then
-		print('channel: ' .. LABEL[band] .. ' ist im Outdoor-Modus, Gluon waehlt den Kanal aus der Kanalliste - nicht geaendert')
+		print('channel: ' .. LABEL[band] .. ' ist im Outdoor-Modus, Gluon waehlt den Kanal aus der Kanalliste'
+			.. (v == 'mesh' and ' und schaltet das 5-GHz-Mesh ab' or '') .. ' - nicht geaendert')
+	elseif v == 'mesh' and not r.mesh then
+		print(string.format('channel: %s: %s hat kein Mesh-Interface - nicht geaendert', LABEL[band], r.name))
 	else
+		local improve, enable_mesh = false, nil
 		if v == 'autofix' then
 			v = autofix(band, r)
+		elseif v == 'mesh' then
+			if not r.mesh_enabled then
+				enable_mesh = r.mesh_section
+				print(string.format('channel: %s: Mesh (%s) ist aus - wird eingeschaltet', LABEL[band], r.mesh_section))
+			end
+			v, improve = meshfind(band, r)
 		end
 		local ok = v == 'auto'
 		if not ok then
@@ -396,12 +471,19 @@ for i, v in ipairs(values) do
 			end
 		end
 		local nb = r.mesh and r.mesh_enabled and neighbours[r.mesh] or 0
-		if v ~= r.channel and nb > 0 and not force then
+		if v ~= r.channel and nb > 0 and not force and not improve then
 			print(string.format('channel: %s: %d Mesh-Nachbarn an %s verlieren mit dem Wechsel den Link%s - nur mit -f',
 				LABEL[band], nb, r.mesh, v == 'auto' and ' (auf auto kommt das Mesh nicht hoch)' or ''))
 			refused = true
 		else
-			table.insert(changes, { band = band, radio = r.name, from = r.channel, to = v })
+			if v ~= r.channel and nb > 0 and improve then
+				print(string.format('channel: %s: %d bisherige Mesh-Nachbarn an %s gehen, das Mesh auf Kanal %s ist staerker',
+					LABEL[band], nb, r.mesh, v))
+			end
+			if v ~= r.channel and #(r.ifaces or {}) > 1 then
+				print(string.format('channel: %s: der AP wandert mit - Geraete an diesem Band verbinden neu', LABEL[band]))
+			end
+			table.insert(changes, { band = band, radio = r.name, from = r.channel, to = v, enable_mesh = enable_mesh })
 		end
 	end
 end
@@ -410,8 +492,8 @@ if refused then
 end
 if dry then
 	for _, ch in ipairs(changes) do
-		print(string.format('channel: -n: %s (%s) %s -> %s, nichts geschrieben', LABEL[ch.band], ch.radio,
-			tostring(ch.from), ch.to))
+		print(string.format('channel: -n: %s (%s) %s -> %s%s, nichts geschrieben', LABEL[ch.band], ch.radio,
+			tostring(ch.from), ch.to, ch.enable_mesh and (', ' .. ch.enable_mesh .. ' an') or ''))
 	end
 	os.exit(0)
 end
@@ -438,10 +520,15 @@ local function set_committed(config, sets)
 	os.execute('rm -rf ' .. TMPDIR)
 end
 
-local wireless_sets, gluon_sets, notes = {}, {}, {}
+local wireless_sets, gluon_sets, notes, restart = {}, {}, {}, {}
 for _, ch in ipairs(changes) do
 	if ch.to ~= ch.from then
 		table.insert(wireless_sets, { ch.radio, 'channel', ch.to })
+		restart[ch.radio] = true
+	end
+	if ch.enable_mesh then
+		table.insert(wireless_sets, { ch.enable_mesh, 'disabled', '0' })
+		restart[ch.radio] = true
 	end
 end
 
@@ -477,6 +564,9 @@ for _, ch in ipairs(changes) do
 	if ch.to ~= ch.from then
 		print(string.format('channel: %s (%s): %s -> %s', LABEL[ch.band], ch.radio, tostring(ch.from), ch.to))
 	end
+	if ch.enable_mesh then
+		print(string.format('channel: %s: %s eingeschaltet', LABEL[ch.band], ch.enable_mesh))
+	end
 end
 for _, s in ipairs(gluon_sets) do
 	print(string.format('channel: gluon.wireless.%s=%s', s[2], s[3]))
@@ -491,7 +581,7 @@ if not keep then
 end
 os.execute('logger -t channel -- "' .. table.concat((function()
 	local t = {}
-	for _, s in ipairs(wireless_sets) do table.insert(t, s[1] .. '.channel=' .. s[3]) end
+	for _, s in ipairs(wireless_sets) do table.insert(t, s[1] .. '.' .. s[2] .. '=' .. s[3]) end
 	for _, s in ipairs(gluon_sets) do table.insert(t, 'gluon.wireless.' .. s[2] .. '=' .. s[3]) end
 	return t
 end)(), ' ') .. '"')
@@ -503,11 +593,14 @@ end)(), ' ') .. '"')
 -- baut das Radio neu auf. Unter demselben Lock wie ssid-changer, hotfix,
 -- linkcheck und wifi-blackout, damit kein Neustart in einen anderen faellt;
 -- hier wartend (busybox-flock kennt kein -w), die anderen halten ihn kurz.
-if #wireless_sets > 0 then
-	for _, s in ipairs(wireless_sets) do
-		print('channel: wifi up ' .. s[1] .. ' ...')
-		io.stdout:flush()
-		os.execute("flock /var/lock/neanderfunk-wifi.lock -c 'wifi up " .. s[1] .. "'")
+if next(restart) then
+	for _, band in ipairs(BANDS) do
+		local r = radios[band]
+		if r and restart[r.name] then
+			print('channel: wifi up ' .. r.name .. ' ...')
+			io.stdout:flush()
+			os.execute("flock /var/lock/neanderfunk-wifi.lock -c 'wifi up " .. r.name .. "'")
+		end
 	end
 	os.execute('sleep 10')
 end

@@ -109,6 +109,11 @@ It also installs these commands (all listed by `help`):
   on which the node's own mesh is not heard (fewest other Freifunk next,
   random if the scan returns nothing); `channel autofix` alone does all
   bands, `channel - autofix` only 5 GHz, `channel autofix -` only 2.4 GHz.
+  `mesh` is the opposite, for a node that is offline or barely reached by
+  mesh: it switches the radio's mesh on if it is off and moves to the channel
+  where the node hears its own mesh (the `mesh_id` of that radio, which may
+  differ per band) the strongest; if it hears none, the channel stays. It
+  needs no `-f` when the new channel's mesh is stronger than the current one.
   `-n` shows what would happen. A channel the radio cannot use (`iwinfo freqlist`)
   is refused, 5 GHz in outdoor mode is left to Gluon. The width stays. Unless
   `--no-keep` is given, each changed band gets
