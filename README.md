@@ -35,6 +35,11 @@ and whether Gluon 2025.1 changes that:
 Flash and RAM of the devices in the field, grouped by how soon a Gluon
 release may drop them: [docs/feldgeraete-flash-ram.md](docs/feldgeraete-flash-ram.md).
 
+Calling `sysupgrade` from a script: exec it and do nothing afterwards. It
+returns as soon as it has handed over to procd, seconds before stage2 reads
+the image, so any cleanup after it breaks the upgrade:
+[docs/sysupgrade-aus-skripten.md](docs/sysupgrade-aus-skripten.md).
+
 ### neanderfunk-config-mode-theme ###
 
 replaces gluon-config-mode-theme: config mode layout and stylesheet,
