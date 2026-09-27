@@ -1,0 +1,310 @@
+#!/usr/bin/lua
+-- channel [2,4-GHz-Kanal [5-GHz-Kanal]] [--no-keep] [-f] - WLAN-Kanaele zeigen
+-- oder setzen.
+--
+--     channel               je Radio: Band, Kanal (live und uci), HT-Mode,
+--                           ob der Kanal Updates uebersteht, Mesh-Nachbarn
+--     channel 6             2,4 GHz auf Kanal 6
+--     channel 6 44          2,4 GHz auf 6, 5 GHz auf 44
+--     channel - 44          nur 5 GHz ("-" laesst ein Band, wie es ist)
+--     channel auto auto     beide auf Autochannel
+--
+-- Der erste Wert gilt immer fuer 2,4 GHz, der zweite fuer 5 GHz - egal welches
+-- Radio (radio0/radio1) welches Band hat; die Zuordnung kommt aus
+-- wireless.<radio>.band. Die Breite (HT-Mode) bleibt, wie sie ist.
+--
+-- Behalten: Gluon setzt bei jedem Update Kanal, Kanalliste und Breite auf die
+-- Werte der Site zurueck. Ausser mit --no-keep setzt channel deshalb fuer jedes
+-- geaenderte Band gluon.wireless.preserve_channels_<band>=1; die wertet
+-- neanderfunk-preserve-wifichannel aus (zusaetzlich zu Gluons globalem
+-- preserve_channels). Steht der globale Schalter noch auf 1, wird er dabei in
+-- die Band-Schluessel ueberfuehrt: jedes Band bekommt seinen Schluessel auf 1,
+-- der globale geht auf 0 - fuer den Knoten aendert sich dadurch nichts, aber
+-- von da an laesst sich je Band entscheiden. Wer ihn spaeter wieder auf 1
+-- setzt, haelt wie bisher alle Baender fest.
+--
+-- Schutz vor dem Aussperren: Haengen am Mesh-Interface eines Radios Nachbarn,
+-- reisst ein Kanalwechsel diese Links ab - ueber genau diese Links kann auch
+-- die eigene SSH-Sitzung laufen, und der neue Kanal ist dauerhaft gespeichert.
+-- Dann aendert channel das Radio nur mit -f. Ebenso "auto" auf einem Radio mit
+-- Mesh: auf auto kommt das Mesh nicht hoch (kein fester Kanal zum Treffen).
+-- Im Outdoor-Modus waehlt Gluon den 5-GHz-Kanal selbst aus der Kanalliste der
+-- Site; dort setzt channel nichts.
+--
+-- Gespeichert wird, ein Eingriff ins Flash wie bei routername. Aber nicht per
+-- "uci commit wireless": im uci-Delta stehen Laufzeit-Aenderungen, die nie ins
+-- Flash sollen (Offline-SSID des ssid-changers, ap-timer). libuci liest das
+-- Delta aus /tmp/.uci bei jedem Cursor mit, auch mit eigenem savedir. Deshalb
+-- wird eine Kopie der Konfiguration unter anderem Namen geaendert (fuer die gibt
+-- es kein Delta) und zurueckkopiert; das Delta bleibt und gilt weiter obenauf.
+
+local uci = require('simple-uci').cursor()
+local rawuci = require('uci')
+
+local BANDS = { '2g', '5g' }
+local LABEL = { ['2g'] = '2,4 GHz', ['5g'] = '5 GHz' }
+local TMPDIR = '/tmp/nf-channel'
+
+local function sh(cmd)
+	local p = io.popen(cmd .. ' 2>/dev/null')
+	if not p then return '' end
+	local s = p:read('*a') or ''
+	p:close()
+	return s
+end
+
+local function die(msg)
+	io.stderr:write('channel: ' .. msg .. '\n')
+	os.exit(1)
+end
+
+local function usage()
+	io.stderr:write([==[
+Aufruf: channel [2,4-GHz-Kanal [5-GHz-Kanal]] [--no-keep] [-f]
+  ohne Kanal: anzeigen
+  Kanal: Zahl, "auto" oder "-" (Band nicht aendern)
+  --no-keep  Kanal nicht ueber Updates behalten (kein preserve_channels_<band>)
+  -f         auch wenn Mesh-Nachbarn an diesem Radio haengen
+]==])
+	os.exit(1)
+end
+
+local function readline(path)
+	local f = io.open(path)
+	if not f then return nil end
+	local l = f:read('*l')
+	f:close()
+	return l
+end
+
+local function operup(name)
+	return name and readline('/sys/class/net/' .. name .. '/operstate') == 'up'
+end
+
+-- Radios nach Band; je Radio die Interfaces nach Rolle
+local radios = {}
+uci:foreach('wireless', 'wifi-device', function(s)
+	if s.band and not radios[s.band] then
+		radios[s.band] = { name = s['.name'], channel = s.channel, htmode = s.htmode,
+			disabled = s.disabled == '1' }
+	end
+end)
+uci:foreach('wireless', 'wifi-iface', function(s)
+	for _, r in pairs(radios) do
+		if s.device == r.name then
+			r.ifaces = r.ifaces or {}
+			table.insert(r.ifaces, s.ifname)
+			if s.mode == 'mesh' then
+				r.mesh = s.ifname
+				r.mesh_enabled = s.disabled ~= '1'
+			end
+		end
+	end
+end)
+
+-- Mesh-Nachbarn je Interface (batctl n: Interface in der ersten Spalte)
+local neighbours = {}
+for line in sh('batctl n -H'):gmatch('[^\n]+') do
+	local ifname = line:match('^%s*(%S+)%s+%x%x:')
+	if ifname then neighbours[ifname] = (neighbours[ifname] or 0) + 1 end
+end
+
+local function live(r)
+	for _, ifname in ipairs(r.ifaces or {}) do
+		if operup(ifname) then
+			local info = sh('iwinfo ' .. ifname .. ' info')
+			return info:match('Channel: (%d+)'), info:match('HT Mode: (%S+)')
+		end
+	end
+end
+
+local function keep_state(band)
+	if uci:get_bool('gluon', 'wireless', 'preserve_channels') then
+		return 'fest (global)'
+	elseif uci:get_bool('gluon', 'wireless', 'preserve_channels_' .. band) then
+		return 'fest'
+	end
+	return 'Update setzt auf Site zurueck'
+end
+
+local outdoor = uci:get_bool('gluon', 'wireless', 'outdoor')
+
+local function show()
+	local any = false
+	for _, band in ipairs(BANDS) do
+		local r = radios[band]
+		if r then
+			any = true
+			local ch, mode = live(r)
+			local chtxt = ch or '-'
+			if r.channel and r.channel ~= ch then
+				chtxt = chtxt .. ' (uci ' .. r.channel .. ')'
+			end
+			local extra = {}
+			if r.disabled then table.insert(extra, 'Radio aus') end
+			if band == '5g' and outdoor then table.insert(extra, 'Outdoor') end
+			if r.mesh then
+				if r.mesh_enabled and r.channel ~= 'auto' then
+					table.insert(extra, 'Mesh ' .. (neighbours[r.mesh] or 0) .. ' Nachbarn')
+				else
+					table.insert(extra, 'kein Mesh')
+				end
+			end
+			print(string.format('%-8s %-7s Kanal %-14s %-7s %s%s', LABEL[band], r.name, chtxt,
+				r.htmode or mode or '?', keep_state(band),
+				#extra > 0 and ('  ' .. table.concat(extra, ', ')) or ''))
+		end
+	end
+	if not any then
+		print('kein WLAN-Radio')
+	end
+end
+
+-- --- Argumente ---------------------------------------------------------------
+
+local values, keep, force = {}, true, false
+for _, a in ipairs(arg) do
+	if a == '--no-keep' then keep = false
+	elseif a == '-f' or a == '--force' then force = true
+	elseif a == '-h' or a == '--help' then usage()
+	elseif a == '-' or a == 'auto' or a:match('^%d+$') then table.insert(values, a)
+	else
+		io.stderr:write('channel: unbekanntes Argument "' .. a .. '"\n')
+		usage()
+	end
+end
+if #values > #BANDS then usage() end
+
+if #values == 0 then
+	show()
+	os.exit(0)
+end
+
+-- --- Pruefen: erst alles, dann schreiben ---------------------------------------
+
+local changes = {}
+local refused = false
+for i, v in ipairs(values) do
+	local band = BANDS[i]
+	local r = radios[band]
+	if v == '-' then
+		-- Band bleibt
+	elseif not r then
+		die('kein ' .. LABEL[band] .. '-Radio auf diesem Geraet (mit "-" auslassen)')
+	elseif band == '5g' and outdoor then
+		print('channel: ' .. LABEL[band] .. ' ist im Outdoor-Modus, Gluon waehlt den Kanal aus der Kanalliste - nicht geaendert')
+	else
+		local ok = v == 'auto'
+		if not ok then
+			local phy = sh('iwinfo nl80211 phyname ' .. r.name):match('%S+')
+			local n = tonumber(v)
+			for _, f in ipairs(phy and require('iwinfo').nl80211.freqlist(phy) or {}) do
+				if f.channel == n and not f.restricted then ok = true end
+			end
+			if not ok then
+				die(LABEL[band] .. ': Kanal ' .. v .. ' kann ' .. r.name .. ' hier nicht (iwinfo ' .. (phy or r.name) .. ' freqlist)')
+			end
+		end
+		local nb = r.mesh and r.mesh_enabled and neighbours[r.mesh] or 0
+		if v ~= r.channel and nb > 0 and not force then
+			print(string.format('channel: %s: %d Mesh-Nachbarn an %s verlieren mit dem Wechsel den Link%s - nur mit -f',
+				LABEL[band], nb, r.mesh, v == 'auto' and ' (auf auto kommt das Mesh nicht hoch)' or ''))
+			refused = true
+		else
+			table.insert(changes, { band = band, radio = r.name, from = r.channel, to = v })
+		end
+	end
+end
+if refused then
+	os.exit(1)
+end
+
+-- --- Schreiben -----------------------------------------------------------------
+
+-- set_committed(config, { {section, option, value}, ... }): aendert nur diese
+-- Optionen in /etc/config/<config>, ohne das uci-Delta mitzuschreiben (Kopf).
+local function set_committed(config, sets)
+	local copy = config .. 'nfchannel'
+	os.execute('mkdir -p ' .. TMPDIR)
+	assert(os.execute(string.format('cp /etc/config/%s %s/%s', config, TMPDIR, copy)) == 0,
+		'kann /etc/config/' .. config .. ' nicht kopieren')
+	local c = rawuci.cursor(TMPDIR, TMPDIR .. '/save')
+	for _, s in ipairs(sets) do
+		c:set(copy, s[1], s[2], s[3])
+		-- ein Delta genau fuer diese Option (etwa von Hand gesetzt, nie
+		-- committet) gaelte sonst weiter obenauf
+		os.execute(string.format('uci -q revert %s.%s.%s', config, s[1], s[2]))
+	end
+	c:commit(copy)
+	assert(os.execute(string.format('cp %s/%s /etc/config/.%s.nfchannel && mv /etc/config/.%s.nfchannel /etc/config/%s',
+		TMPDIR, copy, config, config, config)) == 0, 'kann /etc/config/' .. config .. ' nicht schreiben')
+	os.execute('rm -rf ' .. TMPDIR)
+end
+
+local wireless_sets, gluon_sets, notes = {}, {}, {}
+for _, ch in ipairs(changes) do
+	if ch.to ~= ch.from then
+		table.insert(wireless_sets, { ch.radio, 'channel', ch.to })
+	end
+end
+
+if keep and #changes > 0 then
+	if uci:get_bool('gluon', 'wireless', 'preserve_channels') then
+		-- Ueberfuehren: alle Baender, die es gibt, behalten wie bisher
+		for _, band in ipairs(BANDS) do
+			if radios[band] then
+				table.insert(gluon_sets, { 'wireless', 'preserve_channels_' .. band, '1' })
+			end
+		end
+		table.insert(gluon_sets, { 'wireless', 'preserve_channels', '0' })
+		table.insert(notes, 'globales preserve_channels in die Band-Schluessel ueberfuehrt')
+	else
+		for _, ch in ipairs(changes) do
+			if not uci:get_bool('gluon', 'wireless', 'preserve_channels_' .. ch.band) then
+				table.insert(gluon_sets, { 'wireless', 'preserve_channels_' .. ch.band, '1' })
+			end
+		end
+	end
+end
+
+if #wireless_sets == 0 and #gluon_sets == 0 then
+	print('channel: nichts zu aendern')
+	show()
+	os.exit(0)
+end
+
+if #wireless_sets > 0 then set_committed('wireless', wireless_sets) end
+if #gluon_sets > 0 then set_committed('gluon', gluon_sets) end
+
+for _, ch in ipairs(changes) do
+	if ch.to ~= ch.from then
+		print(string.format('channel: %s (%s): %s -> %s', LABEL[ch.band], ch.radio, tostring(ch.from), ch.to))
+	end
+end
+for _, s in ipairs(gluon_sets) do
+	print(string.format('channel: gluon.wireless.%s=%s', s[2], s[3]))
+end
+for _, n in ipairs(notes) do
+	print('channel: ' .. n)
+end
+if not keep then
+	print('channel: --no-keep: das naechste Update setzt '
+		.. (uci:get_bool('gluon', 'wireless', 'preserve_channels') and 'trotzdem nichts zurueck (globales preserve_channels steht)'
+			or 'auf die Kanaele der Site zurueck, soweit kein preserve_channels_<band> steht'))
+end
+os.execute('logger -t channel -- "' .. table.concat((function()
+	local t = {}
+	for _, s in ipairs(wireless_sets) do table.insert(t, s[1] .. '.channel=' .. s[3]) end
+	for _, s in ipairs(gluon_sets) do table.insert(t, 'gluon.wireless.' .. s[2] .. '=' .. s[3]) end
+	return t
+end)(), ' ') .. '"')
+
+if #wireless_sets > 0 then
+	print('channel: wifi reload ...')
+	io.stdout:flush()
+	os.execute('wifi reload')
+	os.execute('sleep 5')
+end
+-- Anzeige mit frisch gelesenem Stand
+io.stdout:flush()
+os.execute(arg[0])

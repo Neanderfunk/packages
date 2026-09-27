@@ -19,6 +19,8 @@ Mesh (batman-adv)
 WLAN
   wlc                   verbundene WLAN-Clients je Interface
   iwinfo                Radios und Interfaces, Kanal, Sendeleistung
+  channel [2g [5g]]     Kanal je Band zeigen oder setzen (auto, - = lassen);
+                        bleibt ueber Updates, ausser mit --no-keep
 Netz
   myip                  Adressen im Client-Netz, eigene SSH-Verbindung
   ip a / ip r s t all   alle Adressen / alle Routing-Tabellen

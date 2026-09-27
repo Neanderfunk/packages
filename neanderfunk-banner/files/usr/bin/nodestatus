@@ -1151,8 +1151,29 @@ local sc_prefix = uci:get('ssid-changer', 'settings', 'prefix') or 'FF_Offline_'
 local sc_sending = (essid and essid:sub(1, #sc_prefix) == sc_prefix) or false
 -- preserve_channels: "fest" = Kanal, Kanalliste und Breite bleiben bei Updates
 -- stehen, "aus Site" = Gluon setzt sie bei jedem Update auf die Site-Werte.
+-- Dazu je Band preserve_channels_2g/_5g (neanderfunk-preserve-wifichannel,
+-- gesetzt von "channel"), zusaetzlich zum globalen Schalter.
+local function band_kept(band)
+	return uci:get_bool('gluon', 'wireless', 'preserve_channels')
+		or uci:get_bool('gluon', 'wireless', 'preserve_channels_' .. band)
+end
 local pc = uci:get('gluon', 'wireless', 'preserve_channels')
-local pctxt = pc and ('Kanal ' .. (uci:get_bool('gluon', 'wireless', 'preserve_channels') and 'fest' or 'aus Site')) or ''
+local pctxt = ''
+if uci:get_bool('gluon', 'wireless', 'preserve_channels') then
+	pctxt = 'Kanal fest'
+else
+	local kept = {}
+	for _, band in ipairs({ '2g', '5g' }) do
+		if uci:get_bool('gluon', 'wireless', 'preserve_channels_' .. band) then
+			table.insert(kept, band:upper())
+		end
+	end
+	if #kept > 0 then
+		pctxt = 'Kanal fest ' .. table.concat(kept, '+')
+	elseif pc then
+		pctxt = 'Kanal aus Site'
+	end
+end
 
 if has_wifi then
 	row('SSID', essid or '', pctxt)
@@ -1315,6 +1336,7 @@ end
 -- Outdoor-Modus auf auto mit outdoor_chanlist. Ausser preserve_channels ist
 -- gesetzt, dann bleibt alles stehen. Ohne preserve_channels ist also jede
 -- Abweichung beim naechsten Update weg - auch ein von Hand gesetztes auto.
+-- Baender mit eigenem preserve_channels_<band> bleiben ebenfalls stehen.
 if has_wifi and not uci:get_bool('gluon', 'wireless', 'preserve_channels') then
 	local ok, site = pcall(require, 'gluon.site')
 	local outdoor_on = uci:get_bool('gluon', 'wireless', 'outdoor')
@@ -1322,7 +1344,7 @@ if has_wifi and not uci:get_bool('gluon', 'wireless', 'preserve_channels') then
 	for _, radio in ipairs(ok and radios or {}) do
 		local band = uci:get('wireless', radio, 'band')
 		local cfg = (band == '2g' and site.wifi24) or (band == '5g' and site.wifi5) or nil
-		if cfg then
+		if cfg and not band_kept(band) then
 			local want_ch, want_list
 			if band == '5g' and outdoor_on then
 				want_ch, want_list = 'auto', cfg.outdoor_chanlist()
@@ -1344,8 +1366,8 @@ if has_wifi and not uci:get_bool('gluon', 'wireless', 'preserve_channels') then
 	end
 	if #diffs > 0 then
 		warn('yellow', 'WLAN-Kanal anders als in der Firmware (' .. join(diffs, ', ')
-			.. '), Update setzt zurueck. Behalten mit:'
-			.. '\n  uci set gluon.wireless.preserve_channels=1; uci commit gluon')
+			.. '), Update setzt zurueck. Behalten: channel mit dem Kanal aufrufen'
+			.. ' (setzt preserve_channels je Band), z.B. channel <2,4-GHz> <5-GHz>')
 	end
 end
 

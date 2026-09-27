@@ -34,8 +34,9 @@ actually running, not just what is configured:
 - a radio table with the live channel, width, HT mode and tx power per radio
   (from `iwinfo`), AP and mesh state, clients and mesh neighbours with TQ
 - a warning when a radio's channel differs from the firmware (site.conf /
-  domain, as Gluon's `200-wireless` would set it) while `preserve_channels`
-  is off - the next update would reset it
+  domain, as Gluon's `200-wireless` would set it) while neither
+  `preserve_channels` nor `preserve_channels_<band>` keeps that band - the
+  next update would reset it
 - on devices without wifi (x86, ERX, ...) a port table in its place: per port
   link, traffic since boot and error counters, per role group mesh state and
   neighbours; on swconfig switches the real link per switch port.
@@ -99,6 +100,23 @@ It also installs these commands (all listed by `help`):
   manual change that should survive updates) and starts or stops the daemon
   via its init script, as Gluon's `reload.d` does. With the daemon switch off
   neither `tunneldigger-watchdog` nor neanderfunk-hotfix restarts it.
+- `channel [2.4-GHz-channel [5-GHz-channel]] [--no-keep] [-f]` - without
+  arguments, per radio: band, live and uci channel, HT mode, whether the
+  channel survives updates, mesh neighbours. With arguments it sets the
+  channels: the first value is always 2.4 GHz, the second 5 GHz, whichever
+  radio has which band (`wireless.<radio>.band`); `auto` for autochannel, `-`
+  leaves a band as it is. A channel the radio cannot use (`iwinfo freqlist`)
+  is refused, 5 GHz in outdoor mode is left to Gluon. The width stays. Unless
+  `--no-keep` is given, each changed band gets
+  `gluon.wireless.preserve_channels_<band>=1`, which
+  neanderfunk-preserve-wifichannel honours in addition to Gluon's global
+  `preserve_channels`; a global switch still set to 1 is carried over into the
+  per-band keys (all bands 1, global 0). If mesh neighbours hang on a radio's
+  mesh interface, that radio is only changed with `-f` - a channel change
+  cuts those links, possibly the one the SSH session runs over. It writes
+  only its own options to `/etc/config` (a renamed copy, so runtime changes in
+  the uci delta such as the offline SSID stay out of the flash), then runs
+  `wifi reload`.
 - `flash <url|directory-url|file> [sysupgrade options]` - downloads a
   firmware image to `/tmp` (an `https://` URL is fetched as `http://`, not
   every node has TLS), shows size, free RAM and sha256, checks it with
