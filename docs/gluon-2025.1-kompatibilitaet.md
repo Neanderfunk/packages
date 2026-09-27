@@ -125,6 +125,30 @@ Paket dort noch, und wenn ja, schlägt es an? Ein Blick auf
 `/tmp/mt7915backlog.last-restart` und die Logzeilen des Pakets beantwortet das
 in fünf Minuten.
 
+**Neubewertung 2026-09-27** (Gluon v2025.1.x `0ad3ad5`, OpenWrt-Pin
+`a1ea57bd`):
+
+| | |
+| --- | --- |
+| mt76 in 2025.1 | `2025-11-06 eb567bc7`, dazu Gluons `0012` (PLE-Queues leeren) |
+| Power-Save-Strang (`9a46d8d2`, `9e613fb0`, `f8b59ca3`, Mai/Juni 2026) | **nicht** enthalten - juenger als der mt76-Stand von 24.10 |
+| Puffer-Deckel `8f38662f` | in v2025.1.x enthalten (staffelt nur bis 128 MB RAM) |
+| `rf_regval` in debugfs (mt7915, mt7615) | weiterhin vorhanden, unveraendert |
+
+Folgen:
+
+* `neanderfunk-mt7915-backlog` bleibt auf diesem Branch entfernt. Die
+  Begruendung ist `0012`, nicht der Power-Save-Strang: der kommt mit 2025.1
+  noch nicht mit.
+* `neanderfunk-hotfix` `wifi_firmware` (Reboot bei abgestuerzter mt76-Firmware,
+  MCU-Timeout, openwrt/mt76#690 weiter offen) bleibt unveraendert. Der
+  debugfs-Pfad, den er liest, existiert im neuen Treiber noch. Am Geraet zu
+  bestaetigen: `ls /sys/kernel/debug/ieee80211/phy*/mt76/rf_regval` und ein
+  Lesezugriff ohne Fehler im gesunden Zustand.
+* `CONFLICTS:=ffac-mt7915-hotfix` in hotfix bleibt richtig; das Paket gibt es
+  in den community-packages weiter. `ffac-mt7915-maxinactivity` gibt es unter
+  2025.1 nicht mehr, der Feed nimmt darauf keinen Bezug.
+
 ## 2. Was unverändert bleibt
 
 Geprüft, nicht vermutet:
