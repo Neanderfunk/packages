@@ -7,6 +7,8 @@
 #   portrole lan none          LAN ohne Rolle
 #   portrole eth2 client       weiterer Port (x86 eth2, VLAN eth0.8 ...) als Client
 #   portrole eth2 none         dessen Sektion wieder entfernen
+#   portrole lan3 client       lan3 aus der LAN-Gruppe loesen, eigene Rolle
+#   portrole lan3 lan          lan3 zurueck in die LAN-Gruppe (auch eth2 -> lan)
 #   ... -y                     ohne Rueckfrage, auch bei riskanten Wechseln
 #
 # Ersetzt lanrole/wanrole (bis September 2026).
@@ -16,8 +18,11 @@
 # er eine eigene Sektion gluon.iface_<port> mit Rolle hat ("." wird "_").
 # Nur so uebersteht er gluon-reconfigure - ein Port, der von Hand in
 # network.client steht, ist nach dem naechsten Update weg (Kollektor-Gluon
-# 839d, 27.09.2026). Ports, die in der LAN- oder WAN-Gruppe stecken (DSA lan3),
-# lassen sich so nicht herausnehmen: Werkstatt-Anleitung "LAN-Ports trennen".
+# 839d, 27.09.2026). Ein Port aus einer Gruppe (DSA lan3 in /lan) wird
+# herausgeloest: die Gruppe bekommt die Liste der uebrigen Ports, der Port
+# eine eigene Sektion; "portrole lan3 lan" holt ihn zurueck. Ein eigenes Mesh
+# je Port (eigene batman-Schnittstelle) geht so nicht, Gluon bridget alle
+# Mesh-Ports zusammen - dafuer die Werkstatt-Anleitung "LAN-Ports trennen".
 #
 # Rollen wie in Gluons Erweiterten Einstellungen: uplink, mesh, client;
 # client nur allein, uplink+mesh geht. Geschrieben wird gluon.iface_<if>.role,
@@ -61,6 +66,8 @@ ports_of() {
 		*) echo "$n" ;;
 	esac
 }
+
+sorted() { echo $(for w in $*; do echo $w; done | sort); }
 
 gluon_sections() {
 	uci -q show gluon | sed -n 's/^gluon\.\([^.=]*\)=interface$/\1/p'
@@ -107,6 +114,7 @@ ports_elsewhere() {
 	local s
 	for s in $(gluon_sections); do
 		[ "$s" = "$1" ] && continue
+		[ -n "$2" ] && [ "$s" = "$2" ] && continue
 		[ -n "$(uci -q get gluon.$s.role)" ] && echo "$(ports_of $s) "
 	done
 	for s in $(own_mesh_sections); do
@@ -159,11 +167,13 @@ ports_of_target() {
 # pruefen und normalisieren (Reihenfolge wie in Gluon: uplink mesh client)
 NEW=
 NONE=0
+BACK=
 for r in $ROLES; do
 	case "$r" in
 		uplink|mesh|client) ;;
 		none) NONE=1; continue ;;
-		*) echo "Unbekannte Rolle: $r (erlaubt: uplink, mesh, client, none)" >&2; exit 1 ;;
+		lan|wan) BACK=iface_$r; continue ;;
+		*) echo "Unbekannte Rolle: $r (erlaubt: uplink, mesh, client, none; lan/wan = zurueck in die Gruppe)" >&2; exit 1 ;;
 	esac
 done
 for r in uplink mesh client; do
@@ -178,15 +188,96 @@ case " $NEW " in
 esac
 
 CUR=$(uci -q get gluon.$SEC.role)
-if [ "$NEW" = "$CUR" ]; then
+if [ "$NEW" = "$CUR" ] && [ -z "$BACK" ] && ! { [ $NONE = 1 ] && [ $NEWSEC = 1 ]; }; then
 	echo "$IF: unveraendert (${CUR:-keine})"
 	exit 0
+fi
+
+# --- zurueck in die Gruppe: "portrole lan3 lan" ------------------------------
+# Loescht die eigene Sektion des Ports und nimmt ihn wieder in die Gruppe
+# auf. Ist die Gruppe danach wieder vollstaendig, steht dort wieder "/lan".
+if [ -n "$BACK" ]; then
+	[ -z "$NEW" ] && [ $NONE = 0 ] || { echo "lan/wan laesst sich nicht mit Rollen kombinieren." >&2; exit 1; }
+	case "$SEC" in iface_lan|iface_wan|iface_single) echo "$IF ist selbst eine Gruppe." >&2; exit 1 ;; esac
+	uci -q get gluon.$BACK >/dev/null || { echo "gluon.$BACK gibt es nicht." >&2; exit 1; }
+	P=$(ports_of_target)
+	case "$P" in *" "*) echo "$IF umfasst mehrere Ports ($P) - einzeln zurueckholen." >&2; exit 1 ;; esac
+	GNAME=$(uci -q get gluon.$BACK.name)
+	case "$GNAME" in
+		/*) GPORTS=$(ports_of $BACK); FULL=$GPORTS ;;
+		*) GPORTS=$GNAME; FULL=$(cat /lib/gluon/core/sysconfig/${BACK#iface_}_ifname 2>/dev/null) ;;
+	esac
+	case " $(echo $GPORTS) " in
+		*" $P "*) NEWLIST=$(echo $GPORTS) ;;
+		*) NEWLIST=$(echo $GPORTS $P) ;;
+	esac
+	if [ "$(sorted $NEWLIST)" = "$(sorted $FULL)" ]; then NEWNAME=/${BACK#iface_}; else NEWNAME=$NEWLIST; fi
+	echo "$P zurueck nach ${BACK#iface_}: gluon.$BACK.name = $NEWNAME$([ $NEWSEC = 0 ] && echo ", gluon.$SEC entfaellt")"
+	uci set gluon.$BACK.name="$NEWNAME"
+	[ $NEWSEC = 0 ] && uci -q delete gluon.$SEC
+	uci commit gluon
+	echo "Gesetzt. Wirksam nach gluon-reconfigure und Neustart: reconf"
+	exit 0
+fi
+
+# --- Port aus einer Gruppe herausloesen: "portrole lan3 client" -------------
+# Steckt der Port in einer Sektion mit mehreren Ports (/lan = lan1..lan4, oder
+# eine Liste wie "eth0 eth2 eth3"), bekommt diese die Liste der uebrigen Ports
+# und der Port eine eigene Sektion. Gluon 2023.2 nimmt dafuer jede Liste von
+# Ports als name.
+SPLIT=
+if { [ -n "$NEW" ] || [ $NONE = 1 ]; } && [ $NEWSEC = 1 ]; then
+	P=$PORTNAME
+	for s in $(gluon_sections); do
+		[ -n "$(uci -q get gluon.$s.role)" ] || continue
+		case " $(echo $(ports_of $s)) " in *" $P "*) SPLIT=$s; break ;; esac
+	done
+fi
+if [ -n "$SPLIT" ]; then
+	GP=$(echo $(ports_of $SPLIT))
+	if [ "$GP" = "$P" ]; then
+		echo "$P ist der einzige Port von ${SPLIT#iface_} - dafuer: portrole ${SPLIT#iface_} ${NEW:-none}" >&2
+		exit 1
+	fi
+	REST=$(echo $(for w in $GP; do [ "$w" = "$P" ] || echo $w; done))
+	# bleibt genau die Board-Gruppe uebrig, wieder "/lan" statt einer Liste
+	case "$SPLIT" in iface_lan|iface_wan|iface_single)
+		GFULL=$(cat /lib/gluon/core/sysconfig/${SPLIT#iface_}_ifname 2>/dev/null)
+		[ -n "$GFULL" ] && [ "$(sorted $REST)" = "$(sorted $GFULL)" ] && REST=/${SPLIT#iface_} ;;
+	esac
+	GROLES=$(uci -q get gluon.$SPLIT.role)
+	echo "$P aus ${SPLIT#iface_} ($GP, $GROLES) herausloesen:"
+	echo "  gluon.$SPLIT.name = $REST (Rolle bleibt $GROLES)"
+	if [ -n "$NEW" ]; then
+		echo "  gluon.$SEC neu    = $P ($NEW)"
+	else
+		echo "  $P hat danach keine Rolle (zurueck mit: portrole $P ${SPLIT#iface_})"
+	fi
+	case " $NEW " in *" mesh "*)
+		case " $GROLES " in *" mesh "*)
+			echo "  Hinweis: Gluon legt alle Mesh-Ports in eine Bridge (br-mesh_other); ein eigenes"
+			echo "  Mesh nur fuer $P gibt es so nicht, dafuer die Anleitung \"LAN-Ports trennen\"." ;;
+		esac ;;
+	esac
+	if [ "$(cat /sys/class/net/$P/carrier 2>/dev/null)" = 1 ]; then
+		echo "  Achtung: an $P steckt ein Kabel (bisher $GROLES) - wer darueber verbunden ist, ist nach reconf draussen." >&2
+	fi
+	if [ $YES = 0 ]; then
+		if [ -t 0 ]; then
+			printf 'So umbauen? [j/N] '
+			read -r ANTWORT
+			case "$ANTWORT" in j|J|ja|Ja) ;; *) echo "Nichts geaendert."; exit 1 ;; esac
+		else
+			echo "Nicht interaktiv: mit -y bestaetigen. Nichts geaendert." >&2
+			exit 1
+		fi
+	fi
 fi
 
 # Ports, die schon anderswo eine Rolle haben, bekaemen sonst zwei - Gluon
 # nimmt dann irgendeine davon. Das laesst sich auch mit -y nicht erzwingen.
 if [ -n "$NEW" ]; then
-	ELSE=" $(echo $(ports_elsewhere $SEC)) "
+	ELSE=" $(echo $(ports_elsewhere $SEC $SPLIT)) "
 	CLASH=
 	for p in $(ports_of_target); do
 		case "$ELSE" in *" $p "*) CLASH="$CLASH $p" ;; esac
@@ -235,11 +326,21 @@ case "$SEC" in
 		for r in $NEW; do uci add_list gluon.$SEC.role=$r; done
 		;;
 	*)
-		if [ -z "$NEW" ]; then
+		if [ -z "$NEW" ] && [ -n "$SPLIT" ]; then
+			uci set gluon.$SPLIT.name="$REST"
+			echo "gluon.$SPLIT.name = $REST"
+		elif [ -z "$NEW" ] && [ $NEWSEC = 1 ]; then
+			echo "$IF hat keine eigene Sektion und steckt in keiner Gruppe - nichts zu tun."
+			exit 0
+		elif [ -z "$NEW" ]; then
 			# Zusatzsektion ohne Rolle hat keinen Zweck: ganz weg
 			uci -q delete gluon.$SEC
 			echo "gluon.$SEC entfernt."
 		else
+			if [ -n "$SPLIT" ]; then
+				uci set gluon.$SPLIT.name="$REST"
+				echo "gluon.$SPLIT.name = $REST"
+			fi
 			if [ $NEWSEC = 1 ]; then
 				uci set gluon.$SEC=interface
 				uci set gluon.$SEC.name="$PORTNAME"

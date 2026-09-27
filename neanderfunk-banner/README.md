@@ -87,9 +87,14 @@ It also installs these commands (all listed by `help`):
   port such as `eth2` needs its own `gluon.iface_<port>` section, which
   `portrole eth2 client` creates (`.` becomes `_`) and `portrole eth2 none`
   removes. Only such a section survives `gluon-reconfigure`; a port hung into
-  `network.client` by hand is gone after the next update. Ports that sit in
-  the LAN or WAN group (DSA `lan3`) are refused, see the workshop guide for
-  splitting LAN ports. Removing the last uplink or a mesh role asks first
+  `network.client` by hand is gone after the next update. A port inside a
+  group with several ports (DSA `lan3` in `/lan`, or a list like
+  `eth0 eth2`) is split out: `portrole lan3 client` gives the group the list
+  of the remaining ports and `lan3` its own section (asks first, `-y`);
+  `portrole lan3 lan` puts it back, and a group that is complete again gets
+  `/lan` back. `portrole eth2 lan` also adds an extra port to the LAN group.
+  Gluon bridges all mesh ports together, so a separate batman interface per
+  port still needs the workshop guide for splitting LAN ports. Removing the last uplink or a mesh role asks first
   (`-y` to skip); it refuses (also with `-y`) to give ports a role they
   already have elsewhere. Replaces `lanrole`/`wanrole`.
 - `reconf` - `gluon-reconfigure` and then reboot, detached in the background
