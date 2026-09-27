@@ -146,7 +146,10 @@ It also installs these commands (all listed by `help`):
   is only changed with `-f`, always, also for `autofix` and `mesh` (the node
   would probably lose its best path to the gateway). If mesh neighbours hang on a radio's
   mesh interface, that radio is only changed with `-f` - a channel change
-  cuts those links, possibly the one the SSH session runs over. It writes
+  cuts those links, possibly the one the SSH session runs over. After its own
+  change it deletes neanderfunk-linkcheck's arming markers for that radio's
+  mesh checks, so the planned loss of mesh neighbours does not end in a
+  reboot 20 minutes later. It writes
   only its own options to `/etc/config` (a renamed copy, so runtime changes in
   the uci delta such as the offline SSID stay out of the flash), then runs
   `wifi reload`.

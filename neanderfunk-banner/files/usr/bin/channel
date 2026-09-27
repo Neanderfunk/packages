@@ -647,6 +647,30 @@ end)(), ' ') .. '"')
 -- baut das Radio neu auf. Unter demselben Lock wie ssid-changer, hotfix,
 -- linkcheck und wifi-blackout, damit kein Neustart in einen anderen faellt;
 -- hier wartend (busybox-flock kennt kein -w), die anderen halten ihn kurz.
+-- Nach einem gewollten Kanalwechsel die Scharf-Marken von neanderfunk-linkcheck
+-- fuer dieses Radio loeschen. Sonst wertet linkcheck den planmaessigen
+-- Verlust der Mesh-Nachbarn als Ausfall und startet den Knoten nach rund
+-- 20 Minuten neu (Schulstrasse 7, 27.09.2026: 13 Reboots nach einer
+-- Kanalplanung). Nur .inhood und .linkpb der Mesh-Checks des Radios; sieht
+-- das Interface wieder mindestens zwei Nachbarn, macht linkcheck sich neu
+-- scharf.
+local function clear_linkcheck_markers(r)
+	local names = {}
+	if r.mesh then
+		table.insert(names, 'batadv.' .. r.mesh)
+		table.insert(names, 'batinterfaces.' .. r.mesh)
+	end
+	if r.mesh_section then table.insert(names, 'meshpeers.' .. r.mesh_section) end
+	for _, ifname in ipairs(r.ifaces or {}) do table.insert(names, ifname .. '.bsses') end
+	local n = 0
+	for _, name in ipairs(names) do
+		for _, suffix in ipairs({ '.inhood', '.linkpb' }) do
+			if os.remove('/tmp/linkcheck.' .. name .. suffix) then n = n + 1 end
+		end
+	end
+	return n
+end
+
 if next(restart) then
 	for _, band in ipairs(BANDS) do
 		local r = radios[band]
@@ -654,6 +678,10 @@ if next(restart) then
 			print('channel: wifi up ' .. r.name .. ' ...')
 			io.stdout:flush()
 			os.execute("flock /var/lock/neanderfunk-wifi.lock -c 'wifi up " .. r.name .. "'")
+			local n = clear_linkcheck_markers(r)
+			if n > 0 then
+				print(string.format('channel: %s: %d linkcheck-Marken geloescht (kein Reboot wegen des geplanten Wechsels)', r.name, n))
+			end
 		end
 	end
 	os.execute('sleep 10')

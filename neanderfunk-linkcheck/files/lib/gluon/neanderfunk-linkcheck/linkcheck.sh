@@ -506,7 +506,19 @@ if ! check_disabled "$checkgroup" ; then
     # iw can hang on a wedged radio, so run it in the background and give up
     # after 20s rather than stalling the whole run
     out="/tmp/linkcheck.meshpeers.${mesh_radio}.count"
-    ( iw dev "$dev" station dump 2>/dev/null | grep -c "^Station " > "$out" ) &
+    # Bei 802.11s nur Peers mit zustande gekommener Verbindung (mesh plink
+    # ESTAB). "station dump" fuehrt auch Anklopfer (OPN_RCVD, LISTEN, von
+    # Knoten auf Nachbarkanaelen oder mit abgelaufenem Peering); gezaehlt
+    # machten sie den Check scharf, ohne dass je ein Mesh bestand, und ihr
+    # Verschwinden fuehrte bis zum Reboot. Belegt am 27.09.2026: 1122
+    # geloggte Zustaende mit >=5 "Peers" bei 0 batman-Nachbarn, 5 unnoetige
+    # Reboots in der Schulstrasse 7. IBSS kennt keinen Plink-Zustand, dort
+    # zaehlt weiter jede Station.
+    case "$mesh_radio" in
+      mesh_radio*) peerpattern='mesh plink:[[:space:]]*ESTAB' ;;
+      *)           peerpattern='^Station ' ;;
+    esac
+    ( iw dev "$dev" station dump 2>/dev/null | grep -c "$peerpattern" > "$out" ) &
     p=$!
     n=0
     while [ $n -lt 20 ] && kill -0 $p 2>/dev/null ; do sleep 1 ; n=$((n + 1)) ; done
