@@ -18,6 +18,7 @@ local PENDING = 'neanderfunk_preserve_wifichannel_pending'
 local CONTEXT = 'neanderfunk_preserve_wifichannel_context'
 local OUTDOOR = 'neanderfunk_preserve_wifichannel_outdoor'
 local LIFTED = '/tmp/neanderfunk-preserve-wifichannel.lifted'
+local KEPT = '/tmp/neanderfunk-preserve-wifichannel.kept'
 
 --- Tag "nf-" statt "neanderfunk-": logd kuerzt Syslog-Tags auf 31 Zeichen, aus
 --- neanderfunk-preserve-wifichannel (32) wuerde neanderfunk-preserve-wifichanne,
@@ -31,6 +32,7 @@ end
 -- Rest eines abgebrochenen Laufs. Dessen Aufhebung wurde nie committet (das
 -- tut erst 998-commit), und das uci-Delta in /tmp ist mit dem Reboot weg.
 os.remove(LIFTED)
+os.remove(KEPT)
 
 --- Default aus der Site, nil wenn sie nichts sagt - dann bleibt alles bei
 --- Gluons Verhalten. In unseren site.conf steht die Zahl 1.
@@ -121,8 +123,10 @@ end
 -- haengt), die Breite von Teil 225 (nach txpowerfix, der sie im aufgehobenen
 -- Lauf neu setzt). Bei einem Site- oder Domainwechsel gelten die Kanaele der
 -- neuen Site fuer alle Radios, dann wird nichts festgehalten.
+local global_on = uci:get_bool('gluon', 'wireless', 'preserve_channels')
 local reasons = {}
 local site_changed = false
+local outdoor_changed = false
 local last = sysconfig[CONTEXT]
 local now = context()
 if last and last ~= now then
@@ -132,6 +136,7 @@ end
 local last_outdoor = sysconfig[OUTDOOR]
 local now_outdoor = outdoor_state()
 if last_outdoor and last_outdoor ~= now_outdoor then
+	outdoor_changed = true
 	table.insert(reasons, 'outdoor [' .. last_outdoor .. '] -> [' .. now_outdoor .. ']')
 end
 if #reasons > 0 and uci:get_bool('gluon', 'wireless', 'preserve_channels') then
@@ -160,5 +165,48 @@ if #reasons > 0 and uci:get_bool('gluon', 'wireless', 'preserve_channels') then
 		log(table.concat(reasons, ', ')
 			.. (site_changed and ": applying the site's channels once" or ": applying the 5 GHz channels once, other bands kept")
 			.. ", gluon.wireless.preserve_channels stays 1")
+	end
+end
+
+-- 3. Kanal je Band behalten: gluon.wireless.preserve_channels_<band> (2g, 5g).
+--
+-- Gluons preserve_channels gilt fuer alle Radios. Die Schluessel je Band setzt
+-- der Befehl "channel" (neanderfunk-banner): nur das Band, dessen Kanal jemand
+-- von Hand gesetzt hat, bleibt stehen, das andere folgt weiter der Site. Gluon
+-- kennt sie nicht; 200-wireless setzt also auch diese Radios zurueck. Deshalb
+-- werden Kanal, Kanalliste und Breite hier festgehalten und wie beim
+-- Outdoor-Wechsel zurueckgeschrieben: Kanal und Kanalliste von Teil 205 (vor
+-- txpowerfix, dessen Country am 2,4-GHz-Kanal haengt), die Breite von Teil 225
+-- (nach txpowerfix, der sie ohne globalen Schalter neu setzt).
+--
+-- Nur wenn der globale Schalter nicht steht, sonst laesst 200-wireless ohnehin
+-- alles stehen. Ausnahmen wie beim globalen Schalter: nach einem Site- oder
+-- Domainwechsel gelten die Kanaele der neuen Site, nach einem Outdoor-Wechsel
+-- die 5-GHz-Kanaele - jeweils einmal, der Schluessel bleibt.
+if not global_on then
+	local keep, bands = {}, {}
+	uci:foreach('wireless', 'wifi-device', function(s)
+		local band = s.band
+		if not band or not uci:get_bool('gluon', 'wireless', 'preserve_channels_' .. band) then
+			return
+		end
+		if site_changed or (band == '5g' and outdoor_changed) then
+			return
+		end
+		for _, option in ipairs({ 'channel', 'channels', 'htmode' }) do
+			local v = s[option]
+			if type(v) ~= 'table' then
+				table.insert(keep, 'restore\t' .. s['.name'] .. '\t' .. option .. '\t' .. (v or ''))
+			end
+		end
+		table.insert(bands, band .. ' (' .. s['.name'] .. ', channel ' .. tostring(s.channel) .. ')')
+	end)
+	if #keep > 0 then
+		local f = io.open(KEPT, 'w')
+		if f then
+			f:write(table.concat(keep, '\n'), '\n')
+			f:close()
+			log('keeping channel and width per band: ' .. table.concat(bands, ', '))
+		end
 	end
 end

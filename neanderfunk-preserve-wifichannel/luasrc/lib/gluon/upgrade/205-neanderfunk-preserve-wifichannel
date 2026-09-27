@@ -11,21 +11,27 @@
 
 local uci = require('simple-uci').cursor()
 
-local LIFTED = '/tmp/neanderfunk-preserve-wifichannel.lifted'
+-- Dasselbe fuer die Radios, deren Band einen eigenen Schluessel
+-- preserve_channels_<band> hat (Teil 1, Abschnitt 3): KEPT.
+local FILES = {
+	'/tmp/neanderfunk-preserve-wifichannel.lifted',
+	'/tmp/neanderfunk-preserve-wifichannel.kept',
+}
 
-local f = io.open(LIFTED)
-if not f then
-	return
-end
 local changed = false
-for line in f:lines() do
-	local radio, option, value = line:match('^restore\t([^\t]+)\t([^\t]+)\t(.*)$')
-	if radio and option ~= 'htmode' then
-		uci:set('wireless', radio, option, value ~= '' and value or nil)
-		changed = true
+for _, file in ipairs(FILES) do
+	local f = io.open(file)
+	if f then
+		for line in f:lines() do
+			local radio, option, value = line:match('^restore\t([^\t]+)\t([^\t]+)\t(.*)$')
+			if radio and option ~= 'htmode' then
+				uci:set('wireless', radio, option, value ~= '' and value or nil)
+				changed = true
+			end
+		end
+		f:close()
 	end
 end
-f:close()
 if changed then
 	uci:save('wireless')
 end

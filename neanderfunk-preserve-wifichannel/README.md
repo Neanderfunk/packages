@@ -43,6 +43,31 @@ uci set gluon.wireless.preserve_channels='0'
 uci commit gluon
 ```
 
+Kanal je Band behalten
+----------------------
+
+Gluons `preserve_channels` gilt fuer alle Radios. Dazu kommen je Band
+
+```
+gluon.wireless.preserve_channels_2g
+gluon.wireless.preserve_channels_5g
+```
+
+Sie wirken **zusaetzlich** zum globalen Schalter: Steht der auf 1, bleibt wie
+bisher alles stehen. Steht er auf 0, bleiben Kanal, Kanalliste und Breite der
+Radios stehen, deren Band einen eigenen Schluessel auf 1 hat; die anderen
+folgen der Site. Gesetzt werden sie vom Befehl `channel` aus neanderfunk-banner,
+der dabei einen globalen Schalter auf 1 in die Band-Schluessel ueberfuehrt.
+
+Gluon kennt diese Schluessel nicht, `200-wireless` setzt die Radios also auch
+zurueck. Das Paket haelt die Werte vorher fest und schreibt sie danach zurueck,
+auf demselben Weg wie beim Outdoor-Wechsel (Kanal und Kanalliste in `205`, vor
+`neanderfunk-txpowerfix`; die Breite in `225`, danach). Ausnahmen wie beim
+globalen Schalter: nach einem Site- oder Domainwechsel gelten einmal die
+Kanaele der neuen Site, nach einem Outdoor-Wechsel einmal die 5-GHz-Kanaele;
+die Schluessel bleiben. Wie beim globalen Schalter wirkt das nur bei einem
+vollstaendigen `gluon-reconfigure`.
+
 Neuinstallation
 ---------------
 
@@ -127,10 +152,12 @@ Aufbau
 
 * `185-neanderfunk-preserve-wifichannel` - vor `190-preserve-wireless-channels`
   (legt den Schluessel mit 0 an, wenn er fehlt) und vor `200-wireless`:
-  fehlenden Schluessel setzen bzw. vormerken, bei Site-/Domainwechsel aufheben.
+  fehlenden Schluessel setzen bzw. vormerken, bei Site-/Domainwechsel aufheben,
+  Werte der Baender mit eigenem Schluessel festhalten.
 * `205-neanderfunk-preserve-wifichannel` - gleich nach `200-wireless`, vor
   `neanderfunk-txpowerfix`: bei einem reinen Outdoor-Wechsel Kanal und
-  Kanalliste der uebrigen Baender zurueckschreiben.
+  Kanalliste der uebrigen Baender zurueckschreiben, ebenso die der Baender mit
+  eigenem Schluessel.
 * `225-neanderfunk-preserve-wifichannel` - nach `200-wireless` und nach
   `neanderfunk-txpowerfix` (215): Breite der uebrigen Baender zurueckschreiben,
   Aufhebung zuruecknehmen, Vormerkung einloesen, Site/Domain- und
