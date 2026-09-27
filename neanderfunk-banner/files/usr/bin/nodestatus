@@ -453,18 +453,20 @@ for _, sw in pairs(type(board.switch) == 'table' and board.switch or {}) do
 	end
 end
 
-local extra_groups, used_by, taken = {}, {}, {}
-local function use(ports, sec)
+local extra_groups, used_by, taken, port_roles = {}, {}, {}, {}
+local function use(ports, sec, roles)
 	for _, p in ipairs(ports) do
 		used_by[p] = used_by[p] or {}
 		table.insert(used_by[p], sec)
+		port_roles[p] = port_roles[p] or {}
+		for _, r in ipairs(roles or {}) do port_roles[p][r] = true end
 	end
 end
 uci:foreach('gluon', 'interface', function(s)
 	local sec = s['.name']
 	local ports = resolve_ports(s.name)
 	local r = aslist(s.role)
-	if #r > 0 then use(ports, sec) end
+	if #r > 0 then use(ports, sec, r) end
 	if sec ~= 'iface_wan' and sec ~= 'iface_lan' and sec ~= 'iface_single' and #ports > 0 then
 		table.insert(extra_groups, { role = #r > 0 and join(r, '+') or nil, devs = ports })
 		for _, p in ipairs(ports) do taken[p] = true end
@@ -475,7 +477,7 @@ uci:foreach('network', 'interface', function(s)
 		local ports = resolve_ports(s.ifname or s.device)
 		if #ports > 0 then
 			table.insert(extra_groups, { role = 'mesh', devs = ports })
-			use(ports, s['.name'])
+			use(ports, s['.name'], { 'mesh' })
 			for _, p in ipairs(ports) do taken[p] = true end
 		end
 	end
@@ -511,6 +513,33 @@ do
 		taken[m.dev] = true
 		warn('yellow', m.dev .. ' haengt von Hand als ' .. m.role .. ' drin (keine Gluon-Rolle, * in der Tabelle)'
 			.. ' und fehlt nach dem naechsten Update. Dauerhaft: portrole ' .. m.dev .. ' ' .. m.role)
+	end
+end
+
+-- Ports mit Gluon-Rolle, die tatsaechlich woanders haengen: etwa lan4 aus
+-- der Mesh-Gruppe von Hand in br-client verschoben (oder umgekehrt). Auch das
+-- ueberlebt kein gluon-reconfigure; die Rolle gewinnt beim naechsten Update.
+do
+	local in_client, in_mesh = {}, {}
+	for m in sh('ls /sys/class/net/br-client/brif'):gmatch('%S+') do in_client[m] = true end
+	for name in pairs(batif) do
+		in_mesh[name] = true
+		for m in sh('ls /sys/class/net/' .. name .. '/brif'):gmatch('%S+') do in_mesh[m] = true end
+	end
+	local odd = {}
+	for p, roles in pairs(port_roles) do
+		local secs = join(used_by[p] or {}, ', ')
+		if in_client[p] and not roles.client then
+			table.insert(odd, p .. ' haengt in br-client, laut Gluon-Rolle (' .. secs .. ') aber nicht client')
+		elseif in_mesh[p] and not roles.mesh and not in_client[p] then
+			table.insert(odd, p .. ' haengt im Mesh, laut Gluon-Rolle (' .. secs .. ') aber nicht mesh')
+		elseif roles.client and not in_client[p] and exists('/sys/class/net/' .. p) then
+			table.insert(odd, p .. ' hat die Rolle client (' .. secs .. '), haengt aber nicht in br-client')
+		end
+	end
+	table.sort(odd)
+	for _, o in ipairs(odd) do
+		warn('yellow', o .. ' - vermutlich von Hand, nicht update-fest (nach dem naechsten Update gilt die Rolle)')
 	end
 end
 
