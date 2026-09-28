@@ -141,6 +141,25 @@ NEWSEC=0
 # "batctl hardif <if> hop_penalty" dazu (Vorgabe 0, global weiter
 # gluon.mesh_batman_adv.hop_penalty). Hoeher = der Weg ueber dieses Interface
 # gilt als schlechter. Wirksam nach gluon-reconfigure und Neustart (reconf).
+# Am Kabel gilt der Wert nicht je Port: 210-interface-mesh fasst alle
+# iface_* mit Rolle mesh zu mesh_uplink (zusaetzlich Rolle uplink) und
+# mesh_other (alle uebrigen, eine Bridge) zusammen und nimmt je Gruppe das
+# Maximum.
+has_role() { case " $(uci -q get gluon.$1.role) " in *" $2 "*) return 0 ;; esac; return 1; }
+hp_group_hint() {
+	local sec=$1 grp s v max=0 others=''
+	has_role $sec mesh || { echo "Hinweis: ${sec#iface_} hat keine Rolle mesh, der Wert wirkt erst mit ihr."; return; }
+	has_role $sec uplink && grp=uplink || grp=other
+	for s in $(uci show gluon | sed -n 's/^gluon\.\(iface_[^.=]*\)=interface$/\1/p'); do
+		has_role $s mesh || continue
+		if has_role $s uplink; then [ $grp = uplink ] || continue; else [ $grp = other ] || continue; fi
+		v=$(uci -q get gluon.$s.batadv_hop_penalty); v=${v:-0}
+		[ "$v" -gt $max ] && max=$v
+		[ $s = $sec ] || others="$others ${s#iface_}"
+	done
+	[ -n "$others" ] && echo "Hinweis: am Kabel gilt je Gruppe der hoechste Wert; mesh_$grp (${sec#iface_}$others) bekommt $max."
+}
+
 set -- $ROLES
 if [ "${1:-}" = hp ]; then
 	case "$IF" in
@@ -150,13 +169,15 @@ if [ "${1:-}" = hp ]; then
 	esac
 	uci -q get gluon.$HPSEC >/dev/null || { echo "gluon.$HPSEC gibt es nicht (Hop-Penalty je Interface braucht Gluon 2025.1 und eine Sektion)." >&2; exit 1; }
 	case "${2:-}" in
-		'') echo "$IF: Hop-Penalty $(uci -q get gluon.$HPSEC.batadv_hop_penalty || echo '(nicht gesetzt, 0)')" ; exit 0 ;;
+		'') echo "$IF: Hop-Penalty $(uci -q get gluon.$HPSEC.batadv_hop_penalty || echo '(nicht gesetzt, 0)')"
+		    case "$HPSEC" in iface_*) hp_group_hint $HPSEC ;; esac ; exit 0 ;;
 		none|0) uci -q delete gluon.$HPSEC.batadv_hop_penalty ; echo "$IF: Hop-Penalty entfernt" ;;
 		*[!0-9]*) echo "Hop-Penalty muss eine Zahl 0-255 sein." >&2 ; exit 1 ;;
 		*) [ "$2" -le 255 ] || { echo "Hop-Penalty muss 0-255 sein." >&2 ; exit 1; }
 		   uci set gluon.$HPSEC.batadv_hop_penalty="$2" ; echo "$IF: Hop-Penalty $2" ;;
 	esac
 	uci commit gluon
+	case "$HPSEC" in iface_*) hp_group_hint $HPSEC ;; esac
 	echo "Gesetzt. Wirksam nach gluon-reconfigure und Neustart: reconf"
 	exit 0
 fi
