@@ -14,7 +14,7 @@
 # /etc/config/linkcheck ist ein conffile und ueberlebt den sysupgrade, eine
 # dort neu aufgenommene Sektion erreicht einen bestehenden Knoten nie.
 CHECKS='batadv_neighbours bsses batinterfaces batman_originators bridges
-	bridge_ports mesh_neighbours no_gateway ipv6_anycast public_prefix'
+	bridge_ports mesh_neighbours mesh_unicast no_gateway ipv6_anycast public_prefix'
 
 OBSOLETE_CHECKS=''
 

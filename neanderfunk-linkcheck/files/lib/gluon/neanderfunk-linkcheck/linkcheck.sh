@@ -479,54 +479,126 @@ fi
 # Moved here from neanderfunk-hotfix: "did this radio lose all its neighbours"
 # is a link question. valuecheck already implements exactly the rule we want -
 # arm at >=2 seen, then escalate when it drops to none.
+
+# Mesh-Radios aus der wireless-Config, fuer die Abschnitte 5 und 6
+mesh_radios=' '
+set -f ; oldifs="$IFS" ; IFS='
+'
+for l in $NF_UCI_wireless ; do
+  case "$l" in
+    wireless.mesh_radio[0-9]*|wireless.ibss_radio[0-9]*)
+      l="${l#wireless.}" ; l="${l%%[.=]*}"
+      case "$mesh_radios" in *" $l "*) ;; *) mesh_radios="$mesh_radios$l " ;; esac
+      ;;
+  esac
+done
+IFS="$oldifs" ; set +f
+
+# $1 mesh_radio-Sektion -> dev (Interface), 1 wenn abgeschaltet oder nicht oben
+mesh_radio_dev() {
+  nf_uci_get "$NF_UCI_wireless" "wireless.$1.device" ; radio="$NF_VAL"
+  nf_uci_get "$NF_UCI_wireless" "wireless.${radio}.disabled" && [ "$NF_VAL" = "1" ] && return 1
+  nf_uci_get "$NF_UCI_wireless" "wireless.$1.disabled" && [ "$NF_VAL" = "1" ] && return 1
+  nf_uci_get "$NF_UCI_wireless" "wireless.$1.ifname" || return 1
+  dev="$NF_VAL"
+  iface_is_up "$dev"
+}
+
+# iw can hang on a wedged radio, so run it in the background and give up
+# after 20s rather than stalling the whole run. $1 dev, $2 Zieldatei;
+# 1 wenn iw haengt.
+mesh_station_dump() {
+  ( iw dev "$1" station dump > "$2" 2>/dev/null ) &
+  p=$!
+  n=0
+  while [ $n -lt 20 ] && kill -0 $p 2>/dev/null ; do sleep 1 ; n=$((n + 1)) ; done
+  if kill -0 $p 2>/dev/null ; then
+    kill -9 $p 2>/dev/null
+    return 1
+  fi
+  return 0
+}
+
+# Bei 802.11s nur Peers mit zustande gekommener Verbindung (mesh plink
+# ESTAB). "station dump" fuehrt auch Anklopfer (OPN_RCVD, LISTEN, von
+# Knoten auf Nachbarkanaelen oder mit abgelaufenem Peering); gezaehlt
+# machten sie den Check scharf, ohne dass je ein Mesh bestand, und ihr
+# Verschwinden fuehrte bis zum Reboot. Belegt am 27.09.2026: 1122
+# geloggte Zustaende mit >=5 "Peers" bei 0 batman-Nachbarn, 5 unnoetige
+# Reboots in der Schulstrasse 7. IBSS kennt keinen Plink-Zustand, dort
+# zaehlt weiter jede Station. Gibt die Peer-MACs aus.
+mesh_peers() { # $1 mesh_radio, $2 dump
+  case "$1" in
+    mesh_radio*) awk '/^Station /{m=$2} /mesh plink:[ \t]*ESTAB/{print m}' "$2" ;;
+    *)           awk '/^Station /{print $2}' "$2" ;;
+  esac
+}
+
+dumped=' '
 checkgroup='mesh_neighbours'
 if ! check_disabled "$checkgroup" ; then
   linkname='meshpeers'
-  mesh_radios=' '
-  set -f ; oldifs="$IFS" ; IFS='
-'
-  for l in $NF_UCI_wireless ; do
-    case "$l" in
-      wireless.mesh_radio[0-9]*|wireless.ibss_radio[0-9]*)
-        l="${l#wireless.}" ; l="${l%%[.=]*}"
-        case "$mesh_radios" in *" $l "*) ;; *) mesh_radios="$mesh_radios$l " ;; esac
-        ;;
-    esac
-  done
-  IFS="$oldifs" ; set +f
   for mesh_radio in $mesh_radios ; do
-    nf_uci_get "$NF_UCI_wireless" "wireless.${mesh_radio}.device" ; radio="$NF_VAL"
-    nf_uci_get "$NF_UCI_wireless" "wireless.${radio}.disabled" && [ "$NF_VAL" = "1" ] && continue
-    nf_uci_get "$NF_UCI_wireless" "wireless.${mesh_radio}.disabled" && [ "$NF_VAL" = "1" ] && continue
-    nf_uci_get "$NF_UCI_wireless" "wireless.${mesh_radio}.ifname" || continue
-    dev="$NF_VAL"
-    iface_is_up "$dev" || continue
-    # iw can hang on a wedged radio, so run it in the background and give up
-    # after 20s rather than stalling the whole run
-    out="/tmp/linkcheck.meshpeers.${mesh_radio}.count"
-    # Bei 802.11s nur Peers mit zustande gekommener Verbindung (mesh plink
-    # ESTAB). "station dump" fuehrt auch Anklopfer (OPN_RCVD, LISTEN, von
-    # Knoten auf Nachbarkanaelen oder mit abgelaufenem Peering); gezaehlt
-    # machten sie den Check scharf, ohne dass je ein Mesh bestand, und ihr
-    # Verschwinden fuehrte bis zum Reboot. Belegt am 27.09.2026: 1122
-    # geloggte Zustaende mit >=5 "Peers" bei 0 batman-Nachbarn, 5 unnoetige
-    # Reboots in der Schulstrasse 7. IBSS kennt keinen Plink-Zustand, dort
-    # zaehlt weiter jede Station.
-    case "$mesh_radio" in
-      mesh_radio*) peerpattern='mesh plink:[[:space:]]*ESTAB' ;;
-      *)           peerpattern='^Station ' ;;
-    esac
-    ( iw dev "$dev" station dump 2>/dev/null | grep -c "$peerpattern" > "$out" ) &
-    p=$!
-    n=0
-    while [ $n -lt 20 ] && kill -0 $p 2>/dev/null ; do sleep 1 ; n=$((n + 1)) ; done
-    if kill -0 $p 2>/dev/null ; then
-      kill -9 $p 2>/dev/null
+    mesh_radio_dev "$mesh_radio" || continue
+    dump="/tmp/linkcheck.meshpeers.${mesh_radio}.dump"
+    if ! mesh_station_dump "$dev" "$dump" ; then
       logger -s -t "neanderfunk-linkcheck" -p 5 "[mesh_neighbours] iw dev $dev station dump hangs, skipped"
       continue
     fi
-    wert='' ; [ -r "$out" ] && read -r wert < "$out"
-    case "$wert" in ''|*[!0-9]*) continue ;; esac
+    dumped="$dumped$mesh_radio "
+    wert=$(mesh_peers "$mesh_radio" "$dump" | wc -l)
+    check="${mesh_radio}"
+    valuecheck "$check"
+  done
+fi
+
+## 6) unicast through each wifi mesh radio
+#
+# Belegt am 29.09.2026 am MERCUSYS MR90X (MT7986, Gluon 2023.2): nach einem
+# WLAN-Scan (iw scan lowpri wie iwinfo scan, nur auf einem Radio) kam auf
+# BEIDEN Radios kein Unicast mehr durch. Broadcast und Multicast liefen
+# weiter: batman-OGMs in beide Richtungen, beim Nachbarn TQ 254, alle Plinks
+# ESTAB, die eigene Sendestatistik meldete Erfolg. Kein Check oben sieht das,
+# und batman haelt den WLAN-Weg fuer gut und nimmt nicht einmal ein laufendes
+# VPN. Ein Knoten nur mit WLAN-Mesh ist dann weg, bis gateway.sh nach 4x8
+# Minuten rebootet (in der ersten Stunde gar nicht). "wifi down; wifi up"
+# behebt es.
+#
+# Probe: je Mesh-Radio bis zu drei Peers aus Abschnitt 5 per ping6 an ihre
+# Link-Local-Adresse (EUI-64 aus der Peer-MAC, so vergeben Gluon-Knoten sie
+# auf den Mesh-Interfaces), direkt auf dem Mesh-Interface, ohne batman. Eine
+# Antwort genuegt. Ohne Peer gibt es nichts zu pruefen, das ist Sache von
+# mesh_neighbours. Scharf erst nach der ersten Antwort, so dass Peers, die
+# grundsaetzlich nicht antworten, nie eskalieren.
+ll_of_mac() { # aa:bb:cc:dd:ee:ff -> fe80::a8bb:ccff:fedd:eeff
+  oldifs="$IFS" ; IFS=:
+  set -- $1
+  IFS="$oldifs"
+  [ $# -eq 6 ] || return 1
+  printf 'fe80::%x%s:%sff:fe%s:%s%s\n' $(( 0x$1 ^ 2 )) "$2" "$3" "$4" "$5" "$6"
+}
+
+checkgroup='mesh_unicast'
+if ! check_disabled "$checkgroup" ; then
+  linkname='meshunicast'
+  for mesh_radio in $mesh_radios ; do
+    mesh_radio_dev "$mesh_radio" || continue
+    dump="/tmp/linkcheck.meshpeers.${mesh_radio}.dump"
+    case "$dumped" in
+      *" $mesh_radio "*) ;;
+      *) mesh_station_dump "$dev" "$dump" || continue ;;
+    esac
+    tried=0 ; wert=0
+    for mac in $(mesh_peers "$mesh_radio" "$dump" | head -n 3) ; do
+      ll=$(ll_of_mac "$mac") || continue
+      tried=$((tried + 1))
+      if ping6 -c 2 -W 1 -w 3 -I "$dev" "$ll" >/dev/null 2>&1 ; then
+        wert=2
+        break
+      fi
+    done
+    [ "$tried" -gt 0 ] || continue
+    [ "$wert" -eq 0 ] && logger -s -t "neanderfunk-linkcheck" -p 5 "[mesh_unicast] $dev: $tried mesh peers established, none answers unicast"
     check="${mesh_radio}"
     valuecheck "$check"
   done

@@ -697,7 +697,10 @@ local function clear_linkcheck_markers(r)
 		table.insert(names, 'batadv.' .. r.mesh)
 		table.insert(names, 'batinterfaces.' .. r.mesh)
 	end
-	if r.mesh_section then table.insert(names, 'meshpeers.' .. r.mesh_section) end
+	if r.mesh_section then
+		table.insert(names, 'meshpeers.' .. r.mesh_section)
+		table.insert(names, 'meshunicast.' .. r.mesh_section)
+	end
 	for _, ifname in ipairs(r.ifaces or {}) do table.insert(names, ifname .. '.bsses') end
 	local n = 0
 	for _, name in ipairs(names) do
