@@ -200,32 +200,30 @@ radio_is_wifi6() {
   #
   # Die Frage, um die es hier eigentlich geht, ist nicht "ist das ein mt7915",
   # sondern "zerlegt ein Scan auf diesem Radio seine Mesh-Links". Das haengt an
-  # der Faehigkeit des Radios, nicht am Treibernamen - und ab OpenWrt 24.10
-  # steht die Faehigkeit im Klartext in /etc/board.json:
+  # der Faehigkeit des Radios, nicht am Treibernamen. Die Faehigkeit meldet der
+  # Treiber selbst: "iw phy <phy> info" fuehrt bei Wi-Fi 6 "HE Iftypes", bei
+  # Wi-Fi 7 zusaetzlich "EHT Iftypes". Die Zuordnung Interface -> phy kommt
+  # aus dem sysfs: /sys/class/net/<if>/phy80211/name.
   #
-  #   .wlan.<phy>.info.bands.<2G|5G|6G>.he    Wi-Fi 6
-  #   .wlan.<phy>.info.bands.<...>.eht        Wi-Fi 7
-  #
-  # Geschrieben wird der Abschnitt von wifi-detect.uc beim Booten. Die
-  # Zuordnung Interface -> phy kommt aus dem sysfs und muss ebenfalls nicht
-  # geraten werden: /sys/class/net/<if>/phy80211/name.
-  local phy band
+  # Vorher stand hier /etc/board.json (.wlan.<phy>.info.bands.*.he). Unter
+  # Gluon 2025.1 fehlt dort der wlan-Abschnitt aber genau bei den Radios am
+  # PCIe (COVR X1860 mit mt7915, 28.09.2026): board.json entsteht offenbar,
+  # bevor diese Treiber geladen sind. Nur Radios im SoC (1043v2, ath9k) standen
+  # drin. iw fragt den laufenden Treiber und kennt jedes Radio.
+  local phy info
   phy="$(cat "/sys/class/net/$1/phy80211/name" 2>/dev/null)"
-  if [ -n "$phy" ] && [ -r /etc/board.json ] ; then
-    for band in 2G 5G 6G ; do
-      case "$(jsonfilter -i /etc/board.json -e "@.wlan['$phy'].info.bands['$band'].he" 2>/dev/null)" in
-        true) return 0 ;;
+  if [ -n "$phy" ] ; then
+    info="$(iw phy "$phy" info 2>/dev/null)"
+    if [ -n "$info" ] ; then
+      case "$info" in
+        *"HE Iftypes"*|*"EHT Iftypes"*) return 0 ;;
       esac
-    done
-    # board.json kennt den phy, sagt aber kein HE -> belastbares Nein, kein
-    # Rueckfall auf die Heuristik.
-    if [ -n "$(jsonfilter -i /etc/board.json -e "@.wlan['$phy'].path" 2>/dev/null)" ] ; then
+      # iw kennt den phy und meldet kein HE -> belastbares Nein
       return 1
     fi
   fi
 
-  # Rueckfall fuer Staende ohne den wlan-Abschnitt in board.json - auf Gluon
-  # 2023.2.x fehlt er komplett, dort entsteht er mangels wifi-detect.uc nie.
+  # Rueckfall, falls iw nichts liefert (kein phy im sysfs, iw fehlt).
   # Erst nach dem Kernelmodul fragen, nicht nach dem Treibernamen: auf einem
   # ZyXEL NWA50AX Pro (mediatek/filogic) sitzen die Radios im SoC und der
   # Treiber heisst "mt798x-wmac", das Modul ist aber dasselbe mt7915e wie auf
