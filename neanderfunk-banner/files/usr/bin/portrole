@@ -9,6 +9,8 @@
 #   portrole eth2 none         dessen Sektion wieder entfernen
 #   portrole lan3 client       lan3 aus der LAN-Gruppe loesen, eigene Rolle
 #   portrole lan3 lan          lan3 zurueck in die LAN-Gruppe (auch eth2 -> lan)
+#   portrole lan hp 30         Hop-Penalty je Interface (Gluon 2025.1), auch 2g/5g
+#   portrole lan hp none       wieder entfernen
 #   ... -y                     ohne Rueckfrage, auch bei riskanten Wechseln
 #
 # Ersetzt lanrole/wanrole (bis September 2026).
@@ -36,6 +38,7 @@
 NAME=${0##*/}
 usage() {
 	echo "Aufruf: portrole [lan|wan|single|<port>|<sektion> [uplink|mesh|client|none ...] [-y]]" >&2
+	echo "        portrole <lan|wan|<port>|2g|5g> hp [wert|none]   Hop-Penalty je Interface" >&2
 	echo "        ohne Argument: Rollen aller Interfaces zeigen" >&2
 	exit 1
 }
@@ -82,8 +85,15 @@ own_mesh_sections() {
 }
 
 show() {
+	local hp
 	for s in $(gluon_sections); do
-		printf '%-12s %-14s %s\n' "${s#iface_}" "$(uci -q get gluon.$s.role || echo '(keine)')" "$(ports_of $s)"
+		hp=$(uci -q get gluon.$s.batadv_hop_penalty)
+		printf '%-12s %-14s %s%s\n' "${s#iface_}" "$(uci -q get gluon.$s.role || echo '(keine)')" "$(ports_of $s)" "${hp:+   (HP $hp)}"
+	done
+	# Hop-Penalty der WLAN-Baender (Gluon 2025.1), nur wenn gesetzt
+	for s in band_2g band_5g; do
+		hp=$(uci -q get gluon.$s.batadv_hop_penalty)
+		[ -n "$hp" ] && printf '%-12s %-14s %s\n' "${s#band_}" "WLAN-Mesh" "(HP $hp)"
 	done
 	for s in $(own_mesh_sections); do
 		printf '%-12s %-14s %s\n' "$s" 'mesh (eigen)' "$(uci -q get network.$s.ifname || uci -q get network.$s.device)"
@@ -124,6 +134,33 @@ ports_elsewhere() {
 
 SEC=iface_$(echo "$IF" | tr '.-' '__')
 NEWSEC=0
+
+# --- Hop-Penalty: "portrole <if> hp <wert|none>" (Gluon 2025.1, #3454) -------
+# gluon.iface_<name>.batadv_hop_penalty fuer Kabel, gluon.band_<2g|5g>.
+# batadv_hop_penalty fuer das WLAN-Mesh eines Bands. batman nimmt sie als
+# "batctl hardif <if> hop_penalty" dazu (Vorgabe 0, global weiter
+# gluon.mesh_batman_adv.hop_penalty). Hoeher = der Weg ueber dieses Interface
+# gilt als schlechter. Wirksam nach gluon-reconfigure und Neustart (reconf).
+set -- $ROLES
+if [ "${1:-}" = hp ]; then
+	case "$IF" in
+		2g|5g) HPSEC=band_$IF ;;
+		lan|wan|single) HPSEC=iface_$IF ;;
+		*) HPSEC=$SEC ;;
+	esac
+	uci -q get gluon.$HPSEC >/dev/null || { echo "gluon.$HPSEC gibt es nicht (Hop-Penalty je Interface braucht Gluon 2025.1 und eine Sektion)." >&2; exit 1; }
+	case "${2:-}" in
+		'') echo "$IF: Hop-Penalty $(uci -q get gluon.$HPSEC.batadv_hop_penalty || echo '(nicht gesetzt, 0)')" ; exit 0 ;;
+		none|0) uci -q delete gluon.$HPSEC.batadv_hop_penalty ; echo "$IF: Hop-Penalty entfernt" ;;
+		*[!0-9]*) echo "Hop-Penalty muss eine Zahl 0-255 sein." >&2 ; exit 1 ;;
+		*) [ "$2" -le 255 ] || { echo "Hop-Penalty muss 0-255 sein." >&2 ; exit 1; }
+		   uci set gluon.$HPSEC.batadv_hop_penalty="$2" ; echo "$IF: Hop-Penalty $2" ;;
+	esac
+	uci commit gluon
+	echo "Gesetzt. Wirksam nach gluon-reconfigure und Neustart: reconf"
+	exit 0
+fi
+
 case "$IF" in
 	lan|wan|single)
 		if ! uci -q get gluon.$SEC >/dev/null; then

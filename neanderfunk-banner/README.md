@@ -96,7 +96,11 @@ It also installs these commands (all listed by `help`):
   Gluon bridges all mesh ports together, so a separate batman interface per
   port still needs the workshop guide for splitting LAN ports. Removing the last uplink or a mesh role asks first
   (`-y` to skip); it refuses (also with `-y`) to give ports a role they
-  already have elsewhere. Replaces `lanrole`/`wanrole`.
+  already have elsewhere. Replaces `lanrole`/`wanrole`. On Gluon 2025.1
+  `portrole <lan|wan|port|2g|5g> hp [value|none]` shows or sets the per-
+  interface hop penalty (`gluon.iface_<name>.batadv_hop_penalty`,
+  `gluon.band_<band>.batadv_hop_penalty`, #3454); `nodestatus` lists non-zero
+  per-interface values below the gateway line.
 - `reconf` - `gluon-reconfigure` and then reboot, detached in the background
   (survives the SSH session ending); log in `/tmp/reconf.log`, no reboot if
   the reconfigure fails.

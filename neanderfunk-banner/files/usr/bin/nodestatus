@@ -1226,6 +1226,26 @@ else
 	warn('red', 'kein Gateway gewaehlt')
 end
 
+-- Hop-Penalty je Interface (Gluon 2025.1, #3454): gluon.iface_<name>.
+-- batadv_hop_penalty bzw. gluon.band_<band>.batadv_hop_penalty, wirksam als
+-- "batctl hardif <if> hop_penalty" (Vorgabe 0). Nur zeigen, was nicht 0 ist;
+-- auf aelteren Staenden gibt es die Einstellung nicht, dann bleibt es still.
+if batctl_ok then
+	local hps = {}
+	local names = {}
+	for name in pairs(batif) do table.insert(names, name) end
+	table.sort(names)
+	for _, name in ipairs(names) do
+		if name ~= 'primary0' then
+			local v = tonumber(trim(sh('batctl hardif ' .. name .. ' hop_penalty')))
+			if v and v ~= 0 then table.insert(hps, name .. ' ' .. v) end
+		end
+	end
+	if #hps > 0 then
+		row('', '', 'HP je Interface: ' .. table.concat(hps, ', '), '')
+	end
+end
+
 
 -- --- Clients, SSID -------------------------------------------------------------
 

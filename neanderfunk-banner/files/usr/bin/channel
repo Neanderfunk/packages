@@ -99,6 +99,12 @@ end
 -- channel vorerst nur das erste an und sagt das; die richtige Wahl (Mesh- bzw.
 -- Client-Radio) kommt mit dem ersten solchen Geraet im Netz.
 local radios, extra_radios = {}, {}
+
+-- Ab Gluon 2025.1 steuern Rollen je Band das WLAN (gluon.band_<band>.role,
+-- #3563): 200-wireless erzeugt bei jedem Reconfigure alle wifi-iface-
+-- Sektionen neu, mesh_radioN gibt es nur mit der Rolle "mesh". Ein
+-- "disabled=0" an mesh_radioN wuerde beim naechsten Update verworfen.
+local role_mode = uci:get('gluon', 'band_2g') ~= nil or uci:get('gluon', 'band_5g') ~= nil
 uci:foreach('wireless', 'wifi-device', function(s)
 	if s.band and not radios[s.band] then
 		radios[s.band] = { name = s['.name'], band = s.band, channel = s.channel, htmode = s.htmode,
@@ -177,6 +183,8 @@ local function show()
 				else
 					table.insert(extra, 'kein Mesh')
 				end
+			elseif role_mode then
+				table.insert(extra, 'kein Mesh (Rolle fehlt, "channel mesh" ergaenzt sie)')
 			end
 			print(string.format('%-8s %-7s Kanal %-14s %-7s %s%s', LABEL[band], r.name, chtxt,
 				r.htmode or mode or '?', keep_state(band),
@@ -436,11 +444,19 @@ end
 -- desselben Radios wandert mit - ein Laptop an diesem Band verbindet neu.
 
 function meshfind(band, r)
-	if not r.mesh then
+	if not r.mesh and not role_mode then
 		print(string.format('channel: %s: %s hat kein Mesh-Interface - nicht geaendert', LABEL[band], r.name))
 		return nil
 	end
 	local own = r.mesh_id
+	if not own then
+		-- Rolle "mesh" fehlt, also auch die Sektion: die Mesh-ID der Site
+		local ok, site = pcall(require, 'gluon.site')
+		if ok then
+			local cfg = band == '2g' and site.wifi24 or site.wifi5
+			own = cfg and cfg.mesh and cfg.mesh.id(nil)
+		end
+	end
 	print(string.format('channel: %s: Scan auf %s nach Mesh "%s" ...', LABEL[band], r.name, tostring(own)))
 	io.stdout:flush()
 	local cells = require('iwinfo').nl80211.scanlist(r.name) or {}
@@ -494,14 +510,23 @@ for i, v in ipairs(values) do
 	elseif band == '5g' and outdoor then
 		print('channel: ' .. LABEL[band] .. ' ist im Outdoor-Modus, Gluon waehlt den Kanal aus der Kanalliste'
 			.. (v == 'mesh' and ' und schaltet das 5-GHz-Mesh ab' or '') .. ' - nicht geaendert')
-	elseif v == 'mesh' and not r.mesh then
+	elseif v == 'mesh' and not r.mesh and not role_mode then
 		print(string.format('channel: %s: %s hat kein Mesh-Interface - nicht geaendert', LABEL[band], r.name))
 	else
-		local improve, enable_mesh = false, nil
+		local improve, enable_mesh, enable_role = false, nil, nil
 		if v == 'autofix' then
 			v = autofix(band, r)
 		elseif v == 'mesh' then
-			if not r.mesh_enabled then
+			if role_mode then
+				local roles = uci:get_list('gluon', 'band_' .. band, 'role') or {}
+				local has = false
+				for _, x in ipairs(roles) do if x == 'mesh' then has = true end end
+				if not has then
+					table.insert(roles, 'mesh')
+					enable_role = roles
+					print(string.format('channel: %s: Rolle mesh fehlt in gluon.band_%s - wird ergaenzt (gluon-reconfigure)', LABEL[band], band))
+				end
+			elseif not r.mesh_enabled then
 				enable_mesh = r.mesh_section
 				print(string.format('channel: %s: Mesh (%s) ist aus - wird eingeschaltet', LABEL[band], r.mesh_section))
 			end
@@ -537,7 +562,8 @@ for i, v in ipairs(values) do
 			if v ~= r.channel and #(r.ifaces or {}) > 1 then
 				print(string.format('channel: %s: der AP wandert mit - Geraete an diesem Band verbinden neu', LABEL[band]))
 			end
-			table.insert(changes, { band = band, radio = r.name, from = r.channel, to = v, enable_mesh = enable_mesh })
+			table.insert(changes, { band = band, radio = r.name, from = r.channel, to = v, enable_mesh = enable_mesh,
+				enable_role = enable_role })
 		end
 	end
 end
@@ -547,7 +573,8 @@ end
 if dry then
 	for _, ch in ipairs(changes) do
 		print(string.format('channel: -n: %s (%s) %s -> %s%s, nichts geschrieben', LABEL[ch.band], ch.radio,
-			tostring(ch.from), ch.to, ch.enable_mesh and (', ' .. ch.enable_mesh .. ' an') or ''))
+			tostring(ch.from), ch.to, (ch.enable_mesh and (', ' .. ch.enable_mesh .. ' an'))
+				or (ch.enable_role and (', Rolle mesh in band_' .. ch.band .. ' + gluon-reconfigure')) or ''))
 	end
 	os.exit(0)
 end
@@ -575,6 +602,7 @@ local function set_committed(config, sets)
 end
 
 local wireless_sets, gluon_sets, notes, restart = {}, {}, {}, {}
+local need_reconfigure = false
 for _, ch in ipairs(changes) do
 	if ch.to ~= ch.from then
 		table.insert(wireless_sets, { ch.radio, 'channel', ch.to })
@@ -583,6 +611,11 @@ for _, ch in ipairs(changes) do
 	if ch.enable_mesh then
 		table.insert(wireless_sets, { ch.enable_mesh, 'disabled', '0' })
 		restart[ch.radio] = true
+	end
+	if ch.enable_role then
+		table.insert(gluon_sets, { 'band_' .. ch.band, 'role', ch.enable_role })
+		restart[ch.radio] = true
+		need_reconfigure = true
 	end
 end
 
@@ -621,9 +654,13 @@ for _, ch in ipairs(changes) do
 	if ch.enable_mesh then
 		print(string.format('channel: %s: %s eingeschaltet', LABEL[ch.band], ch.enable_mesh))
 	end
+	if ch.enable_role then
+		print(string.format('channel: %s: Rolle mesh in gluon.band_%s ergaenzt', LABEL[ch.band], ch.band))
+	end
 end
+local function val(v) return type(v) == 'table' and table.concat(v, ' ') or tostring(v) end
 for _, s in ipairs(gluon_sets) do
-	print(string.format('channel: gluon.wireless.%s=%s', s[2], s[3]))
+	print(string.format('channel: gluon.%s.%s=%s', s[1], s[2], val(s[3])))
 end
 for _, n in ipairs(notes) do
 	print('channel: ' .. n)
@@ -636,7 +673,7 @@ end
 os.execute('logger -t channel -- "' .. table.concat((function()
 	local t = {}
 	for _, s in ipairs(wireless_sets) do table.insert(t, s[1] .. '.' .. s[2] .. '=' .. s[3]) end
-	for _, s in ipairs(gluon_sets) do table.insert(t, 'gluon.wireless.' .. s[2] .. '=' .. s[3]) end
+	for _, s in ipairs(gluon_sets) do table.insert(t, 'gluon.' .. s[1] .. '.' .. s[2] .. '=' .. val(s[3])) end
 	return t
 end)(), ' ') .. '"')
 
@@ -669,6 +706,28 @@ local function clear_linkcheck_markers(r)
 		end
 	end
 	return n
+end
+
+-- Rolle "mesh" ergaenzt (Gluon 2025.1): wie Gluons eigene WLAN-Einstellungen
+-- mit gluon-reconfigure die wifi-iface-Sektionen neu erzeugen lassen. Der
+-- neue Kanal und preserve_channels_<band> sind da schon geschrieben; ohne
+-- --no-keep uebersteht der Kanal das Reconfigure, mit --no-keep setzt es das
+-- Band auf den Kanal der Site. Danach alle Radios hochfahren, weil das
+-- Reconfigure jedes Radio anfassen kann.
+if need_reconfigure then
+	print('channel: gluon-reconfigure ...')
+	io.stdout:flush()
+	if os.execute('gluon-reconfigure >/tmp/channel-reconfigure.log 2>&1') ~= 0 then
+		print('channel: gluon-reconfigure fehlgeschlagen, siehe /tmp/channel-reconfigure.log')
+	end
+	print('channel: wifi up ...')
+	io.stdout:flush()
+	os.execute("flock /var/lock/neanderfunk-wifi.lock -c 'wifi up'")
+	for _, band in ipairs(BANDS) do
+		if radios[band] then clear_linkcheck_markers(radios[band]) end
+	end
+	restart = {}
+	os.execute('sleep 10')
 end
 
 if next(restart) then
