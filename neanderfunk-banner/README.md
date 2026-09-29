@@ -126,7 +126,9 @@ It also installs these commands (all listed by `help`):
   radio has which band (`wireless.<radio>.band`); `auto` for autochannel, `-`
   leaves a band as it is. `autofix` (also `fixauto`) picks a channel by scan
   on which the node's own mesh is not heard (fewest other Freifunk next,
-  random if the scan returns nothing); `channel autofix` alone does all
+  random if the scan returns nothing); on 5 GHz it takes 36-48 first and DFS
+  (52-144) only as a way out, and says so, because the 5 GHz mesh does not come
+  up on DFS channels (measured on MT7981 and ath10k); `channel autofix` alone does all
   bands, `channel - autofix` only 5 GHz, `channel autofix -` only 2.4 GHz.
   `mesh` is the opposite, for a node that is offline or barely reached by
   mesh: it switches the radio's mesh on if it is off and moves to the channel
@@ -144,16 +146,26 @@ It also installs these commands (all listed by `help`):
   is only changed with `-f`, always, also for `autofix` and `mesh` (the node
   would probably lose its best path to the gateway). If mesh neighbours hang on a radio's
   mesh interface, that radio is only changed with `-f` - a channel change
-  cuts those links, possibly the one the SSH session runs over. It writes
+  cuts those links, possibly the one the SSH session runs over. After its own
+  change it deletes neanderfunk-linkcheck's arming markers for that radio's
+  mesh checks, so the planned loss of mesh neighbours does not end in a
+  reboot 20 minutes later. It writes
   only its own options to `/etc/config` (a renamed copy, so runtime changes in
-  the uci delta such as the offline SSID stay out of the flash), then runs
-  `wifi reload`.
+  the uci delta such as the offline SSID stay out of the flash), then
+  restarts only the changed radio with `wifi up <radio>` (`wifi reload` leaves
+  the AP without its hostapd BSS after a channel change). After its scans
+  (`autofix`, `mesh`) it runs `/usr/lib/neanderfunk/scan-guard` on the scanned
+  radios: on mt76/mt7915e under Gluon 2023.2 (MR90X, NWA50AX Pro) a scan left
+  the scanned radio without unicast while batman neighbours stayed listed; the
+  guard pings up to three batman neighbours per radio on its mesh interface
+  (up to 60 s) and otherwise restarts wifi, also with clients connected.
 - `offlinescan` - scans on all radios for neighbouring nodes that fell into
   the offline SSID, by this node's ssid-changer prefixes (`prefix`,
   `prefix_owe`). One line per node and channel: name (the SSID suffix: node
   name, MAC or nothing), band, channel, signal, BSSID, strongest first. Such a
   node's mesh is on the same channel, so a neighbour can reconnect it via wifi
-  mesh with `channel <channel>`.
+  mesh with `channel <channel>`. Afterwards it runs `scan-guard` on the
+  scanned radios, like `channel`.
 - `flash <url|directory-url|file> [sysupgrade options]` - downloads a
   firmware image to `/tmp` (an `https://` URL is fetched as `http://`, not
   every node has TLS), shows size, free RAM and sha256, checks it with
