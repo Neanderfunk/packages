@@ -61,9 +61,34 @@ local function sh(cmd)
 	return s
 end
 
+-- Radios, die dieser Lauf gescannt hat. Vor jedem Ende prueft scan-guard sie:
+-- am MR90X (MT7986, Gluon 2023.2) legte jeder Scan das Radio fuer Unicast
+-- lahm, waehrend batman-Nachbarn sichtbar blieben; der Guard pingt sie per
+-- Unicast an und startet das WLAN sonst neu. Siehe
+-- /usr/lib/neanderfunk/scan-guard.
+local SCANNED = {}
+local function scanlist(r)
+	local seen = false
+	for _, n in ipairs(SCANNED) do if n == r.name then seen = true end end
+	if not seen then table.insert(SCANNED, r.name) end
+	return require('iwinfo').nl80211.scanlist(r.name) or {}
+end
+
+local function scan_guard()
+	if #SCANNED == 0 then return end
+	io.stdout:flush()
+	os.execute('/usr/lib/neanderfunk/scan-guard ' .. table.concat(SCANNED, ' '))
+	SCANNED = {}
+end
+
+local function finish(code)
+	scan_guard()
+	os.exit(code)
+end
+
 local function die(msg)
 	io.stderr:write('channel: ' .. msg .. '\n')
-	os.exit(1)
+	finish(1)
 end
 
 local function usage()
@@ -79,7 +104,7 @@ Aufruf: channel [2.4-GHz-Kanal [5-GHz-Kanal]] [-n] [--no-keep] [-f]
   --no-keep  Kanal nicht ueber Updates behalten (kein preserve_channels_<band>)
   -f         auch wenn Mesh-Nachbarn an diesem Radio haengen
 ]==])
-	os.exit(1)
+	finish(1)
 end
 
 local function readline(path)
@@ -226,7 +251,7 @@ end
 
 if #values == 0 then
 	show()
-	os.exit(0)
+	finish(0)
 end
 
 -- --- autofix -------------------------------------------------------------------
@@ -305,7 +330,7 @@ function autofix(band, r)
 	io.stdout:flush()
 	-- Manche Treiber scannen nicht (oder nicht, solange das Radio sendet).
 	-- Ohne Scan: zufaellig unter den ersten Kandidaten (adorfer).
-	local cells = require('iwinfo').nl80211.scanlist(r.name) or {}
+	local cells = scanlist(r)
 
 	local stat = {}
 	local function st(ch)
@@ -459,7 +484,7 @@ function meshfind(band, r)
 	end
 	print(string.format('channel: %s: Scan auf %s nach Mesh "%s" ...', LABEL[band], r.name, tostring(own)))
 	io.stdout:flush()
-	local cells = require('iwinfo').nl80211.scanlist(r.name) or {}
+	local cells = scanlist(r)
 	local best, count = {}, {}
 	for _, c in ipairs(cells) do
 		local ch = tonumber(c.channel)
@@ -568,7 +593,7 @@ for i, v in ipairs(values) do
 	end
 end
 if refused then
-	os.exit(1)
+	finish(1)
 end
 if dry then
 	for _, ch in ipairs(changes) do
@@ -576,7 +601,7 @@ if dry then
 			tostring(ch.from), ch.to, (ch.enable_mesh and (', ' .. ch.enable_mesh .. ' an'))
 				or (ch.enable_role and (', Rolle mesh in band_' .. ch.band .. ' + gluon-reconfigure')) or ''))
 	end
-	os.exit(0)
+	finish(0)
 end
 
 -- --- Schreiben -----------------------------------------------------------------
@@ -641,7 +666,7 @@ end
 if #wireless_sets == 0 and #gluon_sets == 0 then
 	print('channel: nichts zu aendern')
 	show()
-	os.exit(0)
+	finish(0)
 end
 
 if #wireless_sets > 0 then set_committed('wireless', wireless_sets) end
@@ -748,6 +773,7 @@ if next(restart) then
 	end
 	os.execute('sleep 10')
 end
+scan_guard()
 -- Anzeige mit frisch gelesenem Stand
 io.stdout:flush()
 os.execute(arg[0])
