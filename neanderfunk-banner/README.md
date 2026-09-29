@@ -155,14 +155,21 @@ It also installs these commands (all listed by `help`):
   mesh checks, so the planned loss of mesh neighbours does not end in a
   reboot 20 minutes later. It writes
   only its own options to `/etc/config` (a renamed copy, so runtime changes in
-  the uci delta such as the offline SSID stay out of the flash), then runs
-  `wifi reload`.
+  the uci delta such as the offline SSID stay out of the flash), then
+  restarts only the changed radio with `wifi up <radio>` (`wifi reload` leaves
+  the AP without its hostapd BSS after a channel change). After its scans
+  (`autofix`, `mesh`) it runs `/usr/lib/neanderfunk/scan-guard` on the scanned
+  radios: on mt76/mt7915e under Gluon 2023.2 (MR90X, NWA50AX Pro) a scan left
+  the scanned radio without unicast while batman neighbours stayed listed; the
+  guard pings up to three batman neighbours per radio on its mesh interface
+  (up to 60 s) and otherwise restarts wifi, also with clients connected.
 - `offlinescan` - scans on all radios for neighbouring nodes that fell into
   the offline SSID, by this node's ssid-changer prefixes (`prefix`,
   `prefix_owe`). One line per node and channel: name (the SSID suffix: node
   name, MAC or nothing), band, channel, signal, BSSID, strongest first. Such a
   node's mesh is on the same channel, so a neighbour can reconnect it via wifi
-  mesh with `channel <channel>`.
+  mesh with `channel <channel>`. Afterwards it runs `scan-guard` on the
+  scanned radios, like `channel`.
 - `flash <url|directory-url|file> [sysupgrade options]` - downloads a
   firmware image to `/tmp` (an `https://` URL is fetched as `http://`, not
   every node has TLS), shows size, free RAM and sha256, checks it with
