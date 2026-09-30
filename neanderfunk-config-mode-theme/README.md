@@ -57,6 +57,13 @@ Einzelheiten
   zu, die Schaltfläche ist dort ohne Fehlermeldung wirkungslos. Ihn sicher zu
   erkennen geht nicht, deshalb erscheint der Hinweis immer. Am C25 im
   Setup-Mode geprüft, 14.09.2026 (deutsch und englisch).
+- **Karte ohne Referer:** Das Layout setzt `<meta name="referrer"
+  content="no-referrer">`. Der Kachel-Proxy der Site (`tiles.ffdus.de`)
+  beantwortet jeden Referer außerhalb der Kartendomains mit 403, auch den des
+  Config-Mode (`http://192.168.1.1/`, `http://198.51.100.1/`); die Karte blieb
+  in jedem Browser leer (Chromium meldete `ERR_BLOCKED_BY_ORB`). Ohne Referer
+  liefert der Proxy die Kacheln. Gefunden am 30.09.2026 in QEMU, Gluon
+  v2025.1.3.
 - **Standort veröffentlichen folgt den Koordinaten:** Im Standort-Schritt des
   Wizards (gluon-config-mode-geo-location) setzt ein kleines Skript den Haken
   bei „Knotenposition veröffentlichen“, sobald Breite oder Länge eingetragen
