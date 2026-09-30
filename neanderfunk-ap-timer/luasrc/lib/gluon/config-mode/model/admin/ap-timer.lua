@@ -28,7 +28,10 @@ function enabled:write(data)
 end
 
 local timer_type = sec1:option(ListValue, 'type', pkg_i18n.translate('Type'))
-timer_type.default = uci:get('ap-timer', 'settings', 'type')
+-- "day" is the only type; without it as default the select showed an empty,
+-- invalid entry after enabling, and the ON/OFF lists stayed hidden until the
+-- one choice was picked by hand (config-mode test, 30.09.2026).
+timer_type.default = uci:get('ap-timer', 'settings', 'type') or 'day'
 timer_type:depends(enabled, true)
 timer_type:value('day', pkg_i18n.translate('Daily'))
 function timer_type:write(data)
