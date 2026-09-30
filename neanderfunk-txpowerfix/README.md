@@ -34,6 +34,14 @@ Domainwechsel.
   wird weiter gesetzt, sie folgt aus den ohnehin erhaltenen Kanaelen. Gesetzt
   wird der Schalter von `neanderfunk-preserve-wifichannel`.
 
+Warum nicht Gluons `channel_width` (ab 2025.1): `wifi24.channel_width` und
+`wifi5.channel_width` in der site.conf waehlen in `200-wireless` die Breite nur
+innerhalb der Familien HT, VHT und HE (`hwmodelist` ac/ax). EHT kennt Gluon
+dort nicht, ein Wi-Fi-7-Radio bekaeme also HE80 statt EHT80. txpowerfix nimmt
+EHT, wenn die Hardware es anbietet, und bleibt deshalb fuer htmode zustaendig
+(Entscheidung adorfer, 01.10.2026). Ob das Mesh auf den breiten Modi leidet,
+ist eine eigene Frage.
+
 Es schreibt nur Config (`uci:save()`, committet wird von Gluons `998-commit`).
 Kein `wifi reconf`, kein `iwinfo` als Kommando, kein `sleep`. Laufzeit auf einem
 TL-WDR3600: 150 ms.
