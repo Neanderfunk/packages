@@ -1,0 +1,17 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: neanderfunk-ssid-changer\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Enabled"
+msgstr "Activé"
+
+msgid "Offline SSID"
+msgstr "SSID hors ligne"
+
+msgid "Without a connection to the Freifunk network, the node sends an Offline SSID instead of the normal one, so devices don't connect while there is no internet. If the Offline SSID contains the node name, a faulty device is easier to find."
+msgstr "Sans connexion au réseau Freifunk, le nœud diffuse un SSID hors ligne à la place du SSID normal, ainsi aucun appareil ne se connecte tant qu'il n'y a pas d'Internet. Si le SSID hors ligne contient le nom du nœud, un appareil défaillant est plus facile à trouver."

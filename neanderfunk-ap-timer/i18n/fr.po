@@ -1,0 +1,29 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: neanderfunk-ap-timer\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "AP timer"
+msgstr "Minuterie AP"
+
+msgid "Daily"
+msgstr "Quotidien"
+
+msgid "Enabled"
+msgstr "Activé"
+
+msgid "Off"
+msgstr "Arrêt"
+
+msgid "On"
+msgstr "Marche"
+
+msgid "Switches the client WLAN on and off on a schedule."
+msgstr "Allume et éteint le WLAN client selon un horaire."
+
+msgid "Type"
+msgstr "Type"

@@ -1,0 +1,50 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: neanderfunk-status-page\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "BIOS"
+msgstr "BIOS"
+
+msgid "CPU"
+msgstr "CPU"
+
+msgid "Counters"
+msgstr "Compteurs"
+
+msgid "Ethernet"
+msgstr "Ethernet"
+
+msgid "Gluon version"
+msgstr "Version de Gluon"
+
+msgid "Image name"
+msgstr "Nom de l'image"
+
+msgid "Mesh MAC address"
+msgstr "Adresse MAC mesh"
+
+msgid "Offline SSID"
+msgstr "SSID hors ligne"
+
+msgid "RAM/Flash"
+msgstr "RAM/Flash"
+
+msgid "Site code"
+msgstr "Code du site"
+
+msgid "Target/Subtarget"
+msgstr "Target/Subtarget"
+
+msgid "Temperature"
+msgstr "Température"
+
+msgid "now offline (0/1)"
+msgstr "hors ligne maintenant (0/1)"
+
+msgid "now offline (0/1) / Offline SSID switched on since boot / gateway lost since boot"
+msgstr "hors ligne maintenant (0/1) / SSID hors ligne activé depuis le démarrage / passerelle perdue depuis le démarrage"

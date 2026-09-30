@@ -1,8 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: PACKAGE VERSION\n"
-"PO-Revision-Date: 2026-09-12 05:00+0200\n"
-"Language-Team: French\n"
+"Project-Id-Version: neanderfunk-config-mode-theme\n"
 "Language: fr\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -10,18 +8,16 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
 msgid "JavaScript required!"
-msgstr ""
-
-msgid ""
-"You must enable JavaScript in your browser or the web interface will not "
-"work properly."
-msgstr ""
-
-msgid "The sign-in window of your phone cannot upload files."
-msgstr ""
+msgstr "JavaScript requis !"
 
 msgid "Open %s in your normal browser."
-msgstr ""
+msgstr "Ouvrez %s dans votre navigateur habituel."
+
+msgid "The sign-in window of your phone cannot upload files."
+msgstr "La fenêtre de connexion de votre téléphone ne permet pas d'envoyer de fichiers."
+
+msgid "You must enable JavaScript in your browser or the web interface will not work properly."
+msgstr "Vous devez activer JavaScript dans votre navigateur, sinon l'interface web ne fonctionnera pas correctement."
 
 msgid "en"
 msgstr "fr"
