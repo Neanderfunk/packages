@@ -1,8 +1,11 @@
 local uci = require("simple-uci").cursor()
 local wireless = require 'gluon.wireless'
 
-local f = Form('Taster')
-local s = f:section(Section, nil, "Hat der Router eine Wifi-Taste, so können dieser Taste unterschiedliche Funktionalitäten zugeordnet werden.")
+local pkg_i18n = i18n 'neanderfunk-button-bind'
+
+local f = Form(pkg_i18n.translate('Button'))
+local s = f:section(Section, nil, pkg_i18n.translate(
+	'If the router has a wifi button, it can be given different functions.'))
 
 
 -- Sollen mehrere Taster konfiguriert werden, dann einfach folgendes Schemata vervielfaeltigen:
@@ -27,16 +30,16 @@ if not has_wlan and (fct == '0' or fct == '2') then
 	fct = '1'
 end
 
-local o = s:option(ListValue, "wifi", "Wifi ON/OFF Taster")
+local o = s:option(ListValue, "wifi", pkg_i18n.translate('Wifi button'))
 o.default = fct
 if has_wlan then
-	o:value('0', "Wifi an/aus")
+	o:value('0', pkg_i18n.translate('Wifi on/off'))
 end
-o:value('1', "Funktionslos (default)")
+o:value('1', pkg_i18n.translate('No function (default)'))
 if has_wlan then
-	o:value('2', "Wifi-Reset")
+	o:value('2', pkg_i18n.translate('Wifi reset'))
 end
-o:value('3', "Nachtmodus - LEDs aus, aber während Taster-Betätigung an")
+o:value('3', pkg_i18n.translate('Night mode - LEDs off, lit only while the button is pressed'))
 
 function o:write(data)
 	uci:set('button-bind', 'wifi', 'function', data)

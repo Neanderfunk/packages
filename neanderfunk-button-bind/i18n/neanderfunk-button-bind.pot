@@ -1,0 +1,23 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8"
+
+msgid "Button"
+msgstr ""
+
+msgid "If the router has a wifi button, it can be given different functions."
+msgstr ""
+
+msgid "Night mode - LEDs off, lit only while the button is pressed"
+msgstr ""
+
+msgid "No function (default)"
+msgstr ""
+
+msgid "Wifi button"
+msgstr ""
+
+msgid "Wifi on/off"
+msgstr ""
+
+msgid "Wifi reset"
+msgstr ""

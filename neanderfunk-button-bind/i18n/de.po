@@ -1,0 +1,31 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: neanderfunk-button-bind\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Button"
+msgstr "Taster"
+
+msgid "If the router has a wifi button, it can be given different functions."
+msgstr ""
+"Hat der Router eine Wifi-Taste, so können dieser Taste unterschiedliche "
+"Funktionalitäten zugeordnet werden."
+
+msgid "Night mode - LEDs off, lit only while the button is pressed"
+msgstr "Nachtmodus - LEDs aus, aber während Taster-Betätigung an"
+
+msgid "No function (default)"
+msgstr "Funktionslos (default)"
+
+msgid "Wifi button"
+msgstr "Wifi ON/OFF Taster"
+
+msgid "Wifi on/off"
+msgstr "Wifi an/aus"
+
+msgid "Wifi reset"
+msgstr "Wifi-Reset"

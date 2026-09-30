@@ -1,5 +1,7 @@
 local util = require 'gluon.util'
 
+package 'neanderfunk-button-bind'
+
 -- Only offer the page where there is actually a button to bind.
 --
 -- The usable hardware signal is the device tree: a target with buttons declares
@@ -28,5 +30,5 @@ local function has_buttons()
 end
 
 if has_buttons() then
-	entry({"admin", "button-bind"}, model("admin/button-bind"), "Taster", 85)
+	entry({"admin", "button-bind"}, model("admin/button-bind"), _("Button"), 85)
 end
