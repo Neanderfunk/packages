@@ -57,6 +57,16 @@ Einzelheiten
   zu, die Schaltfläche ist dort ohne Fehlermeldung wirkungslos. Ihn sicher zu
   erkennen geht nicht, deshalb erscheint der Hinweis immer. Am C25 im
   Setup-Mode geprüft, 14.09.2026 (deutsch und englisch).
+- **Standort veröffentlichen folgt den Koordinaten:** Im Standort-Schritt des
+  Wizards (gluon-config-mode-geo-location) setzt ein kleines Skript den Haken
+  bei „Knotenposition veröffentlichen“, sobald Breite oder Länge eingetragen
+  werden, getippt oder per Klick in die Karte. Nur bei einer Änderung, nie
+  beim Laden: Wer den Haken danach abwählt, behält das, und ein Knoten mit
+  privater Position bleibt privat, solange niemand die Koordinaten ändert.
+  gluon-web nimmt ausgeblendete Felder aus dem Dokument, deshalb sucht das
+  Skript die Felder erst beim Ereignis (ein Listener am Dokument in der
+  Capture-Phase). In Headless-Chromium an einer nachgebauten Seite geprüft,
+  30.09.2026.
 
 Lizenz
 ------

@@ -119,5 +119,33 @@ dispatcher tree, below that the pages of the current category as tabs.
 	%>
 </div>
 </div>
+<script>
+	// Location picker (gluon-config-mode-geo-location): once coordinates are
+	// entered - typed, or by a click into the map, which sets the fields and
+	// fires "gluon-revalidate" - tick "Advertise node position" as well
+	// (adorfer, 30.09.2026). Only on a change, never on load, so a node that
+	// keeps its position private stays so, and unticking afterwards sticks.
+	// gluon-web takes fields whose dependency is unmet out of the document,
+	// so nothing is looked up in advance: one capturing listener on the
+	// document (capture also sees the non-bubbling "gluon-revalidate") and
+	// the checkbox is searched at the moment of the change.
+	(function() {
+		function handler(e) {
+			var el = e.target;
+			if (!el || !el.id || !/\.(latitude|longitude)$/.test(el.id))
+				return;
+			if (el.value.trim() === '')
+				return;
+			var share = document.querySelector('input[type="checkbox"][id$=".share_location"]');
+			if (!share || share.checked)
+				return;
+			share.checked = true;
+			share.dispatchEvent(new Event('change', {bubbles: true}));
+		}
+		['input', 'change', 'gluon-revalidate'].forEach(function(type) {
+			document.addEventListener(type, handler, true);
+		});
+	})();
+</script>
 </body>
 </html>
