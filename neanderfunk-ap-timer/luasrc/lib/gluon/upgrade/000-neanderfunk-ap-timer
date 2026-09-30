@@ -31,9 +31,10 @@ if not uci_true('ap-timer', 'settings', 'enabled') then
 	os.exit(0)
 end
 
--- every client_radioN, not a fixed 0/1 (tri-band devices)
+-- every client_radioN, not a fixed 0/1 (tri-band devices), and the OWE BSS
+-- next to it, which ap-timer switches along
 uci:foreach('wireless', 'wifi-iface', function(s)
-	if s['.name']:match('^client_radio%d+$') then
+	if s['.name']:match('^client_radio%d+$') or s['.name']:match('^owe_radio%d+$') then
 		os.execute('uci -q revert wireless.' .. s['.name'] .. '.disabled')
 	end
 end)

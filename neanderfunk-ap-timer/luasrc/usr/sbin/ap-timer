@@ -33,16 +33,27 @@ local function getDay()
 	end
 end
 
--- All client APs, not a fixed client_radio0/1: Gluon 2025.1 supports more
--- than two radios (tri-band devices), and the numbering can have gaps.
-local function clientSections()
+-- All APs of one kind, not a fixed client_radio0/1: Gluon 2025.1 supports
+-- more than two radios (tri-band devices), and the numbering can have gaps.
+-- kind: 'client' or 'owe' (Gluon's OWE BSS next to the client AP, hidden in
+-- transition mode).
+local function sections(kind)
 	local out = {}
 	uci:foreach('wireless', 'wifi-iface', function(s)
-		if s['.name']:match('^client_radio%d+$') then
+		if s['.name']:match('^' .. kind .. '_radio%d+$') then
 			table.insert(out, s['.name'])
 		end
 	end)
 	return out
+end
+
+-- Is the offline SSID of neanderfunk-ssid-changer on the client AP next to
+-- this OWE BSS? Then the OWE BSS stays off when the timer switches on;
+-- ssid-changer turns it back on once the node is online again.
+local function offlineSsid(owe)
+	local ssid = uci:get('wireless', (owe:gsub('^owe_', 'client_')), 'ssid')
+	local prefix = uci:get('ssid-changer', 'settings', 'prefix') or 'FF_Offline_'
+	return ssid ~= nil and ssid:sub(1, #prefix) == prefix
 end
 
 -- "wifi reconf" instead of a plain "wifi": under OpenWrt 24.10 that takes
@@ -63,8 +74,23 @@ end
 
 local function apSet(enable)
 	local changed = false
-	for _, section in ipairs(clientSections()) do
+	for _, section in ipairs(sections('client')) do
 		uci:set('wireless', section, 'disabled', not enable)
+		changed = true
+	end
+	-- The OWE BSS goes with its client AP, otherwise clients would stay
+	-- connected over OWE all through the off time. Switching on reverts the
+	-- delta instead of writing disabled=0, so the OWE BSS is back to what the
+	-- config says (Gluon creates it enabled) - unless the offline SSID is on.
+	for _, section in ipairs(sections('owe')) do
+		if not enable then
+			uci:set('wireless', section, 'disabled', true)
+		else
+			uci:revert('wireless', section, 'disabled')
+			if offlineSsid(section) then
+				uci:set('wireless', section, 'disabled', true)
+			end
+		end
 		changed = true
 	end
 
