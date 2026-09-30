@@ -58,12 +58,15 @@ dispatcher tree, below that the pages of the current category as tabs.
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <%#
-	No referrer: the map tile proxy (tiles.ffdus.de) answers 403 to any
-	referrer outside its map domains, and the config mode's own
-	(http://192.168.1.1/, http://198.51.100.1/) is one, so the map stayed
-	empty. Without a referrer it serves the tiles. (30.09.2026)
+	Referrer only to the node itself: the map tile proxy (tiles.ffdus.de)
+	answers 403 to any referrer outside its map domains, and the config
+	mode's own (http://192.168.1.1/, http://198.51.100.1/) is one, so the map
+	stayed empty. Cross-origin requests now go without a referrer and get
+	their tiles. NOT "no-referrer": with it browsers send "Origin: null" on
+	the form POST, and gluon-web rejects every save with "POST request with
+	invalid Origin header". (30.09.2026)
 %>
-<meta name="referrer" content="no-referrer">
+<meta name="referrer" content="same-origin">
 <link rel="stylesheet" href="/static/neanderfunk.css<%=v%>">
 <title><%| hostname .. ((rnode and rnode.title) and ' - ' .. title(rnode) or '') %></title>
 </head>
