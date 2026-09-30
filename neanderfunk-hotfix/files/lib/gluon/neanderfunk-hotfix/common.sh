@@ -68,9 +68,21 @@ nf_uptime() {
 	NF_UP="${NF_UP%.*}"
 }
 
+# uci booleans like OpenWrt's get_bool (/lib/functions.sh) and netifd:
+# nf_true/nf_false <value> accept 1/true/yes/on/enabled and
+# 0/false/no/off/disabled. Anything else is neither.
+nf_true() {
+	case "$1" in 1|true|yes|on|enabled) return 0 ;; esac
+	return 1
+}
+nf_false() {
+	case "$1" in 0|false|no|off|disabled) return 0 ;; esac
+	return 1
+}
+
 # true when the named check is switched off on this node
 check_disabled() {
-	nf_uci_get "$NF_UCI_hotfix" "hotfix.$1.disabled" && [ "$NF_VAL" = "1" ]
+	nf_uci_get "$NF_UCI_hotfix" "hotfix.$1.disabled" && nf_true "$NF_VAL"
 }
 
 # minimum uptime in seconds before any check may reboot; anything unset or
@@ -147,10 +159,8 @@ acts_immediately() {
 	local v
 	nf_uci_get "$NF_UCI_hotfix" "hotfix.$1.immediate"
 	v="$NF_VAL"
-	case "$v" in
-		1) return 0 ;;
-		0) return 1 ;;
-	esac
+	nf_true "$v" && return 0
+	nf_false "$v" && return 1
 	case "$1" in
 		kernel_bug) return 0 ;;
 	esac

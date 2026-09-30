@@ -283,7 +283,8 @@ logremote_check() {
       log_remote) lremote="$val" ;;
     esac
   done < /etc/config/system
-  [ -n "$lip" ] && [ "$lremote" != 0 ] || return 0
+  # log_remote wie in /etc/init.d/log (config_get_bool): jedes "aus" zaehlt
+  [ -n "$lip" ] && ! nf_false "$lremote" || return 0
   # nur Adressen, keine Namen; IPv6 am Doppelpunkt erkennen, Klammern weg
   lip="${lip#\[}" ; lip="${lip%\]}"
   case "$lip" in

@@ -103,7 +103,7 @@ IFS="$oldifs" ; set +f
 for section in $aps ; do
 	nf_uci_get "$NF_UCI_wireless" "wireless.$section.ifname" || continue
 	ifname="$NF_VAL"
-	nf_uci_get "$NF_UCI_wireless" "wireless.$section.disabled" && [ "$NF_VAL" = "1" ] && continue
+	nf_uci_get "$NF_UCI_wireless" "wireless.$section.disabled" && nf_true "$NF_VAL" && continue
 	nf_uci_get "$NF_UCI_wireless" "wireless.$section.device"
 	radio="$NF_VAL"
 
@@ -118,7 +118,7 @@ for section in $aps ; do
 	# netifd nicht kennt, ist kein hostapd-Problem; dafuer sind die
 	# bsses- und mesh_neighbours-Checks in neanderfunk-linkcheck da.
 	[ -n "$radio" ] || continue
-	nf_uci_get "$NF_UCI_wireless" "wireless.$radio.disabled" && [ "$NF_VAL" = "1" ] && continue
+	nf_uci_get "$NF_UCI_wireless" "wireless.$radio.disabled" && nf_true "$NF_VAL" && continue
 	# Drei Felder des Radios aus "wifi status" mit einem jsonfilter statt
 	# dreimal printf|jsonfilter. Im Zuweisungsmodus gibt jsonfilter
 	# Wahrheitswerte als 1/0 aus (nicht true/false), fehlende Pfade laesst

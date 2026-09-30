@@ -158,7 +158,7 @@ esac
 
 # nur loggen, solange niemand ausdruecklich dry_run=0 gesetzt hat
 dry=1
-nf_uci_get "$NF_UCI_hotfix" "hotfix.$CHECK.dry_run" && [ "$NF_VAL" = 0 ] && dry=''
+nf_uci_get "$NF_UCI_hotfix" "hotfix.$CHECK.dry_run" && nf_false "$NF_VAL" && dry=''
 case "${HOTFIX_DRYRUN:-}" in
 	1) dry=1 ;;
 	0) dry='' ;;
@@ -171,7 +171,7 @@ log() {
 # Port-Reset per ethtool -r: an, solange soft_reset nicht 0 ist und ethtool da
 ETHTOOL="${HOTFIX_ETHTOOL:-ethtool}"
 soft=1
-nf_uci_get "$NF_UCI_hotfix" "hotfix.$CHECK.soft_reset" && [ "$NF_VAL" = 0 ] && soft=''
+nf_uci_get "$NF_UCI_hotfix" "hotfix.$CHECK.soft_reset" && nf_false "$NF_VAL" && soft=''
 command -v "${ETHTOOL%% *}" >/dev/null 2>&1 || soft=''
 
 rx_need=5
