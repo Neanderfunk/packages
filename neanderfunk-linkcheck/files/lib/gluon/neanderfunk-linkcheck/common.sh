@@ -73,9 +73,21 @@ nf_uptime() {
 	NF_UP="${NF_UP%.*}"
 }
 
+# uci booleans like OpenWrt's get_bool (/lib/functions.sh) and netifd:
+# nf_true/nf_false <value> accept 1/true/yes/on/enabled and
+# 0/false/no/off/disabled. Anything else is neither.
+nf_true() {
+	case "$1" in 1|true|yes|on|enabled) return 0 ;; esac
+	return 1
+}
+nf_false() {
+	case "$1" in 0|false|no|off|disabled) return 0 ;; esac
+	return 1
+}
+
 # true when the named check is switched off on this node
 check_disabled() {
-	nf_uci_get "$NF_UCI_linkcheck" "linkcheck.$1.disabled" && [ "$NF_VAL" = "1" ]
+	nf_uci_get "$NF_UCI_linkcheck" "linkcheck.$1.disabled" && nf_true "$NF_VAL"
 }
 
 # true once the node is old enough for a check to ACT on what it found -

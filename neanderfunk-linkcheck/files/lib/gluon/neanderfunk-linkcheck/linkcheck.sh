@@ -497,8 +497,8 @@ IFS="$oldifs" ; set +f
 # $1 mesh_radio-Sektion -> dev (Interface), 1 wenn abgeschaltet oder nicht oben
 mesh_radio_dev() {
   nf_uci_get "$NF_UCI_wireless" "wireless.$1.device" ; radio="$NF_VAL"
-  nf_uci_get "$NF_UCI_wireless" "wireless.${radio}.disabled" && [ "$NF_VAL" = "1" ] && return 1
-  nf_uci_get "$NF_UCI_wireless" "wireless.$1.disabled" && [ "$NF_VAL" = "1" ] && return 1
+  nf_uci_get "$NF_UCI_wireless" "wireless.${radio}.disabled" && nf_true "$NF_VAL" && return 1
+  nf_uci_get "$NF_UCI_wireless" "wireless.$1.disabled" && nf_true "$NF_VAL" && return 1
   nf_uci_get "$NF_UCI_wireless" "wireless.$1.ifname" || return 1
   dev="$NF_VAL"
   iface_is_up "$dev"
