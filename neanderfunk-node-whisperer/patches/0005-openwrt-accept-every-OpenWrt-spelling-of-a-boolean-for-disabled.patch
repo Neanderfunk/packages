@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Neanderfunk <projekt@neanderfunk.de>
+Date: Thu, 1 Oct 2026 00:41:29 +0200
+Subject: [PATCH] openwrt: accept every OpenWrt spelling of a boolean for
+ disabled
+
+The init script compared the uci value numerically. "true" or "yes" made
+the test fail with "integer expression expected", and the daemon started
+although it was switched off. Use get_bool from /lib/functions.sh, which
+rc.common loads anyway.
+---
+ openwrt/node-whisperer/files/node-whisperer.init | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/openwrt/node-whisperer/files/node-whisperer.init b/openwrt/node-whisperer/files/node-whisperer.init
+index 1aa0dc1..2c50c9a 100644
+--- a/openwrt/node-whisperer/files/node-whisperer.init
++++ b/openwrt/node-whisperer/files/node-whisperer.init
+@@ -55,11 +55,13 @@ service_triggers() {
+ start_service()
+ {
+ 	DISABLED="$(uci -q get neanderfunk-node-whisperer.settings.disabled)"
+-	DISABLED="${DISABLED:-0}"
++	# any spelling OpenWrt accepts (get_bool from /lib/functions.sh, which
++	# rc.common loads); "-gt 0" failed on "true" and started the daemon
++	DISABLED="$(get_bool "${DISABLED:-0}" 0)"
+ 	LOG_LEVEL="$(uci -q get neanderfunk-node-whisperer.settings.log_level)"
+ 	LOG_LEVEL="${LOG_LEVEL:-3}"
+ 
+-	[ "$DISABLED" -gt 0 ] && return
++	[ "$DISABLED" = 1 ] && return
+ 
+ 	procd_open_instance
+ 	procd_set_param command "$PROG"
+-- 
+2.53.0
+

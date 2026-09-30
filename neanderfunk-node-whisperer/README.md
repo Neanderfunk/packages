@@ -77,6 +77,11 @@ je Originator, die Zeile, die `batctl o` mit `*` markiert (am C25: 91 von 338).
 Die Nachbarzahl (Bytes 4-5) bleibt, wie sie ist: direkte Links, einer je
 Nachbar und Interface, wie `batctl n`. Drahtformat und App unveraendert.
 
+`patches/0005`: Das init-Skript verglich `settings.disabled` numerisch
+(`-gt 0`). Bei `true` oder `yes` scheiterte der Test, und der Daemon startete,
+obwohl er abgeschaltet war. Jetzt `get_bool` aus `/lib/functions.sh`, also
+jede Schreibweise, die OpenWrt fuer einen Wahrheitswert kennt.
+
 Namensraum
 ----------
 
