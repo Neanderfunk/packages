@@ -2,9 +2,19 @@
 
 local uci = require('simple-uci').cursor()
 
+-- uci booleans like OpenWrt's shell get_bool (1/true/yes/on/enabled and
+-- 0/false/no/off/disabled); simple-uci's get_bool knows only "1".
+local function uci_is(value, ...)
+	local v = uci:get(...)
+	if value then
+		return v == '1' or v == 'true' or v == 'yes' or v == 'on' or v == 'enabled'
+	end
+	return v == '0' or v == 'false' or v == 'no' or v == 'off' or v == 'disabled'
+end
+
 -- Safety check functions
 local function log_debug(...)
-	if uci:get('ssid-changer', 'settings', 'debug_log_enabled') == '1' then
+	if uci_is(true, 'ssid-changer', 'settings', 'debug_log_enabled') then
 		os.execute('logger -t "neanderfunk-ssid-changer" -p debug "' .. table.concat({...}, ' ') .. '"')
 	end
 end
@@ -19,7 +29,7 @@ local function safety_exit(message)
 end
 
 -- Check if the script is enabled
-if uci:get('ssid-changer', 'settings', 'enabled') == '0' then
+if uci_is(false, 'ssid-changer', 'settings', 'enabled') then
 	os.exit(0)  -- Exit silently if the script is disabled
 end
 
@@ -294,9 +304,7 @@ if has_default_gw4() then
 	gwoffstate_file:write("0")
 	gwoffstate_file:close()
 
-	local tq_limit_enabled = tonumber(uci:get('ssid-changer', 'settings', 'tq_limit_enabled') or 0)
-
-	if tq_limit_enabled == 1 then
+	if uci_is(true, 'ssid-changer', 'settings', 'tq_limit_enabled') then
 		status = calculate_tq_limit()
 	else
 		status = 'online'

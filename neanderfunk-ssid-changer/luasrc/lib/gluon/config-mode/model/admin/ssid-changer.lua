@@ -12,7 +12,9 @@ local s = f:section(Section, nil, pkg_i18n.translate(
 ))
 
 local enabled = s:option(Flag, 'enabled', pkg_i18n.translate('Enabled'))
-enabled.default = uci:get_bool('ssid-changer', 'settings', 'enabled')
+-- as the worker sees it: on unless switched off (any OpenWrt spelling)
+local on = uci:get('ssid-changer', 'settings', 'enabled')
+enabled.default = not (on == '0' or on == 'false' or on == 'no' or on == 'off' or on == 'disabled')
 
 -- local prefix = s:option(Value, 'prefix', pkg_i18n.translate('First part of the Offline SSID'))
 -- prefix:depends(enabled, true)
