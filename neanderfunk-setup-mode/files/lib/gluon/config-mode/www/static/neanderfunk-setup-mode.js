@@ -203,6 +203,20 @@
 	form.addEventListener('change', function () { setTimeout(update, 0); });
 	form.addEventListener('click', function () { setTimeout(update, 0); });
 
+	/* ---------- map in a row that was hidden ---------- */
+	// gluon-web-osm fits its map to the box on "gluon-show" at the map's
+	// parent. gluon-web-model fires that event (not bubbling) at the row, and
+	// our row template puts the map one level deeper, into .ctl, so it never
+	// arrived: a map created while "Set node position" was off stayed without
+	// tiles after switching it on, until the window was resized (adorfer,
+	// Firefox, 30.09.2026). Pass the event on to the map's parent.
+	document.addEventListener('gluon-show', function (e) {
+		if (!e.target.querySelectorAll) return;
+		each('.gluon-osm-map', e.target, function (m) {
+			if (m.parentNode !== e.target) m.parentNode.dispatchEvent(new Event('gluon-show'));
+		});
+	}, true);
+
 	/* ---------- side menu opens collapsed groups ---------- */
 	each('a[data-open]', null, function (a) {
 		a.addEventListener('click', function () {
