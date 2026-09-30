@@ -9,6 +9,11 @@ the `client_radio*` interfaces on and off, but does not touch mesh or private
 wifi configuration. The config-mode page (Advanced settings, "AP Timer") sets
 up the daily schedule.
 
+It switches every `client_radioN` present (also a third radio), as a uci delta
+without commit, and applies it with `wifi reconf` under the wifi lock shared
+with ssid-changer, hotfix and linkcheck (`/var/lock/neanderfunk-wifi.lock`).
+A plain `wifi` would take all radios down and up, mesh included.
+
 site.conf
 ---------
 

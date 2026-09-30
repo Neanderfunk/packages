@@ -25,19 +25,44 @@ local function getDay()
 	end
 end
 
-local function apSet(enable)
-	local execWifi = false
-	local radios = {'client_radio0', 'client_radio1'}
-	for _, radio in ipairs(radios) do
-		if uci:get('wireless', radio) then
-			uci:set('wireless', radio, 'disabled', not enable)
-			execWifi = true
+-- All client APs, not a fixed client_radio0/1: Gluon 2025.1 supports more
+-- than two radios (tri-band devices), and the numbering can have gaps.
+local function clientSections()
+	local out = {}
+	uci:foreach('wireless', 'wifi-iface', function(s)
+		if s['.name']:match('^client_radio%d+$') then
+			table.insert(out, s['.name'])
 		end
+	end)
+	return out
+end
+
+-- "wifi reconf" instead of a plain "wifi": under OpenWrt 24.10 that takes
+-- every radio down and up again, mesh included, while reconf only reloads
+-- what changed. Under the wifi lock shared with ssid-changer, hotfix and
+-- linkcheck. This runs once in its minute, so a busy lock is waited for
+-- (busybox flock has no -w); should it stay busy, the change is in the uci
+-- delta already and the next wifi reconf by anyone applies it.
+local function wifiReconf()
+	for _ = 1, 10 do
+		if os.execute("flock -n /var/lock/neanderfunk-wifi.lock -c 'wifi reconf'") == 0 then
+			return
+		end
+		os.execute('sleep 5')
+	end
+	os.execute('logger -t ap-timer "wifi lock busy, change stays in the uci delta"')
+end
+
+local function apSet(enable)
+	local changed = false
+	for _, section in ipairs(clientSections()) do
+		uci:set('wireless', section, 'disabled', not enable)
+		changed = true
 	end
 
-	if execWifi then
+	if changed then
 		uci:save('wireless')
-		os.execute('wifi')
+		wifiReconf()
 	end
 end
 
