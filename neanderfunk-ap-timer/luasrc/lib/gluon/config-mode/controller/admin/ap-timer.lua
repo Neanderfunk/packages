@@ -8,7 +8,8 @@ package 'neanderfunk-ap-timer'
 -- site.conf: ap_timer.web (Vorgabe true, wie mit ff-web-ap-timer). Auf einem
 -- Knoten, auf dem der Timer schon laeuft, bleibt sie trotzdem sichtbar -
 -- sonst liesse er sich dort ueber die Oberflaeche nicht mehr abschalten.
-local visible = site.ap_timer.web(true) or uci:get_bool('ap-timer', 'settings', 'enabled')
+local on = uci:get('ap-timer', 'settings', 'enabled')
+local visible = site.ap_timer.web(true) or on == '1' or on == 'true' or on == 'yes' or on == 'on' or on == 'enabled'
 
 if wireless.device_uses_wlan(uci) and visible then
 	entry({"admin", "ap-timer"}, model("admin/ap-timer"), _("AP timer"), 30)

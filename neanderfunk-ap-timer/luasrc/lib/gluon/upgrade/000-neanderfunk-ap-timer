@@ -19,10 +19,21 @@
 
 local uci = require('simple-uci').cursor()
 
-if not uci:get_bool('ap-timer', 'settings', 'enabled') then
+-- uci booleans like OpenWrt's shell get_bool: 1/true/yes/on/enabled.
+-- simple-uci's get_bool knows only "1"; this is our own key, typed by hand
+-- as well.
+local function uci_true(...)
+	local v = uci:get(...)
+	return v == '1' or v == 'true' or v == 'yes' or v == 'on' or v == 'enabled'
+end
+
+if not uci_true('ap-timer', 'settings', 'enabled') then
 	os.exit(0)
 end
 
-for _, radio in ipairs({ 'client_radio0', 'client_radio1' }) do
-	os.execute('uci -q revert wireless.' .. radio .. '.disabled')
-end
+-- every client_radioN, not a fixed 0/1 (tri-band devices)
+uci:foreach('wireless', 'wifi-iface', function(s)
+	if s['.name']:match('^client_radio%d+$') then
+		os.execute('uci -q revert wireless.' .. s['.name'] .. '.disabled')
+	end
+end)

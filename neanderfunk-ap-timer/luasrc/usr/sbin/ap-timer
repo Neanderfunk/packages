@@ -2,6 +2,14 @@
 local timestamp = os.time()
 local uci = require('simple-uci').cursor()
 
+-- uci booleans like OpenWrt's shell get_bool: 1/true/yes/on/enabled.
+-- simple-uci's get_bool knows only "1"; this is our own key, typed by hand
+-- as well.
+local function uci_true(...)
+	local v = uci:get(...)
+	return v == '1' or v == 'true' or v == 'yes' or v == 'on' or v == 'enabled'
+end
+
 local function compare(list, value)
 	if not list then
 		return nil
@@ -66,7 +74,7 @@ local function apSet(enable)
 	end
 end
 
-if uci:get_bool('ap-timer', 'settings', 'enabled') then
+if uci_true('ap-timer', 'settings', 'enabled') then
 	local day = getDay()
 	local current = os.date('%H:%M', timestamp)
 

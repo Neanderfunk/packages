@@ -21,7 +21,8 @@ local f = Form(pkg_i18n.translate('AP timer'), pkg_i18n.translate(
 local sec1 = f:section(Section)
 
 local enabled = sec1:option(Flag, 'enabled', pkg_i18n.translate('Enabled'))
-enabled.default = uci:get_bool('ap-timer', 'settings', 'enabled')
+local on = uci:get('ap-timer', 'settings', 'enabled')
+enabled.default = on == '1' or on == 'true' or on == 'yes' or on == 'on' or on == 'enabled'
 enabled.optional = false
 function enabled:write(data)
 	uci:set('ap-timer', 'settings', 'enabled', data)

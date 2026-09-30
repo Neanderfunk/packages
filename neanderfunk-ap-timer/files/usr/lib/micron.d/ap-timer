@@ -3,4 +3,5 @@
 # cache is too small to keep Lua between two minutes: every start came from
 # flash, 450-900 ms a minute; the uci check costs about 100 ms.
 # (micrond cuts each line at the first hash sign - the command must not use one.)
-* * * * * [ "$(uci -q get ap-timer.settings.enabled)" = 1 ] && /usr/sbin/ap-timer
+# "on" in any spelling OpenWrt accepts for a boolean (1/true/yes/on/enabled).
+* * * * * case "$(uci -q get ap-timer.settings.enabled)" in 1|true|yes|on|enabled) /usr/sbin/ap-timer ;; esac
