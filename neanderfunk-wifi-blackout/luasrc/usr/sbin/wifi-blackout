@@ -33,6 +33,13 @@
 local site = require 'gluon.site'
 local util = require 'gluon.util'
 local uci = require('simple-uci').cursor()
+
+-- uci booleans like OpenWrt's shell get_bool / netifd: 1/true/yes/on/enabled.
+-- simple-uci's get_bool knows only "1".
+local function uci_true(...)
+	local v = uci:get(...)
+	return v == '1' or v == 'true' or v == 'yes' or v == 'on' or v == 'enabled'
+end
 local iwinfo = require 'iwinfo'
 
 local fileOk = '/tmp/wifi-blackout.ok'
@@ -134,7 +141,7 @@ local function is_candidate(iface)
 	if not radio then
 		return false
 	end
-	if uci:get_bool('wireless', iface, 'disabled') or uci:get_bool('wireless', radio, 'disabled') then
+	if uci_true('wireless', iface, 'disabled') or uci_true('wireless', radio, 'disabled') then
 		return false
 	end
 
@@ -196,7 +203,7 @@ local function reboot_log(msg)
 	os.execute("nf-reboot-log '[wifi_blackout] " .. msg:gsub("'", "'\\''") .. "'")
 end
 
-if uci:get_bool('wifi_blackout', 'settings', 'disabled') then
+if uci_true('wifi_blackout', 'settings', 'disabled') then
 	os.exit(0)
 end
 
@@ -262,6 +269,10 @@ if n <= setting('restarts_before_reboot', 1) then
 	-- Kein "wifi config" zwischen down und up: das erkennt unter OpenWrt 23.05
 	-- neue Radios und macht dabei "uci commit wireless" - samt offener
 	-- Laufzeit-Aenderungen (Offline-SSID, ap-timer). Fuer den Neustart unnoetig.
+	-- Das "killall hostapd" ist Absicht, auch wenn procd hostapd (wpad) sonst
+	-- selbst verwaltet: im Feld hingen hostapds, die auf wifi down/up nicht
+	-- mehr reagierten (adorfer). procd startet ihn neu, netifd wartet per
+	-- "ubus wait_for hostapd". Bitte nicht als Aufraeumarbeit entfernen.
 	local rc = os.execute("flock -n /var/lock/neanderfunk-wifi.lock -c '" ..
 		"wifi down; killall hostapd >/dev/null 2>&1; " ..
 		"rm -f /var/run/wifi-*.pid >/dev/null 2>&1; wifi up'")
