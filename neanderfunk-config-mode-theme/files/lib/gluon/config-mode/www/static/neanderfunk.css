@@ -187,7 +187,7 @@ label:has(> input:disabled) { opacity: .45; cursor: not-allowed; }
 /* ---------- Gluon's own forms (wizard without neanderfunk-setup-mode,
    advanced settings, information, upgrade) ---------- */
 .gluon-form > h2 { font-size: 26px; }
-.gluon-form-descr { color: var(--muted); margin-bottom: 14px; max-width: 64ch; }
+.gluon-form-descr { color: var(--muted); margin-bottom: 14px; }
 .gluon-section, form > .gluon-section-node {
 	margin: 0 0 14px; padding: 0; min-width: 0;
 	background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
@@ -247,7 +247,7 @@ label:has(> input:disabled) { opacity: .45; cursor: not-allowed; }
 .content { max-width: 47rem; display: grid; gap: 30px; }
 .intro { display: grid; gap: 8px; }
 .intro h1 { margin: 0; font-size: 26px; line-height: 1.2; letter-spacing: -.015em; text-wrap: balance; }
-.intro p { margin: 0; color: var(--muted); max-width: 64ch; }
+.intro p { margin: 0; color: var(--muted); }
 .part { display: grid; gap: 14px; }
 .part-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 .part-head h2 { margin: 0; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .09em; }
