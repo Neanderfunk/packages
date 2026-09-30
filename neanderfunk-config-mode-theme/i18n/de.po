@@ -22,3 +22,6 @@ msgstr "Im Anmeldefenster des Handys geht kein Upload."
 
 msgid "Open %s in your normal browser."
 msgstr "Öffne dafür %s im normalen Browser."
+
+msgid "en"
+msgstr "de"

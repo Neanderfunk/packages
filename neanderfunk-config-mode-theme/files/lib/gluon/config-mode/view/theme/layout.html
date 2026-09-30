@@ -52,7 +52,8 @@ dispatcher tree, below that the pages of the current category as tabs.
 	http:prepare_content('text/html')
 -%>
 <!DOCTYPE html>
-<html lang="">
+<%# The language of the page: our catalog translates "en" to its own code. %>
+<html lang="<%|t.translate('en')%>">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -155,6 +156,83 @@ dispatcher tree, below that the pages of the current category as tabs.
 		['input', 'change', 'gluon-revalidate'].forEach(function(type) {
 			document.addEventListener(type, handler, true);
 		});
+	})();
+
+	// Invalid fields turn red only after they were left or changed, or once a
+	// save was tried (CSS: .nf-touched / .nf-tried). Capturing on the
+	// document, because gluon-web adds and removes fields.
+	(function() {
+		function touch(e) {
+			var el = e.target;
+			if (el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) el.classList.add('nf-touched');
+		}
+		document.addEventListener('focusout', touch, true);
+		document.addEventListener('change', touch, true);
+		document.addEventListener('submit', function(e) { e.target.classList.add('nf-tried'); }, true);
+	})();
+
+	// Band headings: Gluon's German "2,4GHz-WLAN" becomes "2.4GHz-WLAN" (dot,
+	// as everywhere in Neanderfunk texts), the unit stays "GHz" in the
+	// uppercase headings, and where the heading would wrap, the unit goes:
+	// "2.4-WLAN". Display only, Gluon's catalog stays as it is.
+	(function() {
+		var rx = /(\d)(?:[,.](\d))?\s?GHz/;
+		function fix(el) {
+			if (el.dataset.nfBand) return;
+			var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+			var n;
+			while ((n = w.nextNode())) {
+				var m = n.nodeValue.match(rx);
+				if (!m) continue;
+				var num = m[1] + (m[2] ? '.' + m[2] : '');
+				var before = n.nodeValue.slice(0, m.index), after = n.nodeValue.slice(m.index + m[0].length);
+				var unit = document.createElement('span');
+				unit.className = 'nf-unit';
+				unit.textContent = 'GHz';
+				var frag = document.createDocumentFragment();
+				frag.appendChild(document.createTextNode(before + num));
+				frag.appendChild(unit);
+				frag.appendChild(document.createTextNode(after));
+				n.parentNode.replaceChild(frag, n);
+				el.dataset.nfBand = '1';
+				break;
+			}
+		}
+		function lines(el) {
+			var lh = parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.3;
+			var cs = getComputedStyle(el);
+			return Math.round((el.getBoundingClientRect().height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)) / lh);
+		}
+		function fit() {
+			document.querySelectorAll('.subhead, .gluon-section > legend').forEach(function(el) {
+				fix(el);
+				var u = el.querySelector('.nf-unit');
+				if (!u) return;
+				u.hidden = false;
+				if (lines(el) > 1) u.hidden = true;
+			});
+		}
+		fit();
+		window.addEventListener('resize', fit);
+		window.addEventListener('gluon-update', fit);
+	})();
+
+	// Swipeable tab row on phones (CSS): bring the current tab into view and
+	// fade only the side where more tabs are.
+	(function() {
+		var tabs = document.querySelector('.tabs');
+		if (!tabs) return;
+		function edges() {
+			var more = tabs.scrollWidth - tabs.clientWidth > 1;
+			tabs.classList.toggle('more-l', more && tabs.scrollLeft > 1);
+			tabs.classList.toggle('more-r', more && tabs.scrollLeft < tabs.scrollWidth - tabs.clientWidth - 1);
+		}
+		var cur = tabs.querySelector('a[aria-current]');
+		if (cur && tabs.scrollWidth > tabs.clientWidth)
+			tabs.scrollLeft = cur.offsetLeft - (tabs.clientWidth - cur.offsetWidth) / 2;
+		edges();
+		tabs.addEventListener('scroll', edges, { passive: true });
+		window.addEventListener('resize', edges);
 	})();
 </script>
 </body>

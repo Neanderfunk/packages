@@ -162,7 +162,23 @@
 		var s = document.createElement('span');
 		s.textContent = text;
 		statusEl.appendChild(s);
+		fitStatus();
 	}
+
+	/* One line for the status: shrink the font in steps down to 11px where
+	   "7 Änderungen offen" would wrap next to the button (320px phones). */
+	function fitStatus() {
+		var s = statusEl.lastChild;
+		if (!s) return;
+		statusEl.style.fontSize = '';
+		var size = parseFloat(getComputedStyle(statusEl).fontSize);
+		var lh = function () { return parseFloat(getComputedStyle(s).lineHeight) || size * 1.3; };
+		while (s.getBoundingClientRect().height > lh() * 1.4 && size > 11) {
+			size -= 0.5;
+			statusEl.style.fontSize = size + 'px';
+		}
+	}
+	window.addEventListener('resize', fitStatus);
 
 	function update() {
 		var now = snap();
