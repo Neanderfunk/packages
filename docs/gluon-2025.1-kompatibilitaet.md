@@ -100,11 +100,12 @@ nach `200-wireless`. Regeneriert werden nur die `wifi-iface`-Sektionen.
 
 Folgen für uns:
 
-* Der Check `hotfix.tunneldigger` (zu viele Watchdogs/Instanzen) wird toter
-  Code. Harmlos, er zählt dann eben null.
-* `gluon-mesh-vpn-tunneldigger/luasrc/usr/bin/tunneldigger-watchdog` ist weg —
-  damit erledigt sich auch die gestrige Log-Rausch-Frage, sobald ein Knoten auf
-  WireGuard läuft.
+* Nachtrag 2026-09-30: Wir bleiben bei tunneldigger und bauen
+  `ff-mesh-vpn-tunneldigger` aus den community-packages ein. Das bringt
+  `/usr/bin/tunneldigger-watchdog` unverändert mit (alle 5 min: kein
+  Originator über `mesh-vpn` in `batctl o` -> tunneldigger neu starten).
+  `hotfix.tunneldigger` bleibt damit gültig. Tot wären beide erst auf einem
+  Knoten mit WireGuard.
 * `mesh-vpn` als Interface-Name bleibt, den legt auch WireGuard an. Unsere
   linkcheck-Prüfungen darauf bleiben gültig.
 
