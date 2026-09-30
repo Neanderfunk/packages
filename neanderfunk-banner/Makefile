@@ -33,7 +33,8 @@ define Package/$(PKG_NAME)/description
 	on DSA), portrole (show or set the Gluon interface role, also for extra ports like eth2), reconf
 	(gluon-reconfigure and reboot in the background), v4up (IPv4 via the
 	mesh, refused if the uplink has IPv4), vpn (show or switch the mesh VPN
-	on/off persistently), routername (show or set the node name), flash
+	on/off persistently), routername/nodename (show or set the node name), kontakt/contact (show or
+	set the operator's contact address), flash
 	(download a firmware image by URL, or find it in a directory URL, check
 	it, stop services like the autoupdater when RAM is low, sysupgrade; in
 	interactive shells "sysupgrade <url>" does the same), help.

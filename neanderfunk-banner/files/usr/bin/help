@@ -55,4 +55,5 @@ Eingriffe (schreiben, wirksam nach "reconf")
   v4up                  IPv4 per DHCP aus dem Mesh - nur ohne IPv4 am Uplink
   vpn [on|off]          Mesh-VPN zeigen, dauerhaft an/aus (sofort wirksam)
   routername [name]     Knotennamen zeigen/setzen (Leerzeichen, Umlaute ok)
+  kontakt [adresse]     Kontaktadresse des Betreibers zeigen/setzen (--delete entfernt)
 HILFE
