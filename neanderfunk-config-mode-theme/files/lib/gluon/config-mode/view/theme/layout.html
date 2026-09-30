@@ -69,6 +69,12 @@ dispatcher tree, below that the pages of the current category as tabs.
 %>
 <meta name="referrer" content="same-origin">
 <link rel="stylesheet" href="/static/neanderfunk.css<%=v%>">
+<%#
+	Without an icon link browsers ask for /favicon.ico, which Gluon answers
+	with a redirect to the config mode, so every page view rendered the whole
+	page a second time on the node (Firefox profile, 30.09.2026).
+%>
+<link rel="icon" type="image/svg+xml" href="/static/neanderfunk-logo.svg<%=v%>">
 <title><%| hostname .. ((rnode and rnode.title) and ' - ' .. title(rnode) or '') %></title>
 </head>
 <body>
