@@ -1,0 +1,44 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8"
+
+msgid "BIOS"
+msgstr ""
+
+msgid "CPU"
+msgstr ""
+
+msgid "Counters"
+msgstr ""
+
+msgid "Ethernet"
+msgstr ""
+
+msgid "Gluon version"
+msgstr ""
+
+msgid "Image name"
+msgstr ""
+
+msgid "Mesh MAC address"
+msgstr ""
+
+msgid "Offline SSID"
+msgstr ""
+
+msgid "RAM/Flash"
+msgstr ""
+
+msgid "Site code"
+msgstr ""
+
+msgid "Target/Subtarget"
+msgstr ""
+
+msgid "Temperature"
+msgstr ""
+
+msgid "now offline (0/1)"
+msgstr ""
+
+msgid "now offline (0/1) / Offline SSID switched on since boot / gateway lost since boot"
+msgstr ""
