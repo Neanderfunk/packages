@@ -7,12 +7,15 @@ where 2025.1 makes them necessary.
 > ## Status: in testing, not in production
 >
 > **Nodes in the field run Gluon 2023.2 and use `v2023.2.x`.** This branch is
-> what the 2025.1 test builds are made from (since 2026-09-27, four targets:
-> ath79-generic, mediatek-filogic, ramips-mt7621, x86-64), running on test
-> nodes only.
+> what the 2025.1 test builds are made from since 2026-09-27, running on test
+> nodes only. Most test builds cover four targets (ath79-generic,
+> mediatek-filogic, ramips-mt7621, x86-64), one covered all 20.
 >
-> * **No EdgeRouter X images on 2025.1 for now**; those nodes stay on 2023.2.
->   `neanderfunk-erx-migrate` is therefore gone from this branch.
+> * **EdgeRouter X, Xiaomi AX6S and Linksys E8450 (UBI) get images, but no
+>   autoupdater manifest entry** (compat level 2.0), so none of them updates
+>   itself from 2023.2 until their migration is sorted out.
+> * **`neanderfunk-erx-migrate` is gone from this branch**: it belongs to the
+>   intermediate Gluon 2023.2 image of the EdgeRouter X migration.
 > * **`neanderfunk-mt7915-backlog` is gone as well.** OpenWrt 24.10 as shipped
 >   with Gluon 2025.1 carries an in-driver fix for stuck mt7915 PLE queues
 >   (`patches/openwrt/0012-mt7915-detect-and-purge-stuck-PLE-queues.patch`),
