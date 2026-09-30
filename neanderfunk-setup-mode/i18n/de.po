@@ -9,8 +9,8 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-msgid "%d changes, not saved yet"
-msgstr "%d Änderungen, noch nicht gespeichert"
+msgid "%d unsaved changes"
+msgstr "%d Änderungen offen"
 
 msgid "%d fields need a correction. Nothing was saved."
 msgstr "%d Felder brauchen noch eine Korrektur. Gespeichert wurde nichts."
@@ -18,8 +18,8 @@ msgstr "%d Felder brauchen noch eine Korrektur. Gespeichert wurde nichts."
 msgid "%d SSH keys"
 msgstr "%d SSH-Schlüssel"
 
-msgid "1 change, not saved yet"
-msgstr "1 Änderung, noch nicht gespeichert"
+msgid "1 unsaved change"
+msgstr "1 Änderung offen"
 
 msgid "1 SSH key"
 msgstr "1 SSH-Schlüssel"
@@ -42,14 +42,14 @@ msgstr "Höchstens %s Zeichen."
 msgid "changed"
 msgstr "geändert"
 
-msgid "Client"
+msgid "client"
 msgstr "Client"
 
 msgid "collapsed, open only when needed"
 msgstr "eingeklappt, nur bei Bedarf öffnen"
 
-msgid "Information and firmware upgrade: at the very top right."
-msgstr "Info und Firmware aktualisieren: ganz oben rechts."
+msgid "Info and firmware: top right."
+msgstr "Info und Firmware: oben rechts."
 
 msgid "Internet connection"
 msgstr "Internetverbindung"
@@ -60,7 +60,7 @@ msgstr "Standort"
 msgid "Log in with the SSH keys above only. Without keys there is no remote access at all."
 msgstr "Anmelden dann nur noch mit den SSH-Schlüsseln oben. Ohne Schlüssel gibt es gar keinen Fernzugriff mehr."
 
-msgid "Mesh"
+msgid "mesh"
 msgstr "Mesh"
 
 msgid "new password"
@@ -126,8 +126,8 @@ msgstr "Bitte eine ganze Zahl eingeben."
 msgid "Remove password"
 msgstr "Passwort entfernen"
 
-msgid "Save & restart"
-msgstr "Speichern & Neustarten"
+msgid "Save"
+msgstr "Speichern"
 
 msgid "Saving..."
 msgstr "Speichere …"
@@ -149,3 +149,12 @@ msgstr "Pflichtfeld, bitte ausfüllen."
 
 msgid "This section could not be loaded."
 msgstr "Dieser Abschnitt ließ sich nicht laden."
+
+msgid "Save and restart"
+msgstr "Speichern und neu starten"
+
+msgid "static"
+msgstr "statisch"
+
+msgid "auto"
+msgstr "automatisch"

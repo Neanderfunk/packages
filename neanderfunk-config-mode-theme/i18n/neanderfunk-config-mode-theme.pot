@@ -4,15 +4,11 @@ msgstr "Content-Type: text/plain; charset=UTF-8"
 msgid "JavaScript required!"
 msgstr ""
 
-msgid ""
-"You must enable JavaScript in your browser or the web interface will not "
-"work properly."
+msgid "Open %s in your normal browser."
 msgstr ""
 
-msgid ""
-"Opened from the sign-in notice of your phone or laptop? That window cannot "
-"upload files, the upload button then simply does nothing."
+msgid "The sign-in window of your phone cannot upload files."
 msgstr ""
 
-msgid "Open %s in your normal browser instead."
+msgid "You must enable JavaScript in your browser or the web interface will not work properly."
 msgstr ""

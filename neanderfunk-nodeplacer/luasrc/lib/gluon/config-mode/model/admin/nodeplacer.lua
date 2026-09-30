@@ -19,9 +19,8 @@ if not uci:get('nodeplacer', 'settings') then
 end
 
 local f = Form(pkg_i18n.translate('Nodeplacer'), pkg_i18n.translate(
-	'Nodeplacer can move this node to another domain of the community '
-	.. 'when a signed instruction for it is published. You can forbid '
-	.. 'that here.'))
+	'Nodeplacer can move this node to another domain via a signed '
+	.. 'instruction. Untick to prevent this.'))
 
 local s = f:section(Section)
 

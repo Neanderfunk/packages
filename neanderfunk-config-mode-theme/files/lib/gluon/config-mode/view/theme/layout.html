@@ -118,8 +118,8 @@ dispatcher tree, below that the pages of the current category as tabs.
 			local base = 'http://' .. addr
 			local link = '<a href="' .. pcdata(base .. url(request)) .. '">' .. pcdata(base) .. '</a>'
 	%>
-	<p class="gluon-warning"><%|t.translate('Opened from the sign-in notice of your phone or laptop? That window cannot upload files, the upload button then simply does nothing.')%>
-	<%=t.translatef('Open %s in your normal browser instead.', link)%></p>
+	<p class="gluon-warning"><%|t.translate('The sign-in window of your phone cannot upload files.')%>
+	<%=t.translatef('Open %s in your normal browser.', link)%></p>
 	<% end %>
 	<%
 		ok, err = pcall(renderer.render, content, scope, pkg)

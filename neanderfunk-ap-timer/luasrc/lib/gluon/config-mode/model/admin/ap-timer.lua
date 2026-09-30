@@ -15,8 +15,8 @@ if not uci:get('ap-timer', 'all') then
 	uci:section('ap-timer', 'day', 'all')
 end
 
-local f = Form(pkg_i18n.translate('AP Timer'), pkg_i18n.translate(
-	'You can setup the AP Timer here'))
+local f = Form(pkg_i18n.translate('AP timer'), pkg_i18n.translate(
+	'Switches the client WLAN on and off on a schedule.'))
 
 local sec1 = f:section(Section)
 
@@ -40,7 +40,7 @@ end
 
 local sec2 = f:section(Section)
 
-local on = sec2:option(DynamicList, 'on', pkg_i18n.translate('ON'))
+local on = sec2:option(DynamicList, 'on', pkg_i18n.translate('On'))
 on.default = uci:get_list('ap-timer', 'all', 'on')
 on.placeholder = '06:30'
 on:depends(timer_type, 'day')
@@ -50,7 +50,7 @@ function on:write(data)
 	uci:set_list('ap-timer', 'all', 'on', data)
 end
 
-local off = sec2:option(DynamicList, 'off', pkg_i18n.translate('OFF'))
+local off = sec2:option(DynamicList, 'off', pkg_i18n.translate('Off'))
 off.default = uci:get_list('ap-timer', 'all', 'off')
 off.placeholder = '23:00'
 off:depends(timer_type, 'day')

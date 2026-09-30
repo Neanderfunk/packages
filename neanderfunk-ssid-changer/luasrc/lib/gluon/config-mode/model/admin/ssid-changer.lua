@@ -2,11 +2,13 @@ local uci = require('simple-uci').cursor()
 
 local pkg_i18n = i18n 'neanderfunk-ssid-changer'
 
-local f = Form(pkg_i18n.translate('Offline-SSID'))
+local f = Form(pkg_i18n.translate('Offline SSID'))
 
 local s = f:section(Section, nil, pkg_i18n.translate(
-	'Here you can enable to automatically change the SSID to the Offline-SSID '
-	.. 'when the node has no connection to the selected Gateway.'
+	'Without a connection to the Freifunk network, the node sends an Offline '
+	.. 'SSID instead of the normal one, so devices don\'t connect while there '
+	.. 'is no internet. If the Offline SSID contains the node name, a faulty '
+	.. 'device is easier to find.'
 ))
 
 local enabled = s:option(Flag, 'enabled', pkg_i18n.translate('Enabled'))

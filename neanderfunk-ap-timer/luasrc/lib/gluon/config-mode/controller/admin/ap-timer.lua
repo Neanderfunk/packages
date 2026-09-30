@@ -11,5 +11,5 @@ package 'neanderfunk-ap-timer'
 local visible = site.ap_timer.web(true) or uci:get_bool('ap-timer', 'settings', 'enabled')
 
 if wireless.device_uses_wlan(uci) and visible then
-	entry({"admin", "ap-timer"}, model("admin/ap-timer"), _("AP Timer"), 30)
+	entry({"admin", "ap-timer"}, model("admin/ap-timer"), _("AP timer"), 30)
 end

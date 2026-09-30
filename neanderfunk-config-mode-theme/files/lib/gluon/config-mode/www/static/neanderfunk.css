@@ -315,6 +315,10 @@ details[open] .chev { transform: rotate(180deg); }
 .status .dot { margin-left: 0; }
 .status.bad { color: var(--danger); }
 .btns { display: flex; gap: 8px; }
+/* "Save and restart": restart symbol before the word, so it differs visibly
+   from the plain "Save" of the advanced pages */
+#nf-save { display: inline-flex; align-items: center; gap: 6px; }
+#nf-save .nf-restart { flex: none; }
 @container app (max-width: 560px) {
 	/* phone: status and button in one row, the bar covers less of the form */
 	.actions { bottom: 10px; }

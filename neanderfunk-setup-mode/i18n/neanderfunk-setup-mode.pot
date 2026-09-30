@@ -1,19 +1,19 @@
 msgid ""
 msgstr "Content-Type: text/plain; charset=UTF-8"
 
-msgid "%d changes, not saved yet"
+msgid "%d SSH keys"
 msgstr ""
 
 msgid "%d fields need a correction. Nothing was saved."
 msgstr ""
 
-msgid "%d SSH keys"
-msgstr ""
-
-msgid "1 change, not saved yet"
+msgid "%d unsaved changes"
 msgstr ""
 
 msgid "1 SSH key"
+msgstr ""
+
+msgid "1 unsaved change"
 msgstr ""
 
 msgid "A number from %s to %s."
@@ -31,16 +31,7 @@ msgstr ""
 msgid "At most %s characters."
 msgstr ""
 
-msgid "changed"
-msgstr ""
-
-msgid "Client"
-msgstr ""
-
-msgid "collapsed, open only when needed"
-msgstr ""
-
-msgid "Information and firmware upgrade: at the very top right."
+msgid "Info and firmware: top right."
 msgstr ""
 
 msgid "Internet connection"
@@ -52,22 +43,10 @@ msgstr ""
 msgid "Log in with the SSH keys above only. Without keys there is no remote access at all."
 msgstr ""
 
-msgid "Mesh"
-msgstr ""
-
-msgid "new password"
+msgid "No SSH keys"
 msgstr ""
 
 msgid "No changes"
-msgstr ""
-
-msgid "no client"
-msgstr ""
-
-msgid "no password"
-msgstr ""
-
-msgid "No SSH keys"
 msgstr ""
 
 msgid "Node"
@@ -100,12 +79,6 @@ msgstr ""
 msgid "Outdoor installation"
 msgstr ""
 
-msgid "password set"
-msgstr ""
-
-msgid "password will be removed"
-msgstr ""
-
 msgid "Please check this input."
 msgstr ""
 
@@ -118,7 +91,10 @@ msgstr ""
 msgid "Remove password"
 msgstr ""
 
-msgid "Save & restart"
+msgid "Save"
+msgstr ""
+
+msgid "Save and restart"
 msgstr ""
 
 msgid "Saving..."
@@ -140,4 +116,37 @@ msgid "This field is required."
 msgstr ""
 
 msgid "This section could not be loaded."
+msgstr ""
+
+msgid "auto"
+msgstr ""
+
+msgid "changed"
+msgstr ""
+
+msgid "client"
+msgstr ""
+
+msgid "collapsed, open only when needed"
+msgstr ""
+
+msgid "mesh"
+msgstr ""
+
+msgid "new password"
+msgstr ""
+
+msgid "no client"
+msgstr ""
+
+msgid "no password"
+msgstr ""
+
+msgid "password set"
+msgstr ""
+
+msgid "password will be removed"
+msgstr ""
+
+msgid "static"
 msgstr ""

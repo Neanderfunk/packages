@@ -1,7 +1,7 @@
 msgid ""
 msgstr "Content-Type: text/plain; charset=UTF-8"
 
-msgid "AP Timer"
+msgid "AP timer"
 msgstr ""
 
 msgid "Daily"
@@ -10,14 +10,14 @@ msgstr ""
 msgid "Enabled"
 msgstr ""
 
-msgid "OFF"
+msgid "Off"
 msgstr ""
 
-msgid "ON"
+msgid "On"
+msgstr ""
+
+msgid "Switches the client WLAN on and off on a schedule."
 msgstr ""
 
 msgid "Type"
-msgstr ""
-
-msgid "You can setup the AP Timer here"
 msgstr ""

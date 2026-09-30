@@ -89,9 +89,26 @@
 				if (!head || (!client && !mesh)) return;
 				var t = client && client.checked ? T.client : T.noclient;
 				if (mesh && mesh.checked) t += ' + ' + T.mesh;
-				parts.push(head.textContent.trim() + ': ' + t);
+				/* Band kurz und mit Punkt ("2.4 GHz"), die Ueberschrift ist Gluons
+				   "2,4GHz-WLAN" bzw. "2.4GHz WLAN". */
+				var h = head.textContent.trim();
+				var band = /2[.,]4/.test(h) ? '2.4 GHz' : /(^|\D)5\s*GHz/i.test(h) ? '5 GHz' : /(^|\D)6\s*GHz/i.test(h) ? '6 GHz' : h;
+				parts.push(band + ': ' + t);
 			});
 			return parts.join(' · ');
+		},
+		/* Kurzform nur hier, im Formular bleiben Gluons lange Texte. */
+		'network': function (g) {
+			function v(name) {
+				var s = g.querySelector('select[name$=".' + name + '"]');
+				return s ? s.value : '';
+			}
+			var w4 = { dhcp: 'DHCP', 'static': T['static'], none: T.off }[v('ipv4')];
+			var w6 = { dhcpv6: T.auto, 'static': T['static'], none: T.off }[v('ipv6')];
+			var parts = [];
+			if (w4) parts.push('IPv4 ' + w4);
+			if (w6) parts.push('IPv6 ' + w6);
+			return parts.join(' \u00b7 ');
 		},
 		'remote': function (g) {
 			var ta = g.querySelector('textarea');
