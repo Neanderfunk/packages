@@ -389,12 +389,31 @@ local function repair_committed_offline_ssid()
 		uci:set('wireless', name, 'ssid', ssid)
 		local owe = 'owe_' .. radio['.name']
 		if uci:get('wireless', owe) then
-			uci:set('wireless', owe, 'disabled', uci:get_bool('wireless', name, 'disabled'))
+			uci:set('wireless', owe, 'disabled', uci_is(true, 'wireless', name, 'disabled'))
 		end
 		repaired = true
 	end)
 	if repaired then uci:save('wireless') end
 	return repaired
+end
+
+-- Undo only what this script put into the wireless delta: the SSID of the
+-- client APs and "disabled" of the OWE BSS. A full uci:revert('wireless')
+-- also threw away the delta of neanderfunk-ap-timer, so a node coming back
+-- online during the timer's off time switched its client WLAN back on.
+-- The OWE BSS follows its client AP: if ap-timer has that one off, it stays
+-- off as well (the same rule as repair_committed_offline_ssid()).
+local function revert_offline_delta()
+	for _, section in ipairs(radio_sections('client')) do
+		uci:revert('wireless', section, 'ssid')
+	end
+	for _, section in ipairs(radio_sections('owe')) do
+		uci:revert('wireless', section, 'disabled')
+		if uci_is(true, 'wireless', (section:gsub('^owe_', 'client_')), 'disabled') then
+			uci:set('wireless', section, 'disabled', '1')
+		end
+	end
+	uci:save('wireless')
 end
 
 if status == 'online' then
@@ -407,7 +426,7 @@ if status == 'online' then
 	local stuck = io.open(tmp_poisoned) ~= nil and offline_ssid_is_configured()
 	if off_count > 0 or (offline_ssid_is_configured() and not stuck) then
 		log("reverting offline ssid back to default wireless config")
-		uci:revert('wireless')
+		revert_offline_delta()
 		if offline_ssid_is_configured() then
 			local f = io.open(tmp_poisoned, 'w')
 			if f then f:close() end
@@ -472,8 +491,9 @@ elseif status == 'offline' then
 					uci:set('wireless', section, 'disabled', 1)
 				end
 			end
-			-- save does not commit; der Rueckweg macht uci:revert('wireless')
-			-- und verwirft damit auch das disabled der OWE-Interfaces wieder.
+			-- save does not commit; der Rueckweg revert_offline_delta() nimmt SSID
+			-- und OWE-disabled zurueck (OWE bleibt aus, wenn ap-timer den
+			-- Client-AP ausgeschaltet hat).
 			uci:save('wireless')
 			-- Gezaehlt wird die Entscheidung. Scheitert wifi_reconf, traegt der
 			-- uci-Delta die Offline-SSID trotzdem, und dieser Zweig laeuft fuer
