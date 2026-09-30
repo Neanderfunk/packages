@@ -495,24 +495,22 @@ static struct json_object * collect_wireless(void) {
 		}
 
 		/*
-		 * SSID des OWE-BSS (oweN) und des privaten WLANs (wl-wanN), wie
-		 * Gluon sie nach dem Radio benennt; leer, wenn das Interface fehlt
-		 * oder nicht laeuft (abgeschaltet, auch durch ap-timer/ssid-changer).
-		 * Nur ueber nl80211 vom laufenden Interface, nie aus der uci-Config:
-		 * die Zugangsdaten des privaten WLANs liest dieses Modul gar nicht
-		 * erst, auch nicht in den Speicher (adorfer, 01.10.2026).
+		 * SSID des OWE-BSS (oweN), per nl80211 vom laufenden Interface; leer,
+		 * wenn es fehlt oder nicht laeuft (abgeschaltet, auch durch ap-timer
+		 * oder ssid-changer).
+		 *
+		 * Vom privaten WLAN (wl-wanN) nur, OB es laeuft - keine SSID: die
+		 * respondd-Daten holen Karte und Kollektoren ab, und die SSID eines
+		 * privaten WLANs verraet oft Name oder Adresse des Betreibers
+		 * (adorfer, 01.10.2026). Die Statusseite zeigt sie lokal. Die
+		 * Zugangsdaten liest dieses Modul ohnehin nie, auch nicht in den
+		 * Speicher.
 		 */
 		char owe_ssid[IWINFO_ESSID_MAX_SIZE + 1] = "";
-		char private_ssid[IWINFO_ESSID_MAX_SIZE + 1] = "";
 		if (has_owe) {
 			const struct iwinfo_ops *iwo = iwinfo_backend(owe);
 			if (!iwo || iwo->ssid(owe, owe_ssid))
 				owe_ssid[0] = 0;
-		}
-		if (has_wan) {
-			const struct iwinfo_ops *iwp = iwinfo_backend(wan);
-			if (!iwp || iwp->ssid(wan, private_ssid))
-				private_ssid[0] = 0;
 		}
 
 		struct json_object *r = json_object_new_object();
@@ -520,7 +518,7 @@ static struct json_object * collect_wireless(void) {
 		json_object_object_add(r, "htmode", json_object_new_string(htmode_name(htmode)));
 		json_object_object_add(r, "ssid", json_object_new_string(ssid));
 		json_object_object_add(r, "owe_ssid", json_object_new_string(owe_ssid));
-		json_object_object_add(r, "private_ssid", json_object_new_string(private_ssid));
+		json_object_object_add(r, "private", json_object_new_boolean(has_wan));
 		json_object_object_add(r, "txpower", json_object_new_int(txpower));
 		json_object_object_add(r, "country", json_object_new_string(country));
 		json_object_object_add(r, "mesh", json_object_new_boolean(has_mesh && netdev_up(mesh)));

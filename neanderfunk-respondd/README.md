@@ -83,7 +83,7 @@ innerhalb von `temperature` kann ein Sensor von Abfrage zu Abfrage fehlen.
 "neanderfunk": {
   "wireless": {
     "radio0": { "channel": 5, "htmode": "HE20", "ssid": "Freifunk",
-                "owe_ssid": "Freifunk verschluesselt", "private_ssid": "",
+                "owe_ssid": "Freifunk verschluesselt", "private": false,
                 "txpower": 20, "country": "DE", "mesh": true }
   },
   "ssid_changer": { "offline": 0, "switches": 0, "gateway_losses": 0 },
@@ -106,10 +106,13 @@ existiert (OWE und privates nur, wenn sie laufen).
 - `ssid`: die gerade ausgestrahlte Client-SSID - während der Offline-Phase
   also die Offline-SSID. Ohne Client-AP (etwa vom ap-timer abgeschaltet):
   `""`.
-- `owe_ssid`, `private_ssid`: SSID des OWE-BSS bzw. des privaten WLANs,
-  `""`, wenn es aus ist (auch durch ap-timer oder ssid-changer) oder fehlt.
-  Nur per nl80211 vom laufenden Interface: die Zugangsdaten des privaten
-  WLANs liest das Modul gar nicht erst, auch nicht in den Speicher. Aus
+- `owe_ssid`: SSID des OWE-BSS, `""`, wenn es aus ist (auch durch ap-timer
+  oder ssid-changer) oder fehlt; per nl80211 vom laufenden Interface.
+- `private`: ob das private WLAN (`wl-wan<N>`) gerade laeuft. Bewusst ohne
+  SSID: die respondd-Daten gehen an Karte und Kollektoren, und die SSID
+  eines privaten WLANs verraet oft Name oder Adresse (adorfer). Die
+  Statusseite zeigt sie lokal. Die Zugangsdaten liest das Modul nie, auch
+  nicht in den Speicher. Aus
   demselben Grund kein libuci mehr: `preserve_channels` kommt per
   `uci -q get` aus einem eigenen Prozess, weil `uci_load("gluon")` auch
   `gluon.wireless.private_key` laden würde.

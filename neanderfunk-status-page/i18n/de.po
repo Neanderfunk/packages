@@ -54,3 +54,6 @@ msgstr "jetzt offline (0/1) / Offline-SSID geschaltet seit Start / Gateway verlo
 
 msgid "off"
 msgstr "aus"
+
+msgid "on"
+msgstr "an"

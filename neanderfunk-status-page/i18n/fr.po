@@ -54,3 +54,6 @@ msgstr "hors ligne maintenant (0/1) / SSID hors ligne activé depuis le démarra
 
 msgid "off"
 msgstr "éteint"
+
+msgid "on"
+msgstr "allumé"
