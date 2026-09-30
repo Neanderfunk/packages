@@ -229,3 +229,13 @@ allen Zielen, die wir bauen — ath79 (generic/nand/mikrotik), ramips mt7621,
 mediatek filogic und mt7622, x86 — ist `CONFIG_MAGIC_SYSRQ=y`. Das `[ -w ]` vor
 dem Schreiben bleibt trotzdem stehen, für den Fall, dass ein Ziel dazukommt, wo
 das nicht gilt.
+
+## Privates WLAN ohne WPA3 (`300-neanderfunk-private-wifi-wpa3`)
+
+Gluon 2025.1 baut lowmem_singleradio-Geräte (1043 v2-v5, CPE210/220, WBS210,
+OM2P, UniFi AP Outdoor+ ...) mit hostapd-mini, ohne das Feature `wpa3`. Unter
+2023.2 hatten sie WPA3. Stand das private WLAN auf `sae` oder `sae-mixed`, war
+es nach dem Update weg, denn Gluon stellt die Verschlüsselung nicht selbst
+zurück. Das Upgrade-Skript setzt `gluon.wireless.private_encryption` dann auf
+`psk2` - nach 022-wireless-roles (das den alten Wert aus `wan_radioN` holt) und
+vor 325-gluon-private-wifi. Kein commit, das macht 998.
