@@ -12,8 +12,15 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 
+/* uci boolean like OpenWrt's shell get_bool: 1/true/yes/on/enabled */
+static bool uci_true(const char *v)
+{
+	return v && (!strcmp(v, "1") || !strcmp(v, "true") || !strcmp(v, "yes") ||
+		     !strcmp(v, "on") || !strcmp(v, "enabled"));
+}
 
 static const char *const state_file = "/tmp/nodeplacer.state";
 
@@ -63,7 +70,7 @@ static struct json_object * get_nodeplacer(void) {
 	struct json_object *ret = json_object_new_object();
 
 	const char *disable = uci_lookup_option_string(ctx, s, "disable");
-	json_object_object_add(ret, "enabled", json_object_new_boolean(!(disable && !strcmp(disable, "1"))));
+	json_object_object_add(ret, "enabled", json_object_new_boolean(!uci_true(disable)));
 
 	add_state(ret);
 

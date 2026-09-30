@@ -76,7 +76,9 @@ end
 
 -- Preconditions -------------------------------------------------------------
 
-if uci:get_bool('nodeplacer', 'settings', 'disable') then
+-- any spelling OpenWrt accepts for "true"; simple-uci's get_bool knows only "1"
+local disable = uci:get('nodeplacer', 'settings', 'disable')
+if disable == '1' or disable == 'true' or disable == 'yes' or disable == 'on' or disable == 'enabled' then
 	os.exit(0)
 end
 

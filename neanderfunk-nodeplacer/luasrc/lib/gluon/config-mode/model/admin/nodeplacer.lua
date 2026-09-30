@@ -25,7 +25,8 @@ local f = Form(pkg_i18n.translate('Nodeplacer'), pkg_i18n.translate(
 local s = f:section(Section)
 
 local enabled = s:option(Flag, 'enabled', pkg_i18n.translate('Enabled'))
-enabled.default = not uci:get_bool('nodeplacer', 'settings', 'disable')
+local disable = uci:get('nodeplacer', 'settings', 'disable')
+enabled.default = not (disable == '1' or disable == 'true' or disable == 'yes' or disable == 'on' or disable == 'enabled')
 enabled.optional = false
 function enabled:write(data)
 	uci:set('nodeplacer', 'settings', 'disable', not data)
