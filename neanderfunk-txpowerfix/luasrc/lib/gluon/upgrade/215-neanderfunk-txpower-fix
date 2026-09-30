@@ -98,7 +98,9 @@ end
 local txpower_state
 if sysconfig[TXPOWER_CLEANED] then
 	txpower_state = 'untouched'
-elseif uci:get_bool('gluon', 'wireless', 'preserve_txpower') then
+-- preserve_txpower is our own key: every OpenWrt spelling of "true" (simple-uci's
+-- get_bool knows only "1"). preserve_channels above is Gluon's and stays get_bool.
+elseif ({ ['1'] = true, ['true'] = true, yes = true, on = true, enabled = true })[uci:get('gluon', 'wireless', 'preserve_txpower')] then
 	txpower_state = 'preserved'
 else
 	txpower_state = 'cleaned up once'
