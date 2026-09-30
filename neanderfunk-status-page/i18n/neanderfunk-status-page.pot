@@ -25,6 +25,9 @@ msgstr ""
 msgid "Offline SSID"
 msgstr ""
 
+msgid "Private WLAN"
+msgstr ""
+
 msgid "RAM/Flash"
 msgstr ""
 
@@ -41,4 +44,7 @@ msgid "now offline (0/1)"
 msgstr ""
 
 msgid "now offline (0/1) / Offline SSID switched on since boot / gateway lost since boot"
+msgstr ""
+
+msgid "off"
 msgstr ""
