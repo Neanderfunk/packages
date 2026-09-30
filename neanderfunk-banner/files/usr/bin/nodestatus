@@ -47,6 +47,18 @@ do
 		}
 	end
 end
+
+-- uci booleans. Gluon's own keys (gluon.wireless.preserve_channels, outdoor,
+-- mesh_vpn.*) and autoupdater.enabled are read by Gluon and the autoupdater
+-- as exactly "1" (simple-uci get_bool, strcmp) - those stay get_bool / == '1',
+-- or we would show a state the node does not have. Our own keys and
+-- wireless.*.disabled (netifd) accept every OpenWrt spelling.
+local function is_true(v)
+	return v == '1' or v == 'true' or v == 'yes' or v == 'on' or v == 'enabled'
+end
+local function is_false(v)
+	return v == '0' or v == 'false' or v == 'no' or v == 'off' or v == 'disabled'
+end
 local json
 do
 	local ok, j = pcall(require, 'jsonc')
@@ -323,7 +335,7 @@ local np
 if nodeinfo.software and nodeinfo.software.nodeplacer then
 	np = nodeinfo.software.nodeplacer.enabled and 1 or 0
 elseif uci:get('nodeplacer', 'settings') then
-	np = uci:get('nodeplacer', 'settings', 'disable') == '1' and 0 or 1
+	np = is_true(uci:get('nodeplacer', 'settings', 'disable')) and 0 or 1
 end
 row('Domain', site_code .. (domain and (' / ' .. domain) or '') .. (np and ('  NP:' .. np) or ''), cut(sname, room), '')
 
@@ -1279,7 +1291,7 @@ local sc_sending = (essid and essid:sub(1, #sc_prefix) == sc_prefix) or false
 -- gesetzt von "channel"), zusaetzlich zum globalen Schalter.
 local function band_kept(band)
 	return uci:get_bool('gluon', 'wireless', 'preserve_channels')
-		or uci:get_bool('gluon', 'wireless', 'preserve_channels_' .. band)
+		or is_true(uci:get('gluon', 'wireless', 'preserve_channels_' .. band))
 end
 local pc = uci:get('gluon', 'wireless', 'preserve_channels')
 local pctxt = ''
@@ -1288,7 +1300,7 @@ if uci:get_bool('gluon', 'wireless', 'preserve_channels') then
 else
 	local kept = {}
 	for _, band in ipairs({ '2g', '5g' }) do
-		if uci:get_bool('gluon', 'wireless', 'preserve_channels_' .. band) then
+		if is_true(uci:get('gluon', 'wireless', 'preserve_channels_' .. band)) then
 			table.insert(kept, band:upper())
 		end
 	end
@@ -1307,7 +1319,7 @@ if has_wifi then
 	-- Start / Gateway verloren seit Start. "aus" ohne Zaehler, wenn der
 	-- ssid-changer abgeschaltet ist; ohne ssid-changer keine Zeile.
 	if uci:get('ssid-changer', 'settings') then
-		if uci:get('ssid-changer', 'settings', 'enabled') == '0' then
+		if is_false(uci:get('ssid-changer', 'settings', 'enabled')) then
 			row('', 'Offline-SSID aus')
 		else
 			-- Rot nur, wenn die Offline-SSID wirklich gesendet wird; gilt der
@@ -1370,7 +1382,7 @@ for _, radio in ipairs(has_wifi and radios or {}) do
 		if hw then band = hw:find('a') and '5g' or '2g' end
 	end
 	country = country or uci:get('wireless', radio, 'country')
-	local rdisabled = uci:get('wireless', radio, 'disabled') == '1'
+	local rdisabled = is_true(uci:get('wireless', radio, 'disabled'))
 	local uci_ch = uci:get('wireless', radio, 'channel')
 	local uci_tx = uci:get('wireless', radio, 'txpower')
 

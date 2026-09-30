@@ -47,6 +47,14 @@
 -- Danach startet es nur die geaenderten Radios neu (wifi up <radio>).
 
 local uci = require('simple-uci').cursor()
+
+-- preserve_channels_<band> is our own key (neanderfunk-preserve-wifichannel):
+-- every OpenWrt spelling of "true". Gluon's global preserve_channels stays
+-- get_bool, Gluon itself only takes "1".
+local function band_key_on(band)
+	local v = uci:get('gluon', 'wireless', 'preserve_channels_' .. band)
+	return v == '1' or v == 'true' or v == 'yes' or v == 'on' or v == 'enabled'
+end
 local rawuci = require('uci')
 
 local BANDS = { '2g', '5g' }
@@ -180,7 +188,7 @@ end
 local function keep_state(band)
 	if uci:get_bool('gluon', 'wireless', 'preserve_channels') then
 		return 'fest (global)'
-	elseif uci:get_bool('gluon', 'wireless', 'preserve_channels_' .. band) then
+	elseif band_key_on(band) then
 		return 'fest'
 	end
 	return 'Update setzt auf Site zurueck'
@@ -656,7 +664,7 @@ if keep and #changes > 0 then
 		table.insert(notes, 'globales preserve_channels in die Band-Schluessel ueberfuehrt')
 	else
 		for _, ch in ipairs(changes) do
-			if not uci:get_bool('gluon', 'wireless', 'preserve_channels_' .. ch.band) then
+			if not band_key_on(ch.band) then
 				table.insert(gluon_sets, { 'wireless', 'preserve_channels_' .. ch.band, '1' })
 			end
 		end

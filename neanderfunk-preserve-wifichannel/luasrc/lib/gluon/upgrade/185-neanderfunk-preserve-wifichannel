@@ -14,6 +14,14 @@ local site = require 'gluon.site'
 local sysconfig = require 'gluon.sysconfig'
 local uci = require('simple-uci').cursor()
 
+-- preserve_channels_<band> is our own key (neanderfunk-preserve-wifichannel):
+-- every OpenWrt spelling of "true". Gluon's global preserve_channels stays
+-- get_bool, Gluon itself only takes "1".
+local function band_key_on(band)
+	local v = uci:get('gluon', 'wireless', 'preserve_channels_' .. band)
+	return v == '1' or v == 'true' or v == 'yes' or v == 'on' or v == 'enabled'
+end
+
 local PENDING = 'neanderfunk_preserve_wifichannel_pending'
 local CONTEXT = 'neanderfunk_preserve_wifichannel_context'
 local OUTDOOR = 'neanderfunk_preserve_wifichannel_outdoor'
@@ -187,7 +195,7 @@ if not global_on then
 	local keep, bands = {}, {}
 	uci:foreach('wireless', 'wifi-device', function(s)
 		local band = s.band
-		if not band or not uci:get_bool('gluon', 'wireless', 'preserve_channels_' .. band) then
+		if not band or not band_key_on(band) then
 			return
 		end
 		if site_changed or (band == '5g' and outdoor_changed) then

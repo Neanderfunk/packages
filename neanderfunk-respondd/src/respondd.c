@@ -375,6 +375,10 @@ static bool get_preserve_channels(void) {
 	if (!uci_load(ctx, "gluon", &p)) {
 		struct uci_section *s = uci_lookup_section(ctx, p, "wireless");
 		const char *v = s ? uci_lookup_option_string(ctx, s, "preserve_channels") : NULL;
+		/* Exactly "1", on purpose: Gluon reads this key with simple-uci's
+		 * get_bool, which knows only "1" (200-wireless, gluon.wireless).
+		 * Accepting true/yes/on here would report channels as preserved
+		 * that Gluon resets on the next update. */
 		ret = v && !strcmp(v, "1");
 	}
 	uci_free_context(ctx);

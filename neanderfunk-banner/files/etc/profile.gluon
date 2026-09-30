@@ -48,7 +48,7 @@ nf_uci_guard() {
 		rt="$rt
 $(command uci -q changes wireless | grep -E '^wireless\.owe_radio[0-9]+\.disabled=')"
 	fi
-	if [ "$(command uci -q get ap-timer.settings.enabled)" = 1 ]; then
+	if case "$(command uci -q get ap-timer.settings.enabled)" in 1|true|yes|on|enabled) true ;; *) false ;; esac; then
 		rt="$rt
 $(command uci -q changes wireless | grep -E '^wireless\.client_radio[0-9]+\.disabled=')"
 	fi
