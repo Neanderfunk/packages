@@ -4,35 +4,21 @@ This branch targets **Gluon 2025.1.x**. It was branched off `v2023.2.x` on
 2026-09-09 and is byte-identical to it at that point; differences appear only
 where 2025.1 makes them necessary.
 
-> ## Limited scope, roughly until 2026-11: wireless-less devices only
+> ## Status: in testing, not in production
 >
-> **Only the EdgeRouter X — a device without radios — is in scope for now.**
-> The point of this branch is getting the ERX through the automatic migration to
-> 2025.1; everything else comes later.
+> **Nodes in the field run Gluon 2023.2 and use `v2023.2.x`.** This branch is
+> what the 2025.1 test builds are made from (since 2026-09-27, four targets:
+> ath79-generic, mediatek-filogic, ramips-mt7621, x86-64), running on test
+> nodes only.
 >
-> What that means in practice:
->
-> * **The wired paths are the ones that matter here**: batman interfaces,
->   bridges and their ports, gateway and IPv6 anycast, the deadman watchdog,
->   load, respondd, dropbear, the autoupdater guards.
-> * **The wireless paths are untested on 2025.1.** They are known to bail out
->   cleanly on a node without radios — measured on a wifi-less node: ssid-changer,
->   wifi-blackout, check_wifi_firmware and IfNoWificlient all return within
->   0.00 s, write no log line and leave no marker. That is enough for the ERX and
->   is *not* a statement about nodes that do have radios.
-> * **Do not roll this branch out to nodes with radios** until the open points in
->   `docs/2025.1-regressionstest.md` have been checked on real hardware —
->   above all the radio naming and whether `rf_regval` still exists under mt76
->   in OpenWrt 24.10. (`mt7915-backlog` is gone from this branch — see below.)
->
-> **Removed on this branch:** `neanderfunk-erx-migrate` (only for the
-> intermediate Gluon 2023.2 image of the EdgeRouter X migration; no EdgeRouter X
-> images on 2025.1 for now) and `neanderfunk-mt7915-backlog`. OpenWrt 24.10 as
-> shipped with Gluon 2025.1 carries an in-driver fix for stuck mt7915 PLE queues
-> (`patches/openwrt/0012-mt7915-detect-and-purge-stuck-PLE-queues.patch`), which
-> is what that package worked around. It still exists on `v2023.2.x`.
->
-> For nodes in production, `v2023.2.x` remains the branch to use.
+> * **No EdgeRouter X images on 2025.1 for now**; those nodes stay on 2023.2.
+>   `neanderfunk-erx-migrate` is therefore gone from this branch.
+> * **`neanderfunk-mt7915-backlog` is gone as well.** OpenWrt 24.10 as shipped
+>   with Gluon 2025.1 carries an in-driver fix for stuck mt7915 PLE queues
+>   (`patches/openwrt/0012-mt7915-detect-and-purge-stuck-PLE-queues.patch`),
+>   which is what that package worked around. It still exists on `v2023.2.x`.
+> * Points that can only be settled on running hardware are listed in
+>   `docs/2025.1-regressionstest.md` ("Was der Prüfer NICHT abdeckt").
 
 For the previous branch, see `v2023.2.x`.
 
@@ -54,7 +40,8 @@ PACKAGES_NEANDERFUNK_BRANCH=v2023.2.x
 PACKAGES_NEANDERFUNK_COMMIT=<commit>
 ```
 
-Replace `<commit>` with a commit of the `v2023.2.x` branch. If your site
+Replace `<commit>` with a commit of the `v2023.2.x` branch (Gluon 2023.2;
+for a Gluon 2025.1 test build use `v2025.1.x` in both lines). If your site
 already uses other feeds, append `neanderfunk` to the existing
 `GLUON_SITE_FEEDS` instead of replacing it - in particular do not reuse the
 name `community`, that is the feed of freifunk-gluon/community-packages. Then
