@@ -60,7 +60,6 @@
 
 #include <iwinfo.h>
 #include <json-c/json.h>
-#include <uci.h>
 
 
 /* --- Helfer ---------------------------------------------------------------- */
@@ -364,25 +363,28 @@ static long long get_flash_bytes(void) {
 	return total;
 }
 
+/*
+ * Nicht ueber libuci: uci_load() laedt immer das ganze Paket, und in
+ * /etc/config/gluon steht seit Gluon 2025.1 auch gluon.wireless.private_key,
+ * der Schluessel des privaten WLANs. Der soll nie im Speicher dieses Daemons
+ * landen, der im Mesh auf Anfragen antwortet (adorfer, 01.10.2026). "uci get"
+ * in einem eigenen Prozess liefert nur den einen Wert zurueck. Kostet einen
+ * fork, aber nur je nodeinfo-Abfrage, und die cacht respondd 5 Minuten.
+ */
 static bool get_preserve_channels(void) {
-	bool ret = false;
-	struct uci_context *ctx = uci_alloc_context();
-	if (!ctx)
+	char v[8] = "";
+	FILE *f = popen("uci -q get gluon.wireless.preserve_channels", "r");
+	if (!f)
 		return false;
-	ctx->flags &= ~UCI_FLAG_STRICT;
-
-	struct uci_package *p;
-	if (!uci_load(ctx, "gluon", &p)) {
-		struct uci_section *s = uci_lookup_section(ctx, p, "wireless");
-		const char *v = s ? uci_lookup_option_string(ctx, s, "preserve_channels") : NULL;
-		/* Exactly "1", on purpose: Gluon reads this key with simple-uci's
-		 * get_bool, which knows only "1" (200-wireless, gluon.wireless).
-		 * Accepting true/yes/on here would report channels as preserved
-		 * that Gluon resets on the next update. */
-		ret = v && !strcmp(v, "1");
-	}
-	uci_free_context(ctx);
-	return ret;
+	if (!fgets(v, sizeof(v), f))
+		v[0] = 0;
+	pclose(f);
+	v[strcspn(v, "\n")] = 0;
+	/* Exactly "1", on purpose: Gluon reads this key with simple-uci's
+	 * get_bool, which knows only "1" (200-wireless, gluon.wireless).
+	 * Accepting true/yes/on here would report channels as preserved
+	 * that Gluon resets on the next update. */
+	return !strcmp(v, "1");
 }
 
 /*
@@ -444,9 +446,9 @@ static bool netdev_up(const char *ifname) {
  * Je Radio, was tatsaechlich laeuft, nicht was konfiguriert ist: Kanal und
  * HT-Modus aendern sich zur Laufzeit (ACS bei channel=auto), die SSID schaltet
  * der ssid-changer auf die Offline-SSID. Gluon benennt die Interfaces nach dem
- * Radio: client<N> und mesh<N> gehoeren zu radio<N>. Ein Radio erscheint,
- * sobald eines der beiden existiert; Kanal, HT-Modus, Leistung und Land kommen
- * vom Client-AP, sonst vom Mesh-Interface.
+ * Radio: client<N>, mesh<N>, owe<N> und wl-wan<N> gehoeren zu radio<N>. Ein
+ * Radio erscheint, sobald eines davon existiert; Kanal, HT-Modus, Leistung und
+ * Land kommen vom Client-AP, sonst vom Mesh-, OWE- oder privaten Interface.
  */
 #define WIRELESS_TTL 10
 
@@ -454,17 +456,24 @@ static struct json_object * collect_wireless(void) {
 	struct json_object *ret = json_object_new_object();
 
 	for (int i = 0; i < 4; i++) {
-		char client[IFNAMSIZ], mesh[IFNAMSIZ], radio[16];
+		char client[IFNAMSIZ], mesh[IFNAMSIZ], radio[16], owe[IFNAMSIZ], wan[IFNAMSIZ];
 		snprintf(client, sizeof(client), "client%d", i);
 		snprintf(mesh, sizeof(mesh), "mesh%d", i);
 		snprintf(radio, sizeof(radio), "radio%d", i);
+		snprintf(owe, sizeof(owe), "owe%d", i);
+		snprintf(wan, sizeof(wan), "wl-wan%d", i);
 
 		bool has_client = netdev_has(client, "");
 		bool has_mesh = netdev_has(mesh, "");
-		if (!has_client && !has_mesh)
+		bool has_owe = netdev_has(owe, "") && netdev_up(owe);
+		bool has_wan = netdev_has(wan, "") && netdev_up(wan);
+		/* auch ein Radio nur mit privatem WLAN (Rolle "private" ohne
+		 * "client") erscheint, sonst bliebe seine Zeile auf der
+		 * Statusseite leer */
+		if (!has_client && !has_mesh && !has_owe && !has_wan)
 			continue;
 
-		const char *dev = has_client ? client : mesh;
+		const char *dev = has_client ? client : has_mesh ? mesh : has_owe ? owe : wan;
 		const struct iwinfo_ops *iw = iwinfo_backend(dev);
 
 		int channel = 0, htmode = -1, txpower = 0;
@@ -485,10 +494,33 @@ static struct json_object * collect_wireless(void) {
 				ssid[0] = 0;
 		}
 
+		/*
+		 * SSID des OWE-BSS (oweN) und des privaten WLANs (wl-wanN), wie
+		 * Gluon sie nach dem Radio benennt; leer, wenn das Interface fehlt
+		 * oder nicht laeuft (abgeschaltet, auch durch ap-timer/ssid-changer).
+		 * Nur ueber nl80211 vom laufenden Interface, nie aus der uci-Config:
+		 * die Zugangsdaten des privaten WLANs liest dieses Modul gar nicht
+		 * erst, auch nicht in den Speicher (adorfer, 01.10.2026).
+		 */
+		char owe_ssid[IWINFO_ESSID_MAX_SIZE + 1] = "";
+		char private_ssid[IWINFO_ESSID_MAX_SIZE + 1] = "";
+		if (has_owe) {
+			const struct iwinfo_ops *iwo = iwinfo_backend(owe);
+			if (!iwo || iwo->ssid(owe, owe_ssid))
+				owe_ssid[0] = 0;
+		}
+		if (has_wan) {
+			const struct iwinfo_ops *iwp = iwinfo_backend(wan);
+			if (!iwp || iwp->ssid(wan, private_ssid))
+				private_ssid[0] = 0;
+		}
+
 		struct json_object *r = json_object_new_object();
 		json_object_object_add(r, "channel", json_object_new_int(channel));
 		json_object_object_add(r, "htmode", json_object_new_string(htmode_name(htmode)));
 		json_object_object_add(r, "ssid", json_object_new_string(ssid));
+		json_object_object_add(r, "owe_ssid", json_object_new_string(owe_ssid));
+		json_object_object_add(r, "private_ssid", json_object_new_string(private_ssid));
 		json_object_object_add(r, "txpower", json_object_new_int(txpower));
 		json_object_object_add(r, "country", json_object_new_string(country));
 		json_object_object_add(r, "mesh", json_object_new_boolean(has_mesh && netdev_up(mesh)));

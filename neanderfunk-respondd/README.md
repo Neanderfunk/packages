@@ -83,6 +83,7 @@ innerhalb von `temperature` kann ein Sensor von Abfrage zu Abfrage fehlen.
 "neanderfunk": {
   "wireless": {
     "radio0": { "channel": 5, "htmode": "HE20", "ssid": "Freifunk",
+                "owe_ssid": "Freifunk verschluesselt", "private_ssid": "",
                 "txpower": 20, "country": "DE", "mesh": true }
   },
   "ssid_changer": { "offline": 0, "switches": 0, "gateway_losses": 0 },
@@ -97,13 +98,21 @@ innerhalb von `temperature` kann ein Sensor von Abfrage zu Abfrage fehlen.
 ```
 
 **wireless** - was tatsächlich läuft, nicht die Konfiguration. Gluon benennt
-die Interfaces nach dem Radio: `client<N>` und `mesh<N>` gehören zu
-`radio<N>`. Ein Radio erscheint, sobald eines der beiden existiert.
+die Interfaces nach dem Radio: `client<N>`, `mesh<N>`, `owe<N>` und
+`wl-wan<N>` gehören zu `radio<N>`. Ein Radio erscheint, sobald eines davon
+existiert (OWE und privates nur, wenn sie laufen).
 - `channel`, `htmode` (`HT20`, `VHT80`, `HE80` …), `txpower` (dBm),
-  `country`: vom Client-AP, sonst vom Mesh-Interface.
+  `country`: vom Client-AP, sonst vom Mesh-, OWE- oder privaten Interface.
 - `ssid`: die gerade ausgestrahlte Client-SSID - während der Offline-Phase
   also die Offline-SSID. Ohne Client-AP (etwa vom ap-timer abgeschaltet):
   `""`.
+- `owe_ssid`, `private_ssid`: SSID des OWE-BSS bzw. des privaten WLANs,
+  `""`, wenn es aus ist (auch durch ap-timer oder ssid-changer) oder fehlt.
+  Nur per nl80211 vom laufenden Interface: die Zugangsdaten des privaten
+  WLANs liest das Modul gar nicht erst, auch nicht in den Speicher. Aus
+  demselben Grund kein libuci mehr: `preserve_channels` kommt per
+  `uci -q get` aus einem eigenen Prozess, weil `uci_load("gluon")` auch
+  `gluon.wireless.private_key` laden würde.
 - `mesh`: das Mesh-Interface ist oben. Bei 5 GHz `channel=auto` indoor ist
   es gewollt aus.
 

@@ -10,7 +10,7 @@ include $(TOPDIR)/../package/gluon.mk
 
 define Package/$(PKG_NAME)
   TITLE:=respondd module: hardware, radios, offline SSID, ethernet links, memory pressure, temperatures
-  DEPENDS:=+gluon-respondd +libiwinfo +libuci +libjson-c
+  DEPENDS:=+gluon-respondd +libiwinfo +libjson-c
 endef
 
 define Package/$(PKG_NAME)/description
