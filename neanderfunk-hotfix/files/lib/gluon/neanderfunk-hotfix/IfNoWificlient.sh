@@ -13,18 +13,16 @@ checks_ok || exit 0
 
 cliifs=$(/usr/sbin/brctl show | sed -n -e '/^br-client[[:space:]]/,/^\S/ { /^\(br-client[[:space:]]\|\t\)/s/^.*\t//p }' | grep -v "bat0\|eth\|local-port" | tr '\n' ' ')
 
+# Is any AP serving at all? Every client_radioN and owe_radioN (Gluon's OWE
+# BSS, which ap-timer and ssid-changer switch along), not a fixed radio0-2,
+# and "disabled" in every spelling netifd accepts (nf_true, common.sh).
 APoff=1
-for r in 0 1 2; do
-  if uci get wireless.radio$r &>/dev/null ; then
-    roff=$(uci get wireless.radio$r.disabled 2>/dev/null)
-    if [ -z $roff ] || [ ! "$roff" -eq "1" ] ; then
-      coff=$(uci get wireless.client_radio$r.disabled 2>/dev/null);
-      if [ -z $coff ] || [ ! "$coff" -eq "1" ] ; then
-        APoff=0
-       fi
-     fi
-   fi
- done
+for s in $(uci -q show wireless | sed -nE 's/^wireless\.((client|owe)_radio[0-9]+)=wifi-iface$/\1/p'); do
+  r=$(uci -q get wireless.$s.device)
+  nf_true "$(uci -q get wireless.$r.disabled)" && continue
+  nf_true "$(uci -q get wireless.$s.disabled)" && continue
+  APoff=0
+done
 
 [ "$APoff" -eq "1" ] && exit 0
 C_MACS=""
