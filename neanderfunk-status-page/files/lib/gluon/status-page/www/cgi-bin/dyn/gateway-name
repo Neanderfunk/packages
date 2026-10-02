@@ -1,0 +1,50 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Hostname eines batman-Gateways fuer die Statusseite (Patch
+# statuspage-gateway-name in gluon-patches-packages). Aufruf:
+#   /cgi-bin/dyn/gateway-name?<originator-mac>
+# Antwort: der Hostname als Text, leer, wenn er sich nicht ermitteln laesst.
+#
+# Das Gateway wird selbst gefragt, nichts wird aus der MAC geraten:
+#  1. batctl tg: die Unicast-Eintraege, die dieser Originator anmeldet.
+#     Darunter ist die MAC seiner bat-Schnittstelle (bei unseren Supernodes
+#     f2:be:ef:00:<NN>:<SS> zum Originator 02:ca:ff:ee:<NN>:<SS>).
+#  2. Daraus die EUI-64-Link-Local, respondd-Abfrage nodeinfo per Unicast.
+#  3. Gilt nur, wenn der Originator in den Mesh-Schnittstellen der Antwort
+#     steht, sonst hat irgendein Geraet dahinter geantwortet.
+# Ergebnis 1 h im RAM zwischengespeichert, "kein Name" 5 min, damit die
+# Seite (Abfrage je Gateway-Wechsel) den Knoten nicht beschaeftigt.
+
+echo 'Content-Type: text/plain; charset=utf-8'
+echo 'Cache-Control: no-cache'
+echo
+
+gw=$(echo "$QUERY_STRING" | sed 's/%3[aA]/:/g' | tr 'A-F' 'a-f')
+echo "$gw" | grep -qE '^([0-9a-f]{2}:){5}[0-9a-f]{2}$' || exit 0
+
+dir=/tmp/neanderfunk-gateway-name
+cache="$dir/$(echo "$gw" | tr -d ':')"
+if [ -f "$cache" ]; then
+	if [ -s "$cache" ]; then
+		[ -n "$(find "$cache" -mmin -60)" ] && { cat "$cache"; exit 0; }
+	else
+		[ -n "$(find "$cache" -mmin -5)" ] && exit 0
+	fi
+fi
+mkdir -p "$dir"
+
+name=
+for mac in $(batctl tg -H 2>/dev/null | awk -v o=" $gw " 'index($0, o) { print ($1 == "*") ? $2 : $1 }' |
+		grep -v -e '^33:33:' -e '^01:00:5e:' | sort -u | head -n 4); do
+	set -- $(echo "$mac" | tr ':' ' ')
+	ll="fe80::$(printf '%02x' $((0x$1 ^ 2)))$2:$3ff:fe$4:$5$6"
+	json=$(gluon-neighbour-info -i br-client -d "$ll" -p 1001 -t 2 -r nodeinfo 2>/dev/null) || continue
+	echo "$json" | jsonfilter -e '@.network.mesh[*].interfaces[*][*]' 2>/dev/null | grep -qx "$gw" || continue
+	name=$(echo "$json" | jsonfilter -e '@.hostname' 2>/dev/null)
+	[ -n "$name" ] && break
+done
+
+printf '%s' "$name" > "$cache"
+printf '%s' "$name"
