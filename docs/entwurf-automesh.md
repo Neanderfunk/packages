@@ -49,8 +49,13 @@ Erkennung "fremd hinter LAN", vom billigsten Merkmal zum teuersten:
    - **Echter Feldfall** (Kartenstand 29.09., Supernode-Session):
      Holzmichel-a36a (UniFi AC Mesh Pro, dus-13_dusfl) hat Gateway
      21_dias, Nexthop Holzmichel-c501 (nef-21_dias) am selben Standort.
-     Das ist eine 13/21-Brücke. Ob gewollt, entscheidet adorfer; als
-     Testfall taugt sie.
+     Das ist eine 13/21-Brücke: falsche Firmware, laut adorfer nie
+     bemerkt. Die Karte kennt den Knoten seit 09.12.2025, also lief das rund
+     zehn Monate unauffällig, weil beide Domains dieselben IPv4- und
+     öffentlichen IPv6-Präfixe haben. Genau dafür braucht es Fall A mit
+     Signalisierung. Abgleich Domain gegen Gateway-Byte über alle 1590
+     Online-Knoten (meshviewer.json, 02.10. 18:31): keine weitere
+     Abweichung.
 2. **Gateway nur über LAN erreichbar:** Alle eigenen Gateways sieht ein
    VPN-Knoten über mesh-vpn (die Supernodes einer Domain hängen untereinander
    im Backbone). Ein Gateway, für das `batctl o` keinen Weg über mesh-vpn
