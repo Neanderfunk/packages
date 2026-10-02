@@ -130,7 +130,10 @@ statt 333/100 (war vom Setup-Mode-Takt zu schwer zu unterscheiden) und der
 Upload-Hinweis oben.
 
 Am 03.10.2026 meldet adorfer: Das Anmeldefenster (Captive Portal) geht auch
-auf einem iPhone 14 Pro mit iOS 27.0.1.
+auf einem iPhone 14 Pro mit iOS 27.0.1. Getestet auf einem Cudy-Router mit
+Release 2023.2.6 (26091920sta). Der Paketcode ist in v2023.2.x und v2025.1.x
+gleich, nur die README unterscheidet sich. Unter Gluon 2025.1 steht der
+iPhone-Test noch aus.
 
 Tasten ohne Finger:
 `ACTION=released BUTTON=reset SEEN=1 /sbin/hotplug-call button`.
