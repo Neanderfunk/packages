@@ -498,7 +498,32 @@ Nummern wie im Review. "Festgelegt" heißt: so in den Entwurf übernommen.
 8. **"Antwortet nicht = nicht Heimat" ist die gefährliche Richtung:**
    festgelegt: 3 Versuche mit je 3 s. Gateways, die nicht antworten, werden
    im festen Takt (60 s) erneut gefragt, solange der Knoten `joined` oder
-   `merged` ist, nicht nur bei neuem Originator.
+   `merged` ist, nicht nur bei neuem Originator. Dazu der folgende
+   Grundsatz.
+
+**Grundsatz Fehlerrichtung: Eingriffe nur auf positiven Beleg** (Frage
+adorfer, 02.10.: Was, wenn ein Knoten mit richtiger Firmware von seinem
+Supernode keine respondd-Antwort bekommt, z. B. mesh-announce hängt?). Ein
+hängender respondd am Supernode trifft alle Knoten dahinter gleichzeitig. Er
+darf deshalb flottenweit nichts auslösen. Jede Entscheidung bekommt eine
+feste Richtung für "keine Antwort":
+
+| Entscheidung | Bei positiver Antwort | Bei keiner Antwort |
+|---|---|---|
+| Beitreten | braucht keine Abfrage, nur `gwl` leer | - |
+| Randknoten löst auf | Heimat -> auflösen | **auflösen**, wenn das Gateway über eine eigene Schnittstelle kommt oder das MAC-Schema die eigene Domain zeigt; sonst weiter fragen |
+| Fall A trennt LAN-Mesh | fremder `site_code` -> trennen | **nicht trennen** |
+| Zustand `merged` (Fall B) | fremder `site_code` -> `merged` | **nicht** `merged`, Zustand `gw_unverified` nur zur Anzeige |
+| Marker "Gateway gesehen" | Heimat -> setzen | **setzen** (der Knoten tritt dann nicht bei) |
+
+Ergebnis für den gefragten Fall: Ein normaler Knoten, dessen Supernode
+nicht antwortet, hat ein Gateway in `gwl`. Er tritt nicht bei, trennt
+nichts, meldet nicht `merged`, sondern nur `gw_unverified`
+(respondd-Feld, Statusseite, Banner, Syslog). Damit fällt der hängende
+respondd am Supernode auf der Karte und im Kollektor auf, ohne dass ein
+Knoten eingreift. Einzig ein Randknoten im Zustand `joined` löst auf. Das
+ist die harmlose Richtung: Schlimmstenfalls bleibt seine Wolke für die
+Sperrzeit ohne fremdes Gateway.
 9. **Wackelkontakt bei Fall A:** festgelegt: Neuprüfung nach hotplug
    frühestens 10 min nach dem letzten Trennen.
 10. **Heimat-Gateway kommt und geht:** festgelegt: Heimat-Gateway gilt erst
@@ -570,6 +595,6 @@ Nummern wie im Review. "Festgelegt" heißt: so in den Entwurf übernommen.
    - Login-Banner (neanderfunk-banner, profile.gluon/nodestatus): Hinweis
      beim SSH-Login.
    Zustände mindestens: `idle`, `island`, `probing`, `joined <netz>`,
-   `merged <netz>` (Fall B, R5), `lan_cut <netz>`.
+   `merged <netz>` (Fall B, R5), `lan_cut <netz>`, `gw_unverified`.
 7. Marker nur durch Heimat-Gateway? (R4) *offen*
 8. ssid-changer pausiert in `joined`/`merged`? (R18) *offen*
