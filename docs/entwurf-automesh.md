@@ -376,5 +376,9 @@ Folgen:
    Folge: Ein 64-MB-Knoten erkennt selbst keine Domain-Brücke. Die Trennung
    übernimmt dann ein Nachbar mit mehr RAM und VPN (Fall A wirkt von beiden
    Seiten, eine Seite genügt).
-5. Darf der Knoten für ein fremdes 11s-Mesh den Kanal wechseln?
+5. ~~Kanalwechsel für ein fremdes 11s-Mesh?~~ Entschieden 02.10.: ja. Nur
+   zur Laufzeit (uci-Delta plus `wifi reconf`), der AP wechselt mit. Beim
+   Verlassen wird das Delta verworfen und der alte Kanal kehrt zurück, ein
+   Reboot tut dasselbe. preserve_channels und channel-Befehl bleiben
+   unberührt, weil nichts committet wird.
 6. Signalisierung des Zustands: später (Punkt 5 der Ausgangsidee).
