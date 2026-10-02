@@ -174,9 +174,12 @@ auflösen, der angebunden hat, nicht irgendwer auf halbem Weg.
   Ein Knoten der Wolke hat sein VPN zurück, oder die Wolke hat wieder
   Anschluss an das übrige eigene Mesh. Bestätigung über das MAC-Schema
   (Byte 5 = eigene Domain), wo verfügbar.
-- Auslöser ist der batman-adv-uevent für Gateways (gw add/change über
-  hotplug), nicht ein Minuten-Takt. Die Reaktion kommt also nach Sekunden,
-  etwa ein OGM-Intervall plus Prüfzeit.
+- Auslöser nicht im Minuten-Takt: Der batman-adv-uevent (BATTYPE=gw,
+  add/change/del) kommt nur, wenn sich das **gewählte** Gateway ändert. Ein
+  neu auftauchendes eigenes Gateway ändert die Wahl wegen der Trägheit von
+  `gw_sel_class 1` oft nicht. Deshalb zusätzlich, solange der Knoten
+  beigetreten ist, `batctl gwl` alle ~10 s prüfen. Die Reaktion kommt also
+  nach Sekunden, etwa ein OGM-Intervall plus Prüfzeit.
 - Danach fremde Schnittstelle aus bat0, Laufzeitänderungen zurücknehmen,
   Sperrzeit gegen Pendeln.
 - Restrisiko: Für diese Sekunden sind beide Seiten verbunden. Ein Client
@@ -277,7 +280,7 @@ aber kein Paket im Image liest den Schlüssel. Er hat derzeit keine Wirkung
 ## 5. Eigenes Netz wieder in Sicht: verlassen
 
 **Hauptmerkmal seit Abschnitt 1a:** ein Gateway, das über eine eigene
-Schnittstelle kommt (uevent, `batctl o`). Die folgenden Merkmale ergänzen
+Schnittstelle kommt (`gwl`-Abfrage im 10-s-Takt plus uevent, `batctl o`). Die folgenden Merkmale ergänzen
 es, vor allem für den Fall, dass das eigene Netz ohne Gateway in Sicht kommt
 (dann ist Zusammenlegen ohnehin harmlos) oder zur Bestätigung.
 
