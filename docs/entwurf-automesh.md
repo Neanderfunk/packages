@@ -269,12 +269,32 @@ obwohl das eigene in Reichweite ist. Deshalb:
   zugleich, dazu Zufallsverzögerung und Abschnitt 5.
 - **RAM:** Ein großes fremdes Mesh bringt viele Originatoren und TT-Einträge
   mit. Auf 64-MB-Geräten vermutlich aus.
-- **Sichtbarkeit:** Unser Knoten erscheint mit Hostname, Kontakt und
-  Position auf der fremden Karte. Eventuell nodeinfo-Felder zur Laufzeit
-  ausblenden.
-- **Absprache:** Unsere Clients gehen über fremde Gateways ins Netz. Mit den
-  Nachbar-Communities sollte das abgesprochen sein. Eine Erlaubnisliste in
-  site.conf macht das steuerbar.
+- **Sichtbarkeit und Absprache: durch das Pico Peering Agreement gedeckt**
+  (PPA v1.0, picopeer.net, Leitlinie für alle Freifunk-Communities;
+  nachgelesen 02.10. auf Hinweis von adorfer):
+  - Die Präambel nennt als Ziel ausdrücklich, "diese Netzwerkinseln
+    miteinander zu verbinden". Der Abschnitt "PPA in der Praxis" sieht
+    "automatische Vernetzung" vor. automesh ist genau dieser Fall.
+  - §1 Freier Transit: Der Eigentümer bietet freien Transit an. Transit ist
+    laut Begriffserklärung der Datenaustausch "in ein Netzwerk hinein,
+    heraus oder durch ein Netzwerk hindurch". Der Weg über fremde Gateways
+    braucht also keine Einzelabsprache.
+  - §2 Offene Kommunikation: Der Eigentümer veröffentlicht alles, was für
+    die Verbindung nötig ist (Mesh-ID, Kanal, Seed bzw. VNI, site.conf),
+    und ist mindestens per E-Mail erreichbar. Dass unser Knoten mit
+    Hostname und Kontakt auf der fremden Karte erscheint, ist gewollt: So
+    kann die andere Community den Betreiber erreichen. Neu ist das ohnehin
+    nicht, Sammelkarten zeigen unsere Knoten schon heute, und der
+    Kontakt-Dialog im Config-Mode sagt, dass der Hinweis öffentlich im
+    Internet einsehbar ist (Koordinaten nur mit `share_location`). Nichts
+    ausblenden.
+  - Grenzen: §3 erlaubt, den Dienst jederzeit ohne Erklärung einzuschränken
+    oder einzustellen. §4 erlaubt eine eigene Nutzungsrichtlinie. DHCP gilt
+    laut Begriffserklärung als "zusätzlicher Dienst", nicht als Transit.
+    Daraus folgt: keine Erlaubnisliste, sondern eine **Sperrliste** für
+    Netze, die automatisches Beitreten ablehnen. Und wenn das fremde Netz
+    keinen Dienst liefert (kein DHCP, kein Gateway), ist das sein Recht.
+    Der Knoten tritt dann nach Frist wieder aus.
 
 ## 7. Konfiguration (Vorschlag)
 
@@ -283,7 +303,8 @@ obwohl das eigene in Reichweite ist. Deshalb:
       delay = 900,          -- Sekunden nach Boot
       lan = true,
       wifi = true,
-      allow = { },          -- leer = alle; sonst Mesh-IDs und VNIs
+      deny = { },           -- Netze, die automatisches Beitreten ablehnen (PPA §3/§4):
+                            -- domain_code, Mesh-IDs, VNIs
     },
 
 uci-Werte tolerant lesen (1/true/yes/on), wie in allen eigenen Paketen.
@@ -338,7 +359,9 @@ Folgen:
 
 1. v1 nur Einzelknoten-Inseln, oder auch Wolken ohne Gateway?
 2. Alle fremden Netze, nur die eigenen Domains oder auch Nachbarnetze aus
-   einer Liste (Abschnitt 9)? Wenn Nachbarn: welche?
+   einer Liste (Abschnitt 9)? Nach PPA reicht grundsätzlich eine
+   Sperrliste (Abschnitt 6); die Liste in Abschnitt 9 bleibt nur als
+   technische Hilfe (VNI, Mesh-ID, Kanal vorab bekannt).
 3. Gilt eine andere eigene Domain als "fremd" (Beitritt erlaubt) oder als
    "eigen" (Verlassen)?
 4. 64-MB-Geräte ausschließen?
