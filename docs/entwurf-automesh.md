@@ -27,10 +27,30 @@ Normalzustand her.
 
 Erkennung "fremd hinter LAN", vom billigsten Merkmal zum teuersten:
 
-1. **Gateway-MAC der Familie:** In 21_dias meldet `batctl gwl` den
-   Supernode als `02:ca:ff:ee:21:03`. Steckt die Domainnummer in der MAC
-   (beim Supernode-Repo bestätigen lassen), ist ein Gateway mit fremder
-   Nummer, das über `mesh_other` kommt, ein eindeutiger Beleg.
+1. **Gateway-MAC der Familie:** In `batctl gwl` (Spalte Router) und in
+   respondd `statistics.gateway` steht der Supernode als
+   `02:ca:ff:ee:<NN>:<SS>`. Das ist die MAC seines Hard-Interfaces br<NN>
+   und damit der batman-Originator (gemessen 02.10. an WDR3600 und MR90X in
+   21_dias: `02:ca:ff:ee:21:03`). Die Soft-Interface-MAC
+   `f2:be:ef:00:<NN>:<SS>` ist die node_id des Supernodes. Die Karte zeigt
+   sie, weil yanic die Gateway-MAC auf die node_id auflöst. Schema laut
+   Gateway-Ansible (Neanderfunk/Ansible-Freifunk-Gateway, Rolle
+   gateways_batman), bestätigt durch Supernode-Session und Felddaten:
+   - Byte 5 = Domainnummer in **Dezimalziffern** (21 -> `:21:`), Byte 6 =
+     Supernode (01 pasophae ... 06 ganymed). Mehrere Gateways je Domain
+     sind normal, Byte 6 ignorieren.
+   - Domain >= 100 sprengt das Schema. Ist Byte 5 keine gültige
+     Familiennummer (01-48), Merkmal nicht verwenden.
+   - `02:ca:ff:ee` ist kein Alleinstellungsmerkmal (vgl. die klassische
+     Ad-hoc-BSSID `02:ca:ff:ee:ba:be`). Es zählt nur das Muster
+     `02:ca:ff:ee:<gültige fremde Domainnummer>:<01-06>`.
+   - Befund: Ein solches Gateway mit fremder Nummer ist über `mesh_other`
+     erreichbar (nicht über mesh-vpn).
+   - **Echter Feldfall** (Kartenstand 29.09., Supernode-Session):
+     Holzmichel-a36a (UniFi AC Mesh Pro, dus-13_dusfl) hat Gateway
+     21_dias, Nexthop Holzmichel-c501 (nef-21_dias) am selben Standort.
+     Das ist eine 13/21-Brücke. Ob gewollt, entscheidet adorfer; als
+     Testfall taugt sie.
 2. **Gateway nur über LAN erreichbar:** Alle eigenen Gateways sieht ein
    VPN-Knoten über mesh-vpn (die Supernodes einer Domain hängen untereinander
    im Backbone). Ein Gateway, für das `batctl o` keinen Weg über mesh-vpn
@@ -78,13 +98,11 @@ Dienste an das fremde Netz anzupassen.
     next-node-DNS. Der dnsmasq fragt zuerst `V6PREFIX::5` (der eigene
     Supernode ist im fremden Mesh nicht da) und dann die öffentlichen
     Server aus `dns.servers` über das fremde Gateway.
-- **Offen bleibt nur DHCPv4 Option 6** (bei der Supernode-Session
-  angefragt). RDNSS kommt vom Gateway keins, siehe oben. Gibt das fremde
-  Gateway per DHCP seine next-node-IPv4 (`V4PREFIX.1` der fremden Domain)
-  als DNS aus, fragen die Clients eine Adresse, die lokal niemand
-  beantwortet. Die Antwort aus dem Mesh trägt die next-node-MAC und wird
-  verworfen. Dann müsste der Knoten diese IPv4 zusätzlich auf `local-node`
-  legen (Wert aus der Familienliste, Abschnitt 9).
+- **DNS vom Gateway:** DHCPv4 Option 6 und RDNSS nennen die eigene Adresse
+  des Supernodes in der Domain (`V4PREFIX.<server_id>`,
+  `V6PREFIX::<server_id>`), nicht next-node (Konfigurationsabsicht laut
+  Gateway-Ansible, nicht gemessen). Die ist im fremden Mesh erreichbar,
+  also auch hier nichts zu tun.
 - Austritt wie in Abschnitt 5: Kommt das eigene VPN hoch, wird aus Fall B
   Fall A. Dann trennen und die Dienste wieder herstellen.
 
