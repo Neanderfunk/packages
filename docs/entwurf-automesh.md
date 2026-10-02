@@ -1,615 +1,372 @@
 # Entwurf: neanderfunk-automesh
 
-Stand 02.10.2026. Vorüberlegung, noch kein Code. Wann es getestet werden
-kann, ist offen.
+Stand 02.10.2026, Fassung 2. Noch kein Code, Testtermin offen. Die
+Entstehung mit beiden Reviews der Buildsystem-Session steht in der
+Git-Historie dieser Datei (Fassung 1 bis 9bfdd64). Hier steht nur noch der
+bereinigte Stand. Herkunft einzelner Regeln in Klammern: (A) = Entscheidung
+adorfer, (R1-x) / (R2-x) = erstes bzw. zweites Review.
 
-Idee: Ein Knoten, der auf einer Insel steht (kein Gateway, kein eigener
-Nachbar), sucht auf dem LAN-Mesh und im WLAN nach batman-Meshes anderer
-Communities. Findet er eins, tritt er bei, damit seine Clients wieder ins
-Internet kommen. Taucht das eigene Netz wieder auf, verlässt er das fremde.
+## 1. Worum es geht
 
-## 0. Hauptfall: falsche Firmware oder falsche Domain am LAN-Mesh (adorfer, 02.10.)
+**Hauptfall: falsche Firmware oder falsche Domain am LAN-Mesh.** Wir fahren
+`mesh.vxlan = false`. Steckt ein Knoten einer anderen Domain im LAN-Mesh,
+verschmelzen beide Domains sofort über rohes batman (Domain-Brücke). Echter
+Feldfall: Holzmichel-a36a (UniFi AC Mesh Pro, Firmware dus-13_dusfl) hängt
+seit 09.12.2025 über Holzmichel-c501 im Mesh von 21_dias. Laut adorfer war es
+eine falsche Firmware und wurde nie bemerkt, weil beide Domains dieselben
+IPv4- und öffentlichen IPv6-Präfixe haben. Abgleich Domain gegen
+Gateway-Domain über alle 1590 Online-Knoten (02.10. 18:31): kein weiterer
+Fall.
 
-Der eigentliche Anlass ist nicht die fremde Community in der Luft, sondern
-ein Knoten mit falscher Firmware oder falsch gewählter Domain, der in ein
-LAN-Mesh gesteckt wird. Weil wir `mesh.vxlan = false` fahren, verschmelzen
-die beiden Domains dann sofort über rohes batman: eine Domain-Brücke. Sie zu
-verhindern ist ein gewollter Nebeneffekt. Daraus ergeben sich zwei Fälle.
+**Nebenfall: Insel.** Eine eigene Wolke ohne Gateway tritt einem fremden
+batman-Mesh bei, am LAN (VXLAN oder rohes batman) oder per 802.11s. Ein
+fremdes Gateway ist besser als keins (A).
 
-### Fall A: Knoten mit VPN sieht ein fremdes Netz hinter dem LAN-Mesh: trennen
+## 2. Begriffe
 
-Der Knoten hat seine eigenen Gateways über mesh-vpn. Kommen über die
-LAN-Mesh-Schnittstelle (`mesh_other`, ggf. mesh on WAN) Knoten eines fremden
-Netzes, wird diese LAN-Mesh-Verbindung zur Laufzeit getrennt:
-`ifdown mesh_other`. Damit nimmt netifd den batman-hardif sauber heraus,
-der Port selbst und ein eventueller Uplink bleiben. Ein Reboot stellt den
-Normalzustand her.
+- **Wolke**: alle Originatoren in bat0, die ohne automesh-Schnittstelle
+  erreichbar sind. Ein Einzelknoten ist eine Wolke der Größe 1. (R1-3)
+- **Insel**: Wolke ohne Gateway.
+- **Randknoten**: der eine Knoten, der eine fremde Verbindung hält.
+  Entweder ist er per automesh beigetreten (`joined`), oder er hat einen
+  fremden batman-Nachbarn direkt auf `mesh_other` (`merged`).
+- **Domainnummer eines Codes** (R2-1): `site_code` bzw. `domain_code`
+  normalisieren. Präfix bis einschließlich `-` abschneiden
+  (`nef-`, `dus-`, `bgl-`, `lvrsw-`), Suffix `_EOL` abschneiden, dann
+  `^([0-9][0-9])_` oder `^ffnefd([0-9][0-9])$`. Beispiele: `nef-21_dias`,
+  `nef-21_dias_EOL`, `21_dias` und `ffnefd21` ergeben alle 21.
+- **Eigene Domainnummer**: aus dem eigenen `site_code` zur Laufzeit, gleiche
+  Normalisierung. Es braucht keine Liste aus dem Bau.
+- **Heimat**: Code mit eigener Domainnummer, oder Code aus
+  `automesh.home_extra` (Altcodes, einmalig gegen die Kartencodes
+  geprüft).
+- **Fremd** (positiver Beleg): Ein Code ist vorhanden und hat eine **andere**
+  Domainnummer, oder er ist nicht normalisierbar und steht nicht in
+  `home_extra` (z. B. `ffw`, `wup`). Eine andere Domain der eigenen Familie
+  ist fremd (A).
+- **Unbekannt**: keine Antwort, Antwort ohne `site_code` und `domain_code`,
+  oder Antwort, die die Prüfkette nicht besteht. Unbekannt ist **nie**
+  fremd.
+- **Heimat-Gateway**: Gateway, dessen Antwort die Prüfkette (Abschnitt 4)
+  besteht und Heimat ist.
+- **Heimat-Hinweis**: Die Gateway-MAC zeigt die eigene Domainnummer
+  (`02:ca:ff:ee:<NN>:<SS>`, Abschnitt 4). Das ist ein Hinweis, kein Urteil.
+  Er zählt nur dort, wo ausdrücklich erlaubt.
+- **Familie**: Das RA-Präfix des fremden Netzes liegt in unseren Filtern
+  (`2a03:2260::/32`). IPv4 ist ohnehin `10.0.0.0/8`. Erkennbar nur am RA,
+  denn ein Gluon-Knoten hat auf br-client keine eigene IPv4-Lease. (R2-17)
 
-Erkennung "fremd hinter LAN", vom billigsten Merkmal zum teuersten:
+## 3. Grundsätze
 
-1. **Gateway-MAC der Familie:** In `batctl gwl` (Spalte Router) und in
-   respondd `statistics.gateway` steht der Supernode als
-   `02:ca:ff:ee:<NN>:<SS>`. Das ist die MAC seines Hard-Interfaces br<NN>
-   und damit der batman-Originator (gemessen 02.10. an WDR3600 und MR90X in
-   21_dias: `02:ca:ff:ee:21:03`). Die Soft-Interface-MAC
-   `f2:be:ef:00:<NN>:<SS>` ist die node_id des Supernodes. Die Karte zeigt
-   sie, weil yanic die Gateway-MAC auf die node_id auflöst. Schema laut
-   Gateway-Ansible (Neanderfunk/Ansible-Freifunk-Gateway, Rolle
-   gateways_batman), bestätigt durch Supernode-Session und Felddaten:
-   - Byte 5 = Domainnummer in **Dezimalziffern** (21 -> `:21:`), Byte 6 =
-     Supernode (01 pasophae ... 06 ganymed). Mehrere Gateways je Domain
-     sind normal, Byte 6 ignorieren.
-   - Domain >= 100 sprengt das Schema. Ist Byte 5 keine gültige
-     Familiennummer (01-48), Merkmal nicht verwenden.
-   - `02:ca:ff:ee` ist kein Alleinstellungsmerkmal (vgl. die klassische
-     Ad-hoc-BSSID `02:ca:ff:ee:ba:be`). Es zählt nur das Muster
-     `02:ca:ff:ee:<gültige fremde Domainnummer>:<01-06>`.
-   - Befund: Ein solches Gateway mit fremder Nummer ist über `mesh_other`
-     erreichbar (nicht über mesh-vpn).
-   - **Nach Review (R7): nur Auslöser, nie Urteil.** Das Urteil fällt die
-     respondd-Kette aus Abschnitt 1a. Das Schema hängt an 01-48 und
-     Supernode 01-06; ein siebter Supernode fiele heraus.
-   - **Echter Feldfall** (Kartenstand 29.09., Supernode-Session):
-     Holzmichel-a36a (UniFi AC Mesh Pro, dus-13_dusfl) hat Gateway
-     21_dias, Nexthop Holzmichel-c501 (nef-21_dias) am selben Standort.
-     Das ist eine 13/21-Brücke: falsche Firmware, laut adorfer nie
-     bemerkt. Die Karte kennt den Knoten seit 09.12.2025, also lief das rund
-     zehn Monate unauffällig, weil beide Domains dieselben IPv4- und
-     öffentlichen IPv6-Präfixe haben. Genau dafür braucht es Fall A mit
-     Signalisierung. Abgleich Domain gegen Gateway-Byte über alle 1590
-     Online-Knoten (meshviewer.json, 02.10. 18:31): keine weitere
-     Abweichung.
-2. **Gateway nur über LAN erreichbar:** Alle eigenen Gateways sieht ein
-   VPN-Knoten über mesh-vpn (die Supernodes einer Domain hängen untereinander
-   im Backbone). Ein Gateway, für das `batctl o` keinen Weg über mesh-vpn
-   kennt, sondern nur über `mesh_other`, gehört nicht zu uns. Das klappt
-   auch bei Netzen außerhalb der Familie.
-3. **Mengenschwelle:** mehr als N Originatoren (Vorschlag N = 12), deren
-   bester Weg über `mesh_other` geht und die über mesh-vpn nicht bekannt
-   sind. Das ist das Merkmal für fremde Netze ohne Gateway in Sicht. Die
-   Schwelle verhindert Fehlalarme durch einen einzelnen falsch geflashten
-   Nachbarn, der dann selbst trennt (Fall A gilt beidseitig, es reicht,
-   wenn eine Seite trennt).
-4. Zur Bestätigung respondd über Link-Local auf `mesh_other`
-   (`domain_code`, siehe Abschnitt 5).
+1. **Nur zur Laufzeit.** Kein `uci commit`. Interfaces über
+   `ubus call network add_dynamic`, WLAN über uci-Delta plus
+   `flock … wifi reconf`, Filter per `ebtables-tiny`. Ein Reboot stellt den
+   Normalzustand her. Ausnahme: Ein Kabel, das eine Brücke bildet, ist nach
+   dem Reboot wieder da. Deshalb prüft Fall A sofort nach dem Boot (R1-13).
+2. **Eingriffe nur auf positiven Beleg.** Trennen und `merged` nur bei
+   "fremd". "Unbekannt" löst nie einen Eingriff aus. Ein hängender respondd
+   am Supernode trifft alle Knoten dahinter gleichzeitig und darf flottenweit
+   nichts auslösen (Frage A). Die einzige Ausnahme ist die harmlose
+   Richtung: Ein Randknoten in `joined` löst lieber einmal zu viel auf.
+3. **Nie zwei Netze mit Gateways verbinden.** Eine Insel darf über einen
+   Randknoten an ein fremdes Netz. Taucht auf der eigenen Seite ein
+   Heimat-Gateway auf, löst der Randknoten **sofort** auf (R2-3).
+4. **Wer anbindet, löst auch auf.** Knoten auf halbem Weg greifen nicht ein,
+   solange ein Randknoten der eigenen Domain sich meldet (Abschnitt 7).
+5. **Pendeln wird durch Sperren gebremst, nicht durch Abwarten vor dem
+   Auflösen.** Hysterese gibt es nur in der Richtung "Heimat ist weg"
+   (2 min). Sperren wachsen exponentiell (Abschnitt 8).
+6. **Ein Werkzeug, ein Lock:** automesh, ap-timer, ssid-changer, scan-guard
+   und die hotfix-Checks greifen über `flock /var/lock/neanderfunk-wifi.lock`
+   ins WLAN (R1-16, R1-18).
+7. Shell und ein kleines C-Paket fürs Mitlesen, kein Lua-Daemon. Nicht auf
+   64-MB-Geräten (A).
 
-Erneut prüfen: nach Ablauf einer Sperrzeit (z. B. 6 h) oder wenn der Link
-neu hochkommt (Kabel umgesteckt, hotplug), `ifup mesh_other` und von vorn.
+## 4. Prüfkette: Wer ist dieses Gateway?
 
-Signalisierung (Ausgestaltung später): Zustand in `/tmp`, Feld im
-neanderfunk-respondd (z. B. `automesh: {state: "lan_cut", domain:
-"10_wlf"}`), Zeile auf der Statusseite, nodestatus im Banner, eine
-Syslog-Zeile an den Kollektor.
+Am WDR3600 durchgespielt (02.10.). Nur batman-adv und respondd:
 
-### Fall B: Knoten ohne VPN sieht ein fremdes Netz am LAN-Mesh: beitreten
+1. `batctl gwl`, Spalte Router: Originator, z. B. `02:ca:ff:ee:21:03`. Das
+   ist die MAC des Hard-Interfaces br<NN> des Supernodes.
+2. `batctl tg`: Unicast-Einträge dieses Originators (ohne `33:33:…` und
+   `01:00:5e:…`). Darunter ist die MAC seiner bat-Schnittstelle
+   (`f2:be:ef:00:21:03`, zugleich seine node_id).
+3. EUI-64-Link-Local daraus: `fe80::f0be:efff:fe00:2103`. Das ist auch der
+   Router im RA.
+4. `gluon-neighbour-info -i br-client -d <ll> -p 1001 -t 3 -r nodeinfo`.
+   kallisto antwortet mit `domain_code: ffnefd21`, `hostname:
+   kallisto_ffnefd21`, `vpn: true` und
+   `network.mesh.bat21.interfaces.tunnel: ["02:ca:ff:ee:21:03"]`.
+5. **Gültig nur**, wenn der Originator aus Schritt 1 in den
+   Mesh-Interfaces der Antwort steht. Sonst unbekannt.
+6. Code normalisieren (Abschnitt 2), dann Heimat, fremd oder unbekannt.
 
-Ohne VXLAN ist der Knoten dem fremden Mesh schon beigetreten, sobald das
-Kabel steckt: bat0 nimmt jeden batman-Nachbarn. Zu tun bleibt, die lokalen
-Dienste an das fremde Netz anzupassen.
+Versuche: 3 mal je 3 s. Abgefragt wird bei jedem neuen Originator in `gwl`
+und im 60-s-Takt für Gateways, die noch unbekannt sind (R1-8).
 
-- **"Lokaler dhcpd":** Einen DHCPv4-Server gibt es auf unseren Knoten nicht
-  (`dhcp.local_client.ignore=1`, nachgesehen am WDR3600). DHCPv4 kommt
-  schon heute vom Gateway. Lokal läuft nur **uradvd** (gluon-radvd) auf
-  `local-node`: ULA-`prefix6` plus RDNSS = next-node-ULA.
-- **ULA bleibt lokal, Filter beißt nicht** (adorfer; nachgesehen am WDR3600,
-  21_dias, 02.10.):
-  - Die ULA-Adresse auf br-client hat die Lebensdauern des lokalen uradvd
-    (preferred ~900 s, valid ~6840 s). Das öffentliche Präfix vom Gateway
-    hat 14400/86400 s. Das Gateway-RA bringt also nur das öffentliche
-    Präfix, kein ULA und kein RDNSS (`dns-server` leer).
-  - ULA ist damit nur der Notnagel für die Statusseite bzw. next-node, wenn
-    kein Supernode in Sicht ist. Verkehr Client -> next-node ist für die
-    Bridge INPUT, nicht FORWARD, und läuft an `LOCAL_FORWARD` vorbei.
-  - IPv4 `10.0.0.0/8` und öffentlich `2a03:2260::/32` decken alle Domains
-    der Familie. Am Filter ist nichts zu tun.
-  - uradvd kann sogar weiterlaufen: Die Clients fragen den lokalen
-    next-node-DNS. Der dnsmasq fragt zuerst `V6PREFIX::5` (der eigene
-    Supernode ist im fremden Mesh nicht da) und dann die öffentlichen
-    Server aus `dns.servers` über das fremde Gateway.
-- **DNS vom Gateway:** DHCPv4 Option 6 und RDNSS nennen die eigene Adresse
-  des Supernodes in der Domain (`V4PREFIX.<server_id>`,
-  `V6PREFIX::<server_id>`), nicht next-node (Konfigurationsabsicht laut
-  Gateway-Ansible, nicht gemessen). Die ist im fremden Mesh erreichbar,
-  also auch hier nichts zu tun.
-- Austritt wie in Abschnitt 5: Kommt das eigene VPN hoch, wird aus Fall B
-  Fall A. Dann trennen und die Dienste wieder herstellen.
+**MAC-Schema** (Gateway-Ansible des Maintainers, Rolle gateways_batman;
+Felddaten und Supernode-Session bestätigen es): `02:ca:ff:ee:<NN>:<SS>`,
+NN = Domainnummer in Dezimalziffern, SS = Supernode (01 pasophae bis
+06 ganymed). Grenzen: Domain ≥ 100 und Supernode ≥ 10 sprengen es, und das
+Präfix ist kein Alleinstellungsmerkmal (`02:ca:ff:ee:ba:be`). Deshalb nur
+Auslöser und Heimat-Hinweis, nie Urteil (R1-7). Auf der Karte erscheint
+statt der MAC die node_id `f2beef00NNSS`, weil yanic auflöst.
 
-**Nebenbefund zur Mesh-ID:** Die Domains der bgl-Familie heißen
-`mesh-bgl`, `mesh-bcd`, `mesh-lln`, `mesh-ode`, `mesh-rrh`, also mit
-Präfix, nicht mit Suffix. Ein Muster `.*-mesh` fände sie nicht. Für den
-WLAN-Pfad also die Liste nehmen, nicht ein Muster.
+## 5. Zustände
 
-## Grundsätze
+`/tmp/automesh.state` enthält Zustand, Netz (normalisierter Code), seit wann
+und Sperren. Das ist die Quelle für respondd, Statusseite, Banner, Syslog
+und für die Ausnahmen in linkcheck und den hotfix-Checks.
 
-- **Nur zur Laufzeit.** Kein `uci commit`, keine Flash-Schreibzugriffe.
-  Neue Interfaces über `ubus call network add_dynamic` (so baut auch
-  `gluon_wired.sh` seine VXLAN-Geräte), WLAN über uci-Delta plus
-  `flock … wifi reconf` wie beim ap-timer, Filter über `ebtables`-Aufrufe.
-  Ein Reboot stellt immer den Normalzustand her.
-- **Nur eine gatewaylose Wolke anbinden, nie zwei Netze mit Gateways
-  verbinden.** Eine eigene Wolke ohne Gateway darf über den Randknoten
-  am fremden Netz hängen ("ein Gateway ist besser als keins", adorfer
-  02.10., Abschnitt 1a). Sobald auf der eigenen Seite wieder ein eigenes
-  Gateway auftaucht, wäre das eine Brücke zwischen zwei Netzen mit
-  Gateways: fremde DHCP-Leases bei unseren Clients, gemischte Translation
-  Tables. Dann löst der Randknoten sofort auf.
-- Shell und ein kleiner C-Helfer, kein Lua-Daemon (64-MB-Geräte).
+| Zustand | Bedeutung |
+|---|---|
+| `idle` | normal: Heimat-Gateway da, oder noch keine Bedingung erfüllt |
+| `island` | Insel-Bedingungen erfüllt, Suche läuft |
+| `probing` | Beitritt läuft (max. 60 s Wartezeit auf Nachbarn) |
+| `joined <netz>` | Randknoten per automesh beigetreten |
+| `merged <netz>` | Randknoten ohne VPN mit fremdem Nachbarn am Kabel (Fall B) |
+| `lan_cut <netz>` | `mesh_other` getrennt (Fall A) |
+| `gw_unverified` | Gateway in `gwl`, aber unbekannt; nur Anzeige |
 
-## 1. Insel-Erkennung (Auslöser)
+| von | Ereignis / Bedingung | Aktion | nach |
+|---|---|---|---|
+| `idle` | Uptime ≥ `delay`, kein Heimat-Marker, `gwl` leer, keine globale Sperre | Zufallsfrist 0-120 s, dann `gwl` erneut prüfen | `island` |
+| `island` | `gwl` nicht mehr leer | - | `idle` |
+| `island` | Kandidat gefunden (LAN/WLAN), nicht in `deny`, keine Netz-Sperre | Beitritt (Abschnitt 6) | `probing` |
+| `probing` | Nachbar auf automesh-Schnittstelle, Gateway in `gwl` | Signalisierung; außerhalb der Familie Filter (Abschnitt 6.4) | `joined` |
+| `probing` | 60 s ohne Nachbarn und ohne wifi-Neustart dazwischen | Austritt, Netz-Sperre | `island` |
+| `joined` | Heimat-Gateway (Prüfkette) **oder** unbekanntes Gateway über eigene Schnittstelle **oder** Heimat-Hinweis | sofort auflösen, globale Sperre | `idle` |
+| `joined` | Gateway eines **anderen** fremden Netzes über eigene Schnittstellen | höhere MAC löst auf, Netz-Sperre | `island` (höhere MAC) |
+| `joined` | `gwl` 60 s leer (R1-14) | auflösen, globale Sperre (R2-7) | `island` |
+| `idle`/`gw_unverified` | fremder Nachbar direkt auf `mesh_other`, kein VPN, Gateway in `gwl` fremd (positiv) | Signalisierung; außerhalb der Familie Filter | `merged` |
+| `merged` | keine Antwort mehr vom fremden Gateway | **nichts**, bleibt `merged` (R2-5) | `merged` |
+| `merged` | Heimat-Gateway oder `gwl` leer | Filter zurück | `idle` |
+| `merged` | eigenes VPN kommt hoch | weiter wie Fall A | `idle` (Fall A läuft) |
+| beliebig, VPN oben | fremd (positiv) hinter `mesh_other`, Frist und Notbremse (Abschnitt 7) abgelaufen | `ifdown mesh_other` | `lan_cut` |
+| `lan_cut` | 10 min seit Trennen **und** (hotplug Link-up oder Sperre abgelaufen) | `ifup mesh_other`, neu prüfen | `idle` |
+| `idle` | Gateway in `gwl`, keines Heimat, keines fremd | nur Anzeige | `gw_unverified` |
+| `gw_unverified` | Heimat-Gateway | - | `idle` |
+
+## 6. Beitreten (Nebenfall Insel)
+
+### 6.1 Wann
 
 Alle Bedingungen müssen erfüllt sein:
+1. Uptime ≥ `delay` (Vorgabe 900 s).
+2. **Kein Heimat-Marker** `/tmp/automesh.home-gw-seen`. Gesetzt wird er durch
+   ein Heimat-Gateway (A) und durch einen Heimat-Hinweis. Ein unbekanntes
+   Gateway ohne Hinweis setzt ihn nicht, ein fremdes nie (R2-4, siehe
+   Abschnitt 10). Der Marker bremst Massenauslösung: Bei einem
+   Supernode-Ausfall haben alle Knoten vorher ein Heimat-Gateway gesehen.
+   Der Marker ist getrennt von `/tmp/linkcheck.gw-seen` (A).
+3. `gwl` gerade leer, auch kein fremdes Gateway. Sonst hat schon ein
+   anderer Knoten der Wolke angebunden.
+4. Keine globale Sperre aktiv (Abschnitt 8).
 
-1. Uptime ≥ `delay` (Vorgabe 900 s, einstellbar).
-2. Seit dem Boot nie ein Gateway in `batctl gwl`. Eine Markerdatei in
-   /tmp wird gesetzt, sobald einmal eines da war. Damit bleiben Knoten
-   ruhig, die bei einem Supernode-Ausfall ihr Gateway verlieren. Sonst würde
-   ein netzweiter Ausfall alle Randknoten gleichzeitig in fremde Netze
-   schicken.
-3. Gerade jetzt kein Gateway in `batctl gwl`, auch kein fremdes (dann hat
-   schon ein anderer Knoten der Wolke angebunden).
+### 6.2 Suche am LAN-Mesh
 
-Eigene batman-Nachbarn sind erlaubt: Auch eine Wolke ohne Gateway ist eine
-Insel (Abschnitt 1a).
+Nur auf Ports mit Mesh-Rolle. Das C-Paket (`neanderfunk-automesh-sniff`,
+`AF_PACKET` + BPF, eigenes Paket wegen Größenmessung, R1-17) liest passiv:
+- **VXLAN**: UDP 4789 an `ff02::15c`. Die VNI steht im Klartext, Gluon
+  leitet sie aus dem `domain_seed` ab.
+- **Rohes batman**: Ethertype 0x4305.
 
-## 1a. Wolken ohne Gateway (adorfer, 02.10.)
+Im inneren batman-Frame stehen `version` (nur 15) und `packet_type`: 0x00 ist
+BATMAN_IV, 0x03/0x04 ist BATMAN_V. Wir fahren BATMAN_IV, ein BATMAN_V-Netz
+wird übersprungen.
 
-Grundsatz: Wenn eine Wolke kein Gateway hat, ist ein fremdes besser als
-keins. Die spannende Frage ist der Rückweg: Sieht irgendwer in der Wolke
-nachträglich doch wieder ein eigenes Gateway, muss **der Randknoten**
-auflösen, der angebunden hat, nicht irgendwer auf halbem Weg.
+Beitritt bei VXLAN: zweites vxlan6-Gerät mit fremder VNI (`add_dynamic`,
+proto `vxlan6`, Peer `ff02::15c`), darüber `batadv_hardif` an bat0.
+Rohes batman braucht keinen Beitritt, das ist Fall B (Abschnitt 6.5).
 
-**Anbinden: genau ein Randknoten je Wolke.**
-- Der Randknoten tritt bei und lässt seine eigenen Mesh-Schnittstellen in
-  bat0. Dadurch bekommt die ganze Wolke das fremde Gateway.
-- Alle anderen Knoten der Wolke sehen danach ein Gateway in `gwl`.
-  Bedingung 3 aus Abschnitt 1 ist für sie nicht mehr erfüllt, also treten
-  sie nicht zusätzlich bei.
-- Gegen zwei gleichzeitige Beitritte: Zufallsverzögerung (0-120 s), direkt
-  vor dem Beitritt `gwl` erneut prüfen. Sieht ein beigetretener Knoten
-  hinterher ein fremdes Gateway, das **über eigene Schnittstellen** kommt
-  (ein zweiter Randknoten, womöglich zu einem dritten Netz), tritt der mit
-  der höheren primären MAC aus.
+### 6.3 Suche im WLAN (802.11s)
 
-**Auflösen: nur der Randknoten, ereignisgesteuert.**
-- Der Randknoten sieht in der zusammengelegten Wolke alle Gateways. Ob
-  eines davon ein **Heimat-Gateway** ist, fragt er das Gateway selbst, statt
-  es aus der MAC zu raten (MAC-Schema ist dünnes Eis, adorfer 02.10.).
-  Kette, nur Standardmittel von batman-adv und respondd (am WDR3600
-  durchgespielt, 02.10.):
-  1. `batctl gwl`: Originator des Gateways, z. B. `02:ca:ff:ee:21:03`.
-  2. `batctl tg`: die Translation-Table-Einträge dieses Originators, ohne
-     Multicast (33:33:…, 01:00:5e:…). Darunter ist die MAC seiner eigenen
-     bat-Schnittstelle (`f2:be:ef:00:21:03`).
-  3. Daraus die EUI-64-Link-Local bilden (`fe80::f0be:efff:fe00:2103`, das
-     ist auch der Router im RA).
-  4. `gluon-neighbour-info -i br-client -d <ll> -p 1001 -t 3 -r nodeinfo`.
-     Antwort von kallisto: `domain_code: ffnefd21`, `hostname:
-     kallisto_ffnefd21`, `vpn: true`, und unter
-     `network.mesh.bat21.interfaces.tunnel` genau der Originator
-     `02:ca:ff:ee:21:03`.
-  5. Gültig nur, wenn der Originator aus Schritt 1 in den Mesh-Interfaces
-     der Antwort steht. Damit ist bewiesen, dass die Antwort von genau
-     diesem Gateway kommt und nicht von irgendeinem Client dahinter.
-  6. Heimat, wenn `domain_code` in einer **beim Bau gesetzten Liste** steht
-     (site.conf, z. B. `automesh.home = { 'ffnefd21' }`, aus den
-     Domaindaten erzeugt). Das ist eine ausdrückliche Angabe, keine
-     Namensregel.
-- Was nicht antwortet (fremdes Gateway ohne respondd, Link-Local nicht
-  nach EUI-64), gilt als "nicht Heimat". Ein Heimat-Gateway antwortet
-  immer, denn wir betreiben es.
-- Fehlerrichtung: Der Weg zum Gateway (`batctl o`: über eigene oder fremde
-  Schnittstelle) dient nur noch als billiger Auslöser für die Abfrage,
-  nicht als Urteil. Kommt das Heimat-Gateway sogar über das fremde Netz
-  (dort steckt irgendwo eine Brücke wie bei Holzmichel), löst der
-  Randknoten trotzdem auf, denn sein Beitritt ist dann überflüssig.
-- Abgefragt wird nur bei einem neuen Originator in `gwl` (Differenz zur
-  letzten Liste), nicht jedes Gateway alle 10 s. Das sind wenige kleine
-  UDP-Pakete.
-- Auslöser nicht im Minuten-Takt: Der batman-adv-uevent (BATTYPE=gw,
-  add/change/del) kommt nur, wenn sich das **gewählte** Gateway ändert. Ein
-  neu auftauchendes eigenes Gateway ändert die Wahl wegen der Trägheit von
-  `gw_sel_class 1` oft nicht. Deshalb zusätzlich, solange der Knoten
-  beigetreten ist, `batctl gwl` alle ~10 s prüfen. Die Reaktion kommt also
-  nach Sekunden, etwa ein OGM-Intervall plus Prüfzeit.
-- Danach fremde Schnittstelle aus bat0, Laufzeitänderungen zurücknehmen,
-  Sperrzeit gegen Pendeln.
-- Restrisiko: Für diese Sekunden sind beide Seiten verbunden. Ein Client
-  der eigenen Seite, der genau dann per DHCP anfragt, könnte eine fremde
-  Lease bekommen. batman-adv schickt DHCP aber nur an das gewählte Gateway,
-  und das bleibt bei `gw_sel_class 1` erst einmal das bisherige. Klein,
-  aber nicht null.
+- Mesh-ID im Scan (`MESH ID`), jede außer der eigenen und außer `deny`.
+  Kein Muster wie `.*-mesh`: Die bgl-Domains heißen `mesh-bgl`, `mesh-lln`
+  usw.
+- Scan nur über scan-guard. Auf MT7915 legt jeder Scan das Radio lahm,
+  dort keine WLAN-Suche auf diesem Radio.
+- Nicht, solange autoupdater-wifi-fallback aktiv ist (R1-15).
+- Beitritt: wifi-iface `mode mesh` mit fremder `mesh_id` als uci-Delta, Netz
+  `automesh_wN` (`batadv_hardif`, master bat0), `flock … wifi reconf`.
+  Kanalwechsel ist erlaubt (A). Der AP wechselt mit, beim Auflösen wird das
+  Delta verworfen.
+- Fremde Meshes mit SAE fallen weg.
+- Ob Algorithmus und Compat passen, zeigt sich erst nach dem Beitritt.
+  Gescheitert ist der Beitritt erst nach 60 s ohne Nachbarn und ohne
+  zwischenzeitlichen wifi-Neustart (R1-16).
 
-**Die Knoten auf halbem Weg halten still.**
-- Ein Knoten der Wolke, dessen VPN zurückkommt, sieht das fremde Netz in
-  seinem Mesh. Ohne Sonderregel würde er nach Fall A sein LAN-Mesh trennen
-  und damit die eigene Wolke zerschneiden.
-- Regel: Fall A wartet nach dem Erkennen eine Frist (Vorschlag 120 s) und
-  prüft dann neu. In der Zeit hat der Randknoten längst aufgelöst, das
-  fremde Netz ist weg, Fall A entfällt.
-- Zusätzlich fragt der Knoten vor dem Trennen über respondd auf bat0, ob
-  ein Knoten der eigenen Domain `automesh: joined` meldet. Wenn ja, wartet
-  er weiter auf ihn, als Notbremse mit Obergrenze (z. B. 10 min), dann
-  trennt er doch.
-- Ergebnis: Wer beigetreten ist, löst auch auf. Fall A trifft nur echte
-  Fehlsteckungen, bei denen niemand `joined` meldet.
+### 6.4 Lokale Dienste im fremden Netz
 
-**Massenauslösung** bleibt durch Bedingung 2 aus Abschnitt 1 gebremst ("seit
-dem Boot nie ein Gateway"): Bei einem Supernode-Ausfall haben die Knoten
-vorher Gateways gesehen und bleiben ruhig.
-
-## 2. Suche auf dem LAN-Mesh
-
-Nur auf Ports, die Mesh-Rolle haben (mesh on LAN/WAN).
-
-Passiv mitlesen statt durchprobieren. Ein kleiner C-Helfer mit `AF_PACKET`
-und BPF-Filter liest zwei Sorten Frames:
-
-- **VXLAN**: UDP 4789 an `ff02::15c` (Gluon-Vorgabe). Die VNI steht im
-  Klartext im VXLAN-Header (Bytes 4-6). Gluon leitet sie aus dem
-  `domain_seed` ab, sie ist also je Domain fest. Durchprobieren ist unnötig
-  und mit 2^24 Werten auch unmöglich.
-- **Rohes batman** (Ethertype 0x4305), von Netzen mit `mesh.vxlan = false`.
-
-Im inneren batman-Frame stehen `packet_type` und `version`. Daran sieht man
-schon vor dem Beitritt:
-
-- die Compat-Version (15 seit vielen Jahren, sonst nicht beitreten);
-- den Routing-Algorithmus: `0x00` IV-OGM heißt BATMAN_IV, `0x03` ELP oder
-  `0x04` OGM2 heißt BATMAN_V. Ein bat0 kann nur einen Algorithmus. Wir
-  fahren BATMAN_IV. Bei einem fremden BATMAN_V-Netz ist ohne zweites bat
-  kein Beitritt möglich, v1 überspringt es.
-
-Beitritt bei VXLAN: ein zweites vxlan6-Gerät mit der fremden VNI auf
-demselben Port (`add_dynamic`, proto `vxlan6`, `vid` = fremde VNI, Peer
-`ff02::15c`), darüber `batadv_hardif` mit master bat0. Der Kernel verteilt
-eingehende Pakete nach VNI, beide Geräte können parallel existieren.
-
-**Nebenbefund:** Unser site.conf hat `mesh.vxlan = false`. Unser LAN-Mesh
-ist also rohes batman. Ein fremdes Netz mit ebenfalls `vxlan = false` am
-selben Kabel verschmilzt mit unserem schon heute, ohne automesh. Den
-Ethertype 0x4305 kann man nicht nach Community trennen. Dafür braucht es
-Abschnitt 5.
-
-## 3. Suche im WLAN (802.11s)
-
-- 11s-Meshes erkennt man im Scan am Feld `MESH ID`, nicht an der BSSID. Die
-  BSSID eines Mesh-Knotens ist seine MAC.
-- Muster: jede Mesh-ID außer der eigenen. Auf Wunsch nur `.*-mesh` oder
-  eine Liste aus site.conf, siehe Entscheidungen.
-- **Scan nur über scan-guard.** Auf MT7915 legt jeder Scan das Radio lahm,
-  siehe neanderfunk-banner/scan-guard. Dort ist die Suche über das WLAN aus,
-  oder nur das andere Radio scannt.
-- Beitritt: zusätzliche wifi-iface `mode mesh` mit fremder `mesh_id` als
-  uci-Delta, Netz `automesh_wN` (proto `batadv_hardif`, master bat0), dann
-  `flock … wifi reconf`.
-- **Kanal:** 11s geht nur auf demselben Kanal. Liegt das fremde Mesh auf
-  einem anderen, müsste das Radio wechseln, und der AP wechselt mit. Bei
-  einer Insel ist das vertretbar, beim Verlassen kommt der alte Kanal
-  zurück (Delta verwerfen).
-- Fremde Meshes mit SAE-Verschlüsselung fallen weg. Gluon-Meshes sind
-  standardmäßig offen.
-- Algorithmus und Compat-Version sieht man erst nach dem Beitritt. Kommt
-  nach 60 s kein Nachbar in `batctl n` auf `automesh_wN`, wieder austreten
-  und die Mesh-ID bis zum Reboot sperren.
-
-## 4. Umschalten im fremden Netz
-
-| Was | Warum | Maßnahme |
+| Was | Familie | außerhalb der Familie |
 |---|---|---|
-| eigene Mesh-Schnittstellen | die gatewaylose Wolke soll das fremde Gateway mitbenutzen (Abschnitt 1a) | bleiben in bat0; aufgelöst wird, sobald ein eigenes Gateway auftaucht |
-| `LOCAL_FORWARD` (gluon-ebtables-source-filter) | lässt von lokalen Clients nur Quelladressen aus `prefix4`/`prefix6` durch. Mit fremden Leases wäre alles verworfen | `ebtables -I LOCAL_FORWARD -j RETURN`, beim Verlassen wieder `-D`. Feiner: die fremden Präfixe aus RA/DHCP lernen und nur diese erlauben |
-| gluon-radvd | verteilt lokal unseren `prefix6` und als RDNSS die next-node-Adresse. Clients hätten dann eine zweite Adresse ohne Route und einen DNS, der unsere (unerreichbaren) Server fragt | Dienst stoppen, beim Verlassen starten |
-| filter-ra-dhcp | DHCP/RA nur aus dem Mesh, passt auch im fremden Netz | bleibt |
-| next-node (local-node) | nur lokal, ebtables halten die MAC aus dem Mesh | bleibt |
-| ssid-changer | sieht das fremde Gateway | unverändert, gleiche TQ-Kriterien wie daheim (R18) |
-| tunneldigger-watchdog | startet mesh-vpn alle 5 min neu | gewollt, siehe Abschnitt 5 |
-| neanderfunk-linkcheck `no_gateway` | rebootet nach Gateway-Verlust | wertet nur den Heimat-Marker, keine Strikes in `joined`/`merged`/Sperrzeit (R4a) |
+| `LOCAL_FORWARD` (Quellfilter) | nichts, 10/8 und 2a03:2260::/32 decken alles (R1-6) | fremde Präfixe aus dem RA zusätzlich erlauben, nicht Filter ganz auf |
+| uradvd (gluon-radvd) | läuft weiter: ULA bleibt lokal, Gateway-RA bringt kein ULA und kein RDNSS (gemessen WDR3600) | läuft weiter |
+| DNS | Gateways nennen ihre eigene Adresse (Gateway-Ansible, nicht gemessen); dnsmasq fällt auf die öffentlichen `dns.servers` zurück | dito |
+| filter-ra-dhcp, next-node | bleiben | bleiben |
+| ssid-changer | unverändert, gleiche TQ-Kriterien wie daheim (A) | dito |
+| eigene Mesh-Schnittstellen | bleiben in bat0, die Wolke soll das Gateway mitbenutzen | dito |
 
-**Nebenbefund:** `roguenets_filter` steht in templates/common/site.conf,
-aber kein Paket im Image liest den Schlüssel. Er hat derzeit keine Wirkung
-(wie früher preserve_channels).
+### 6.5 Fall B: Knoten ohne VPN, fremder Nachbar am Kabel
 
-## 5. Eigenes Netz wieder in Sicht: verlassen
+Bei `vxlan = false` ist der Knoten schon im fremden Mesh, sobald das Kabel
+steckt. Auslöser (R1-5): Gateway in `gwl`, keines Heimat, mindestens eines
+positiv fremd, kein VPN, und ein fremder batman-Nachbar direkt auf
+`mesh_other`. Dann gilt `merged` mit Signalisierung und, außerhalb der
+Familie, Abschnitt 6.4. Randknoten können beide Kabelenden sein.
 
-**Hauptmerkmal seit Abschnitt 1a:** ein Gateway in `gwl`, das sich per
-respondd als Heimat-Gateway ausweist (Kette in Abschnitt 1a). Die folgenden Merkmale ergänzen
-es, vor allem für den Fall, dass das eigene Netz ohne Gateway in Sicht kommt
-(dann ist Zusammenlegen ohnehin harmlos) oder zur Bestätigung.
+## 7. Trennen (Hauptfall, Fall A)
 
-Fremde Gateways im `gwl` sagen nichts. Manche Netze haben mehrere, und
-Gateways nach Community zu sortieren bräuchte gepflegte MAC-Listen. Besser
-sind Merkmale, die ohne bat0 funktionieren:
+Ein Knoten mit VPN sieht über `mesh_other` (bzw. mesh on WAN) Knoten eines
+fremden Netzes.
 
-1. **respondd über Link-Local:** `gluon-neighbour-info -i <if> -d
-   ff02::2:1001 -r nodeinfo` auf jeder eigenen Mesh-Schnittstelle, wie es
-   die Statusseite für ihre Nachbarliste tut. Antwortet ein Knoten mit
-   `site_code`/`domain_code` aus `automesh.home`, ist das eigene Netz da
-   (siehe unten). Das funktioniert auch auf
-   rohem batman am LAN, wo der Ethertype allein nichts verrät. Zu prüfen:
-   antwortet respondd auf einer Schnittstelle, die nicht in bat0 hängt?
-2. **11s-Peering auf dem eigenen Mesh-vif:** `iw dev meshN station dump`
-   zeigt Peers im Zustand ESTAB, auch ohne batman.
-3. **Eigene VXLAN-VNI:** steigender rx-Zähler am eigenen vx-Gerät (nur
-   relevant, falls eine Domain `vxlan = true` fährt).
-4. **mesh-vpn:** tunneldigger bekommt eine Session (Hook session.up).
+**Erkennung:**
+- Auslöser (billig): ein Gateway, das nur über `mesh_other` erreichbar ist
+  und nicht über mesh-vpn, oder eine fremde Domainnummer im MAC-Schema,
+  oder mehr als 12 Originatoren, die nur über `mesh_other` bekannt sind.
+- Urteil: Prüfkette (Abschnitt 4) für dieses Gateway oder respondd per
+  Link-Local an die direkten Nachbarn auf `mesh_other`. Getrennt wird nur
+  bei positiv **fremd**.
 
-Ein Treffer genügt: fremde Schnittstellen aus bat0, Deltas verwerfen,
-Filter und radvd zurück, eigene Schnittstellen wieder in bat0, danach eine
-Sperrzeit gegen Pendeln (z. B. 30 min kein neuer Beitritt).
+**Frist und Notbremse** (wer anbindet, löst auf):
+1. Erkannt, dann 120 s warten und neu prüfen. In der Zeit hat ein Randknoten
+   in `joined` längst aufgelöst.
+2. Vor dem Trennen nachsehen, ob ein Randknoten der **eigenen** Domain
+   `joined` oder `merged` meldet (R1-14). Wie, ohne die ganze Wolke per
+   Multicast zu fragen (R2-9):
+   - bevorzugt: Ein Randknoten meldet sich mit einer festen,
+     lokal verwalteten MAC in der batman-Translation-Table (z. B. ein
+     Dummy-Port in br-client, der alle 60 s einen Frame sendet). Jeder Knoten
+     sieht sie in `batctl tg` samt Originator, ohne Abfrage. Zu prüfen.
+   - Ersatz: respondd per Link-Local nur an die direkten Nachbarn auf
+     `mesh_other`.
+3. Meldet sich ein eigener Randknoten, warten, höchstens 10 min, dann doch
+   trennen.
+4. `ifdown mesh_other`: netifd nimmt nur den batman-hardif heraus, Port und
+   Uplink bleiben.
 
-**Eine andere Domain der eigenen Familie gilt als fremd** (Entscheidung
-adorfer, 02.10.): Beitritt erlaubt (Fall B), mit VPN wird getrennt (Fall A).
-Das passt zum Hauptfall, denn die Domain-Brücke zwischen zwei eigenen
-Domains ist genau das, was verhindert werden soll.
+**Merged an beiden Kabelenden** (R2-8): Liegen beide Seiten in der Familie
+und haben beide automesh, meldet jedes Ende `merged` mit dem anderen als
+fremd. Ein Knoten auf halbem Weg der Seite X sieht den eigenen Randknoten
+in `merged` und wartet bis 10 min statt 120 s. Bekommt das Ende auf Seite X
+danach VPN, verlässt es `merged`, läuft in Fall A und trennt nach 120 s
+selbst. Seite X ist sauber.
 
-**Welches Feld: `domain_code`, nicht `site_code`** (Rückfrage adorfer,
-02.10.). Bei uns ist der `site_code` je Domain und Firmware-Zweig
-verschieden (`METAPREFIX-DOMAINNR_SITESMALL`). Die Sackgassen-Firmware hängt
-noch `_EOL` an. Laut Karte vom 02.10. stehen z. B. `dus-13_dusfl` (35
-Knoten) und `dus-13_dusfl_EOL` (30 Knoten) im selben Mesh, `domain` ist bei
-beiden `13_dusfl`. Ein Vergleich auf den eigenen `site_code` hielte einen
-EOL-Knoten im eigenen Mesh für fremd, und der Knoten bliebe im fremden Netz,
-obwohl das eigene in Reichweite ist. Deshalb:
+**Fall A und Fall B in einer Wolke** (R1-12): Trennt ein Knoten mit VPN sein
+`mesh_other` und zerfällt die Wolke dadurch, ist das gewollt. Der Teil ohne
+VPN bleibt mit fremdem Gateway in `merged`. Dort wird niemand zusätzlich
+Randknoten, denn es steht ein Gateway in `gwl`.
 
-- **Korrektur nach Review (R1/R2):** Unsere Knoten melden gar keinen
-  `domain_code`. Wir bauen Single-Domain-Firmware je Template, Gluon setzt
-  `domain_code` nur bei Multidomain. Am WDR3600 steht in `nodeinfo.system`
-  nur `site_code: nef-21_dias`; das `domain` der Karte setzt yanic selbst
-  zusammen. Deshalb gilt **eine** Definition: eigen = `site_code` oder
-  `domain_code` der Antwort steht in der beim Bau erzeugten Liste
-  `automesh.home`, z. B. `{ 'nef-21_dias', 'nef-21_dias_EOL', 'ffnefd21' }`.
-  Normale Knoten, Sackgasse und Supernodes stehen damit ausdrücklich drin;
-  jede andere Domain, auch aus der eigenen Familie, ist fremd;
-- die Supernodes melden `site_code` = `domain_code` = `ffnefdNN`
-  (mesh-announce, z. B. `amalthea_ffnefd01`). Eigen ist also auch
-  `ffnefd<eigene Nummer>`, z. B. `ffnefd21`. Sie sind nur über mesh-vpn
-  Nachbarn;
-- Altlasten wie `bgl`/`bgl` (ein Offline-Knoten auf der Karte) zeigen, dass
-  es auch Uralt-Domaincodes gibt. Sie sind fremd wie alles andere, das
-  nicht die eigene Domain ist (Sperrliste beachten).
+**Kette eigen -> fremd1 -> fremd2** (R1-14): Unser Randknoten hängt an
+fremd1, dessen Randknoten an fremd2. Löst der von fremd1 auf, wird unser
+`gwl` leer, ohne dass ein Ereignis kommt. Nach 60 s leerem `gwl` lösen wir
+auf, mit globaler Sperre.
 
-## 6. Risiken
+## 8. Sperren gegen Pendeln
 
-- **Massenauslösung** bei netzweitem Ausfall: abgefangen durch "seit dem
-  Boot nie ein Gateway". Bleibt der Fall Stromausfall plus Supernode-Ausfall
-  zugleich, dazu Zufallsverzögerung und Abschnitt 5.
-- **RAM:** Ein großes fremdes Mesh bringt viele Originatoren und TT-Einträge
-  mit. Auf 64-MB-Geräten vermutlich aus.
-- **Sichtbarkeit und Absprache: durch das Pico Peering Agreement gedeckt**
-  (PPA v1.0, picopeer.net, Leitlinie für alle Freifunk-Communities;
-  nachgelesen 02.10. auf Hinweis von adorfer):
-  - Die Präambel nennt als Ziel ausdrücklich, "diese Netzwerkinseln
-    miteinander zu verbinden". Der Abschnitt "PPA in der Praxis" sieht
-    "automatische Vernetzung" vor. automesh ist genau dieser Fall.
-  - §1 Freier Transit: Der Eigentümer bietet freien Transit an. Transit ist
-    laut Begriffserklärung der Datenaustausch "in ein Netzwerk hinein,
-    heraus oder durch ein Netzwerk hindurch". Der Weg über fremde Gateways
-    braucht also keine Einzelabsprache.
-  - §2 Offene Kommunikation: Der Eigentümer veröffentlicht alles, was für
-    die Verbindung nötig ist (Mesh-ID, Kanal, Seed bzw. VNI, site.conf),
-    und ist mindestens per E-Mail erreichbar. Dass unser Knoten mit
-    Hostname und Kontakt auf der fremden Karte erscheint, ist gewollt: So
-    kann die andere Community den Betreiber erreichen. Neu ist das ohnehin
-    nicht, Sammelkarten zeigen unsere Knoten schon heute, und der
-    Kontakt-Dialog im Config-Mode sagt, dass der Hinweis öffentlich im
-    Internet einsehbar ist (Koordinaten nur mit `share_location`). Nichts
-    ausblenden.
-  - Grenzen: §3 erlaubt, den Dienst jederzeit ohne Erklärung einzuschränken
-    oder einzustellen. §4 erlaubt eine eigene Nutzungsrichtlinie. DHCP gilt
-    laut Begriffserklärung als "zusätzlicher Dienst", nicht als Transit.
-    Daraus folgt: keine Erlaubnisliste, sondern eine **Sperrliste** für
-    Netze, die automatisches Beitreten ablehnen. Und wenn das fremde Netz
-    keinen Dienst liefert (kein DHCP, kein Gateway), ist das sein Recht.
-    Der Knoten tritt dann nach Frist wieder aus.
+- **Global** (gegen jeden Beitritt): nach Auflösen wegen Heimat und nach
+  Auflösen wegen leerem `gwl`. Exponentiell 5, 10, 20, 40, 80 min, Obergrenze
+  2 h. Zurück auf 5 min nach 24 h ohne Auflösen. (R1-10, R2-6, R2-7)
+- **Je Netz**: nach gescheitertem Beitritt und nach Austritt wegen
+  Doppel-Randknoten (R1-11). Ebenfalls exponentiell.
+- **Heimat ist weg** gilt erst nach 2 min ohne Heimat-Gateway. Das bremst
+  nur den Wiederbeitritt, nie das Auflösen (R2-3).
+- **Fall A**: Neuprüfung frühestens 10 min nach dem Trennen, auch bei
+  hotplug Link-up (R1-9). Danach exponentiell wie global.
 
-## 7. Konfiguration (Vorschlag)
+## 9. Wechselwirkungen
+
+| Paket | Problem | Festlegung |
+|---|---|---|
+| neanderfunk-linkcheck `no_gateway` | setzt `/tmp/linkcheck.gw-seen` bei **jedem** Gateway und rebootet nach 4 leeren Prüfungen. Löst ein Randknoten auf, würde die ganze Wolke rebooten. Das gilt auch für 64-MB-Knoten **ohne** automesh (R2-2) | Änderung in linkcheck auf **allen** Geräten, unabhängig von automesh: Marker nur bei Heimat-Hinweis (MAC-Schema mit eigener Domainnummer) oder Gateway über mesh-vpn. Für einen Reboot-Schutz reicht ein Hinweis. Zusätzlich keine Strikes, solange `/tmp/automesh.state` `joined`/`merged`/Sperre zeigt |
+| tunneldigger-watchdog | startet mesh-vpn alle 5 min neu | gewollt, so kommt VPN zurück |
+| ssid-changer | sieht das fremde Gateway | unverändert, gleiche TQ-Kriterien (A); nur gemeinsames Lock |
+| autoupdater-wifi-fallback | tauscht ohne Verbindung das WLAN gegen einen Client | kein WLAN-Beitritt, solange aktiv; umgekehrt soll der Fallback `joined` respektieren. Ob das ohne Gluon-Patch geht, wird bei der Umsetzung geprüft (R1-15) |
+| hotfix IfNoWificlient, watchdog, check_wifi_firmware | können wifi neu starten, während `probing` wartet | gemeinsames Lock, Ruhe in `probing` (R1-16) |
+| ap-timer, scan-guard | greifen per `wifi reconf` ins WLAN | gemeinsames Lock |
+| Weekly Reboot | setzt alles zurück | gewollt; Fall A prüft nach dem Boot sofort |
+
+## 10. Marker: Entscheidung und Review
+
+adorfer hat entschieden: Nur ein Heimat-Gateway setzt den Marker (A). Das
+zweite Review (R2-4) wollte ihn auch bei unbekanntem Gateway setzen, damit
+nicht beigetreten wird. Die Lösung oben erfüllt beides:
+- Ein Heimat-Hinweis (MAC-Schema mit eigener Domainnummer) setzt ihn auch.
+  Ein Supernode mit hängendem respondd setzt ihn also trotzdem, und die
+  Massenauslösung bleibt gebremst.
+- Ein fremdes Gateway ohne respondd und ohne Hinweis setzt ihn nicht. Nach
+  dem Auflösen kann die Wolke deshalb wieder anbinden und bleibt nicht bis
+  zum Weekly Reboot dunkel.
+- Ein Beitritt bei unbekanntem Gateway ist unabhängig vom Marker
+  ausgeschlossen, durch Bedingung 3 (`gwl` leer).
+
+## 11. Signalisierung (A)
+
+Mit der Umsetzung sofort, nicht später:
+- neanderfunk-respondd: Feld in statistics, z. B. `automesh: {state, net,
+  iface, since}`;
+- Statusseite: Zeile über gluon-patches-packages, eigene i18n;
+- Login-Banner: neanderfunk-banner, profile.gluon/nodestatus;
+- Syslog-Zeile bei jedem Zustandswechsel (Kollektor).
+
+## 12. Konfiguration
 
     automesh = {
       enabled = false,
-      delay = 900,          -- Sekunden nach Boot
+      delay = 900,             -- Sekunden nach Boot, nur für Beitritt (nicht Fall A)
       lan = true,
       wifi = true,
-      deny = { },           -- Netze, die automatisches Beitreten ablehnen (PPA §3/§4):
-                            -- domain_code, Mesh-IDs, VNIs
+      home_extra = { },        -- Altcodes, die als Heimat gelten (Abgleich gegen Kartencodes)
+      deny = { },              -- Netze, die automatisches Beitreten ablehnen (PPA §3/§4):
+                               -- normalisierte Codes, Mesh-IDs, VNIs
     },
 
-uci-Werte tolerant lesen (1/true/yes/on), wie in allen eigenen Paketen.
+uci-Werte tolerant lesen (1/true/yes/on). Paket nicht in den lowmem-Gruppen
+von image-customization (A).
 
-## 8. Test
+## 13. PPA v1.0
 
-- LAN-Pfad in QEMU: unser Image plus das x86-Image einer fremden Community
-  an einer gemeinsamen Bridge, einmal mit VXLAN, einmal mit rohem batman,
-  dazu ein Gateway auf der fremden Seite.
-- WLAN-Pfad: zwei echte Geräte am Testplatz, eines mit fremder Mesh-ID und
-  Gateway über Kabel.
-- Pflichtfälle: Beitritt, Rückkehr des eigenen Netzes (jedes Merkmal aus
-  Abschnitt 5 einzeln), BATMAN_V-Netz wird übersprungen, MT7915 scannt
-  nicht, Reboot stellt den Normalzustand her.
+Gedeckt durch das Pico Peering Agreement (Leitlinie für alle
+Freifunk-Communities, nachgelesen 02.10.): Die Präambel nennt das Verbinden
+von Netzwerkinseln als Ziel, der Praxisteil die automatische Vernetzung.
+§1 Freier Transit ("in ein Netzwerk hinein, heraus oder hindurch") braucht
+keine Einzelabsprache. §2 Offene Kommunikation macht Kontaktdaten auf der
+fremden Karte gewollt; der Kontakt-Dialog im Config-Mode sagt ohnehin, dass
+sie öffentlich sind. §3/§4 erlauben Einschränkung und Nutzungsrichtlinie,
+DHCP ist "zusätzlicher Dienst". Daraus folgen die Sperrliste statt einer
+Erlaubnisliste (A) und kein Ausblenden von Knotendaten.
 
-## 9. Variante: nur bekannte Netze (adorfer, 02.10.)
+## 14. Test
 
-Statt "jedes fremde Mesh" nur Netze aus einer Liste: die eigenen Domains
-der Multidomain-Firmware und/oder die Nachbarnetze des Neanderfunks. Das
-nimmt das meiste Raten heraus.
+- LAN in QEMU: unser Image plus ein fremdes x86-Gluon an einer Bridge,
+  einmal VXLAN, einmal rohes batman, mit Gateway auf der fremden Seite.
+- WLAN: zwei echte Geräte am Testplatz.
+- Pflichtfälle: jede Zeile der Zustandstabelle, BATMAN_V übersprungen,
+  MT7915 scannt nicht, Reboot mitten in jedem Zustand, Supernode-respondd
+  angehalten (darf nichts auslösen), linkcheck rebootet nach Auflösen
+  nicht, auch auf einem 64-MB-Knoten in der Wolke.
+- Feldfall Holzmichel als Referenz für Fall A (nur lesend).
 
-Was je Netz in die Liste muss (zur Bauzeit erzeugt, z. B.
-`/lib/neanderfunk/automesh/networks.json`, wenige hundert Byte je Netz):
+## 15. Nebenbefunde
 
-| Feld | Wofür | Herkunft |
-|---|---|---|
-| `domain_code` (alle Domains des Netzes) | Abschnitt 5, eigen/fremd sicher unterscheiden; nicht `site_code`, der variiert z. B. mit `_EOL` | site.conf/domains des Netzes |
-| `vni` | VXLAN-Beitritt | aus `domain_seed` vorberechnet: `md5(… "gluon-mesh-vxlan" … seed …)`, erste 3 Byte (`gluon.util.domain_seed_bytes`). Ins Image kommt nur die VNI, nicht der Seed |
-| `mesh_id` je Band, Kanal | 11s-Beitritt ohne Scan-Raten, Kanalwechsel nur auf bekannten Kanal | site.conf/domains |
-| `routing_algo` | BATMAN_IV/V vorab bekannt | site.conf |
-| `prefix4`, `prefix6` | gezielte `LOCAL_FORWARD`-Regeln statt Filter ganz auf | site.conf |
-| `vxlan` true/false | ob am LAN VXLAN oder rohes batman kommt | site.conf |
+- `mesh.vxlan = false`: Jedes fremde Netz mit ebenfalls rohem batman am
+  selben Kabel verschmilzt schon heute mit unserem.
+- `roguenets_filter` steht in templates/common/site.conf, wird aber von
+  keinem Paket gelesen.
+- Unsere Knoten melden keinen `domain_code` (Single-Domain-Firmware je
+  Template), nur `site_code`. Das `domain` der Karte setzt yanic zusammen
+  (R1-1). Auf der Karte gibt es dazu viele Schreibweisen: mit und ohne
+  Präfix, mit `_EOL`, Multidomain-Firmwares mit `domain_code`, Altcodes wie
+  `ffw`, und 10 Knoten ohne jeden Code (R2-1, Stand 02.10.).
 
-Schlüssel braucht es keine: VXLAN und Gluon-11s sind unverschlüsselt. Nur
-ein Nachbar mit SAE-Mesh bräuchte dessen Passphrase, den würde man weglassen.
+## 16. Entscheidungen (alle getroffen)
 
-Folgen:
-
-- Die Suche wird ein Abgleich: Mitlesen am LAN liefert VNI, Scan liefert
-  Mesh-ID. Nur Treffer aus der Liste zählen.
-- Filter präzise: Die Präfixe des Zielnetzes werden zusätzlich erlaubt, der
-  Rest bleibt gesperrt.
-- Die Liste muss gepflegt werden. Ändert ein Nachbar Seed, Mesh-ID oder
-  Präfix, passt erst die nächste Firmware wieder.
-- **Eigene Domains am LAN:** Wir fahren `vxlan = false`. Zwei eigene
-  Domains am selben Kabel verschmelzen dort also ohnehin, eine VNI gibt es
-  nicht. Für die Variante "eigene Multidomain" bleibt praktisch der
-  WLAN-Pfad (Mesh-ID je Domain). Am LAN wird es erst nützlich, wenn eine
-  Domain auf VXLAN umstellt.
-
-## 10. Review Buildsystem-Session (02.10., Stand 6fa200f) und Auflösungen
-
-Nummern wie im Review. "Festgelegt" heißt: so in den Entwurf übernommen.
-"Entscheidung offen" heißt: adorfer entscheidet.
-
-**Begriffe (R3), festgelegt:**
-- **Wolke** = alle Originatoren in bat0, die ohne automesh-Schnittstelle
-  erreichbar sind.
-- **Insel** = Wolke ohne Gateway. Ein Einzelknoten ist eine Wolke der
-  Größe 1. Die Einleitung ("kein eigener Nachbar") ist damit überholt.
-- **Heimat-Gateway** = Gateway, dessen respondd-Antwort die Kette aus 1a
-  besteht und dessen `site_code`/`domain_code` in `automesh.home` steht.
-- **Familie** = Netze, deren Präfixe in unseren Filtern schon enthalten sind
-  (10.0.0.0/8, 2a03:2260::/32). Erkennbar am RA-Präfix und an der
-  DHCP-Lease des fremden Netzes.
-
-1. **Kein domain_code auf eigenen Knoten:** festgelegt, siehe Abschnitt 5
-   (Liste `automesh.home`, Vergleich auf `site_code` oder `domain_code`).
-2. **Zwei Heimat-Definitionen:** festgelegt, nur noch die Liste.
-3. Siehe Begriffe.
-4. **Marker "seit Boot ein Gateway gesehen":** Entschieden 02.10.: nur ein
-   **Heimat**-Gateway setzt ihn. Eigener Marker `/tmp/automesh.home-gw-seen`,
-   getrennt vom vorhandenen `/tmp/linkcheck.gw-seen` (siehe R4a). Die Heimat-Prüfung läuft dafür
-   auch im Ruhezustand, aber nur bei Änderungen in `gwl` (neuer
-   Originator), das kostet fast nichts. Damit kann nach einem Auflösen
-   wieder ein Randknoten entstehen, und die Wolke bleibt nicht bis zum
-   Weekly Reboot dunkel.
-4a. **Wechselwirkung mit neanderfunk-linkcheck (gefunden beim Trennen der
-   Marker):** linkcheck setzt `/tmp/linkcheck.gw-seen` bei **jedem** Gateway
-   und rebootet, wenn danach 4 Prüfungen lang `gwl` leer ist
-   (gateway.sh, `no_gateway`). Mit automesh hieße das: Ein fremdes Gateway
-   setzt den linkcheck-Marker; löst der Randknoten auf, ist `gwl` in der
-   ganzen Wolke leer, und **alle Knoten der Wolke rebooten**. Festgelegt:
-   Ist automesh installiert, wertet `no_gateway` nur noch den Heimat-Marker
-   (`/tmp/automesh.home-gw-seen`) und zählt keine Strikes, solange
-   `/tmp/automesh.state` `joined`, `merged` oder eine Sperrzeit nach
-   Auflösen anzeigt. Änderung an neanderfunk-linkcheck bei der Umsetzung.
-5. **Fall B ohne Auslöser:** festgelegt, eigener Zustand `merged`:
-   "Gateway in `gwl`, keines ist Heimat-Gateway, kein VPN". Er setzt die
-   Signalisierung und, außerhalb der Familie, §4. Randknoten am Kabel ist
-   jeder Knoten, der den fremden batman-Nachbarn direkt auf `mesh_other`
-   hat (beide Enden möglich). Beide melden `merged`, damit greift die
-   Notbremse von 1a auch hier.
-6. **Filter-Widerspruch:** festgelegt: Familie = nichts am Filter, außerhalb
-   der Familie = §4 (fremde Präfixe aus RA/DHCP zusätzlich erlauben).
-7. Festgelegt, siehe Fall A Kriterium 1.
-8. **"Antwortet nicht = nicht Heimat" ist die gefährliche Richtung:**
-   festgelegt: 3 Versuche mit je 3 s. Gateways, die nicht antworten, werden
-   im festen Takt (60 s) erneut gefragt, solange der Knoten `joined` oder
-   `merged` ist, nicht nur bei neuem Originator. Dazu der folgende
-   Grundsatz.
-
-**Grundsatz Fehlerrichtung: Eingriffe nur auf positiven Beleg** (Frage
-adorfer, 02.10.: Was, wenn ein Knoten mit richtiger Firmware von seinem
-Supernode keine respondd-Antwort bekommt, z. B. mesh-announce hängt?). Ein
-hängender respondd am Supernode trifft alle Knoten dahinter gleichzeitig. Er
-darf deshalb flottenweit nichts auslösen. Jede Entscheidung bekommt eine
-feste Richtung für "keine Antwort":
-
-| Entscheidung | Bei positiver Antwort | Bei keiner Antwort |
-|---|---|---|
-| Beitreten | braucht keine Abfrage, nur `gwl` leer | - |
-| Randknoten löst auf | Heimat -> auflösen | **auflösen**, wenn das Gateway über eine eigene Schnittstelle kommt oder das MAC-Schema die eigene Domain zeigt; sonst weiter fragen |
-| Fall A trennt LAN-Mesh | fremder `site_code` -> trennen | **nicht trennen** |
-| Zustand `merged` (Fall B) | fremder `site_code` -> `merged` | **nicht** `merged`, Zustand `gw_unverified` nur zur Anzeige |
-| Marker "Gateway gesehen" | Heimat -> setzen | **setzen** (der Knoten tritt dann nicht bei) |
-
-Ergebnis für den gefragten Fall: Ein normaler Knoten, dessen Supernode
-nicht antwortet, hat ein Gateway in `gwl`. Er tritt nicht bei, trennt
-nichts, meldet nicht `merged`, sondern nur `gw_unverified`
-(respondd-Feld, Statusseite, Banner, Syslog). Damit fällt der hängende
-respondd am Supernode auf der Karte und im Kollektor auf, ohne dass ein
-Knoten eingreift. Einzig ein Randknoten im Zustand `joined` löst auf. Das
-ist die harmlose Richtung: Schlimmstenfalls bleibt seine Wolke für die
-Sperrzeit ohne fremdes Gateway.
-9. **Wackelkontakt bei Fall A:** festgelegt: Neuprüfung nach hotplug
-   frühestens 10 min nach dem letzten Trennen.
-10. **Heimat-Gateway kommt und geht:** festgelegt: Heimat-Gateway gilt erst
-    nach 2 min Stabilität als "da" (Hysterese). Sperrzeit nach Auflösen
-    exponentiell: 5, 10, 20, 40 min, Obergrenze 2 h, zurück auf 5 min nach
-    24 h ohne Auflösen.
-11. **Zwei Randknoten an verschiedenen fremden Netzen:** festgelegt: Jeder
-    beigetretene Knoten prüft zusätzlich, ob über eigene Schnittstellen ein
-    Gateway kommt, das sich als **anderes** fremdes Netz ausweist (anderer
-    `site_code`). Dann tritt der mit der höheren MAC aus, ohne Zufallsfrist.
-    Fällt der verbleibende Randknoten aus, darf der ausgetretene wieder
-    beitreten: Seine Sperre gilt nur gegen dasselbe Netz, und der Marker
-    stört nach Punkt 4 nicht.
-12. **Fall A und Fall B in einer Wolke:** Das Zerfallen ist gewollt. Der
-    Teil um X ist danach eine Wolke mit fremdem Gateway und ohne Heimat, X
-    meldet `merged`. Niemand wird zusätzlich Randknoten, weil dort schon ein
-    Gateway in `gwl` steht.
-13. **Reboot mitten in Fall A:** festgelegt: Fall A hängt nicht an `delay`.
-    Er prüft ab dem ersten Gateway sofort, denn er ist Schutz, kein
-    Beitritt.
-14. **Kette eigen -> fremd1 -> fremd2:** festgelegt: Ist ein Knoten
-    `joined` und `gwl` 60 s lang leer, tritt er aus und geht zurück auf
-    `island`.
-15. **autoupdater-wifi-fallback:** festgelegt: automesh startet keinen
-    WLAN-Beitritt, solange der Fallback aktiv ist. Umgekehrt muss der
-    Fallback `joined` respektieren (Zustandsdatei in /tmp prüfen; ob das
-    ohne Patch am Gluon-Paket geht, wird bei der Umsetzung geprüft).
-16. **hotfix-Checks (IfNoWificlient, watchdog, check_wifi_firmware):**
-    festgelegt: gemeinsames `flock` auf `/var/lock/neanderfunk-wifi.lock`
-    (wie ap-timer) und eine Zustandsdatei `/tmp/automesh.state`. Die
-    Checks lassen das WLAN in Ruhe, solange der Zustand `probing` ist.
-    Ein Beitritt gilt erst nach 60 s **ohne** zwischenzeitlichen wifi-Neustart
-    als gescheitert.
-17. **C-Helfer:** festgelegt: eigenes kleines Paket (z. B.
-    `neanderfunk-automesh-sniff`), damit die Größe in Flash und Overlay
-    messbar ist. Kleinster Overlay derzeit C6 v2 mit 576 KB.
-18. **ssid-changer im Zustand `joined`/`merged`:** Entschieden 02.10.
-    (präzisiert): gleiche TQ-Kriterien wie daheim. Weder "ständig offline,
-    weil Fremdnetz" noch "TQ-Prüfung aussetzen". Der ssid-changer bleibt
-    unverändert und bewertet das fremde Gateway mit denselben Schwellen
-    (tq_limit) wie ein Heimat-Gateway. Gemeinsames `flock` wie in Punkt 16 gilt auch
-    für ssid-changer, scan-guard und ap-timer.
-
-## Entscheidungen
-
-1. ~~Einzelknoten oder auch Wolken?~~ Entschieden 02.10.: auch Wolken, ein
-   Gateway ist besser als keins. Rückweg nur über den Randknoten
-   (Abschnitt 1a).
-2. ~~Welche Netze?~~ Entschieden 02.10.: alle, außer denen auf der
-   Sperrliste (`deny`, Abschnitt 7). Die Liste bekannter Netze aus
-   Abschnitt 9 ist nur noch technische Hilfe (Kanal, Algorithmus, Präfixe
-   vorab bekannt), keine Voraussetzung für den Beitritt.
-3. ~~Andere eigene Domain fremd oder eigen?~~ Entschieden 02.10.: fremd.
-4. ~~64-MB-Geräte ausschließen?~~ Entschieden 02.10.: ja, sonst wird es mit
-   dem nötigen Tooling zu eng. Umsetzung wie bei usteer und whisperer:
-   Paket in image-customization für die lowmem-Gruppen nicht ins Image.
-   Folge: Ein 64-MB-Knoten erkennt selbst keine Domain-Brücke. Die Trennung
-   übernimmt dann ein Nachbar mit mehr RAM und VPN (Fall A wirkt von beiden
-   Seiten, eine Seite genügt).
-5. ~~Kanalwechsel für ein fremdes 11s-Mesh?~~ Entschieden 02.10.: ja. Nur
-   zur Laufzeit (uci-Delta plus `wifi reconf`), der AP wechselt mit. Beim
-   Verlassen wird das Delta verworfen und der alte Kanal kehrt zurück, ein
-   Reboot tut dasselbe. preserve_channels und channel-Befehl bleiben
-   unberührt, weil nichts committet wird.
-6. Signalisierung: Entschieden 02.10.: mit der Umsetzung sofort an drei
-   Stellen, nicht später:
-   - neanderfunk-respondd: Feld in statistics (z. B. `automesh: {state,
-     domain, iface, since}`), damit Karte und Kollektor es sehen;
-   - Statusseite: Zeile über gluon-patches-packages (eigene i18n);
-   - Login-Banner (neanderfunk-banner, profile.gluon/nodestatus): Hinweis
-     beim SSH-Login.
-   Zustände mindestens: `idle`, `island`, `probing`, `joined <netz>`,
-   `merged <netz>` (Fall B, R5), `lan_cut <netz>`, `gw_unverified`.
-7. Marker nur durch Heimat-Gateway: ja, eigener Marker
-   `/tmp/automesh.home-gw-seen` (R4, R4a linkcheck).
-8. ssid-changer: gleiche TQ-Kriterien wie daheim, keine Sonderbehandlung,
-   Paket bleibt unverändert (R18).
+1. Wolken dürfen anbinden; aufgelöst wird nur über den Randknoten.
+2. Alle fremden Netze außer `deny`; Netzliste nur als technische Hilfe.
+3. Andere eigene Domain gilt als fremd.
+4. Kein automesh auf 64-MB-Geräten (die linkcheck-Änderung gilt trotzdem
+   dort).
+5. Kanalwechsel für fremde 11s-Meshes erlaubt.
+6. Signalisierung sofort an vier Stellen (Abschnitt 11).
+7. Eigener Heimat-Marker, getrennt von linkcheck (Abschnitt 10).
+8. ssid-changer mit gleichen TQ-Kriterien wie daheim.
