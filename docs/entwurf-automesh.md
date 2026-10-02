@@ -229,8 +229,8 @@ sind Merkmale, die ohne bat0 funktionieren:
 1. **respondd über Link-Local:** `gluon-neighbour-info -i <if> -d
    ff02::2:1001 -r nodeinfo` auf jeder eigenen Mesh-Schnittstelle, wie es
    die Statusseite für ihre Nachbarliste tut. Antwortet ein Knoten mit
-   einem `domain_code` aus unserer Liste, ist das eigene Netz da (Feld und
-   Grund siehe unten). Das funktioniert auch auf
+   dem eigenen `domain_code`, ist das eigene Netz da (Feld und Grund siehe
+   unten). Das funktioniert auch auf
    rohem batman am LAN, wo der Ethertype allein nichts verrät. Zu prüfen:
    antwortet respondd auf einer Schnittstelle, die nicht in bat0 hängt?
 2. **11s-Peering auf dem eigenen Mesh-vif:** `iw dev meshN station dump`
@@ -243,9 +243,10 @@ Ein Treffer genügt: fremde Schnittstellen aus bat0, Deltas verwerfen,
 Filter und radvd zurück, eigene Schnittstellen wieder in bat0, danach eine
 Sperrzeit gegen Pendeln (z. B. 30 min kein neuer Beitritt).
 
-Dasselbe respondd-Merkmal prüft nach dem Beitritt auch die Gegenrichtung:
-Steht der `domain_code` des "fremden" Netzes in unserer Liste, ist es eine
-andere eigene Domain (siehe Entscheidungen).
+**Eine andere Domain der eigenen Familie gilt als fremd** (Entscheidung
+adorfer, 02.10.): Beitritt erlaubt (Fall B), mit VPN wird getrennt (Fall A).
+Das passt zum Hauptfall, denn die Domain-Brücke zwischen zwei eigenen
+Domains ist genau das, was verhindert werden soll.
 
 **Welches Feld: `domain_code`, nicht `site_code`** (Rückfrage adorfer,
 02.10.). Bei uns ist der `site_code` je Domain und Firmware-Zweig
@@ -256,16 +257,17 @@ beiden `13_dusfl`. Ein Vergleich auf den eigenen `site_code` hielte einen
 EOL-Knoten im eigenen Mesh für fremd, und der Knoten bliebe im fremden Netz,
 obwohl das eigene in Reichweite ist. Deshalb:
 
-- eigen = `nodeinfo.system.domain_code` steht in der Liste aller Domains
-  der Firmware-Familie (nef-, dus-, bgl-, Domainnummern 01-48, beim Bau aus
-  FirmwareConfigs erzeugt);
+- eigen = `nodeinfo.system.domain_code` ist **genau** die eigene Domain
+  (z. B. `21_dias`, gilt auch für die Sackgasse mit `_EOL` im site_code);
+  jede andere Domain, auch aus der eigenen Familie, ist fremd;
 - `site_code` nur zur Anzeige und fürs Log;
 - die Supernodes melden `site_code` = `domain_code` = `ffnefdNN`
-  (mesh-announce, z. B. `amalthea_ffnefd01`), gehören also mit
-  `^ffnefd[0-9]+$` in die Liste. Sie sind nur über mesh-vpn Nachbarn;
+  (mesh-announce, z. B. `amalthea_ffnefd01`). Eigen ist also auch
+  `ffnefd<eigene Nummer>`, z. B. `ffnefd21`. Sie sind nur über mesh-vpn
+  Nachbarn;
 - Altlasten wie `bgl`/`bgl` (ein Offline-Knoten auf der Karte) zeigen, dass
-  es auch Uralt-Domaincodes gibt. Was nicht in der Liste steht, ist
-  "unbekannt": kein Austritt, kein Beitritt.
+  es auch Uralt-Domaincodes gibt. Sie sind fremd wie alles andere, das
+  nicht die eigene Domain ist (Sperrliste beachten).
 
 ## 6. Risiken
 
@@ -367,8 +369,7 @@ Folgen:
    einer Liste (Abschnitt 9)? Nach PPA reicht grundsätzlich eine
    Sperrliste (Abschnitt 6); die Liste in Abschnitt 9 bleibt nur als
    technische Hilfe (VNI, Mesh-ID, Kanal vorab bekannt).
-3. Gilt eine andere eigene Domain als "fremd" (Beitritt erlaubt) oder als
-   "eigen" (Verlassen)?
+3. ~~Andere eigene Domain fremd oder eigen?~~ Entschieden 02.10.: fremd.
 4. 64-MB-Geräte ausschließen?
 5. Darf der Knoten für ein fremdes 11s-Mesh den Kanal wechseln?
 6. Signalisierung des Zustands: später (Punkt 5 der Ausgangsidee).
