@@ -168,12 +168,40 @@ auflösen, der angebunden hat, nicht irgendwer auf halbem Weg.
   der höheren primären MAC aus.
 
 **Auflösen: nur der Randknoten, ereignisgesteuert.**
-- Der Randknoten sieht in der zusammengelegten Wolke alle Gateways. Ein
-  Gateway, dessen bester Weg (`batctl o`) über eine **eigene**
-  Schnittstelle führt und nicht über die fremde, gehört zur eigenen Seite:
-  Ein Knoten der Wolke hat sein VPN zurück, oder die Wolke hat wieder
-  Anschluss an das übrige eigene Mesh. Bestätigung über das MAC-Schema
-  (Byte 5 = eigene Domain), wo verfügbar.
+- Der Randknoten sieht in der zusammengelegten Wolke alle Gateways. Ob
+  eines davon ein **Heimat-Gateway** ist, fragt er das Gateway selbst, statt
+  es aus der MAC zu raten (MAC-Schema ist dünnes Eis, adorfer 02.10.).
+  Kette, nur Standardmittel von batman-adv und respondd (am WDR3600
+  durchgespielt, 02.10.):
+  1. `batctl gwl`: Originator des Gateways, z. B. `02:ca:ff:ee:21:03`.
+  2. `batctl tg`: die Translation-Table-Einträge dieses Originators, ohne
+     Multicast (33:33:…, 01:00:5e:…). Darunter ist die MAC seiner eigenen
+     bat-Schnittstelle (`f2:be:ef:00:21:03`).
+  3. Daraus die EUI-64-Link-Local bilden (`fe80::f0be:efff:fe00:2103`, das
+     ist auch der Router im RA).
+  4. `gluon-neighbour-info -i br-client -d <ll> -p 1001 -t 3 -r nodeinfo`.
+     Antwort von kallisto: `domain_code: ffnefd21`, `hostname:
+     kallisto_ffnefd21`, `vpn: true`, und unter
+     `network.mesh.bat21.interfaces.tunnel` genau der Originator
+     `02:ca:ff:ee:21:03`.
+  5. Gültig nur, wenn der Originator aus Schritt 1 in den Mesh-Interfaces
+     der Antwort steht. Damit ist bewiesen, dass die Antwort von genau
+     diesem Gateway kommt und nicht von irgendeinem Client dahinter.
+  6. Heimat, wenn `domain_code` in einer **beim Bau gesetzten Liste** steht
+     (site.conf, z. B. `automesh.home = { 'ffnefd21' }`, aus den
+     Domaindaten erzeugt). Das ist eine ausdrückliche Angabe, keine
+     Namensregel.
+- Was nicht antwortet (fremdes Gateway ohne respondd, Link-Local nicht
+  nach EUI-64), gilt als "nicht Heimat". Ein Heimat-Gateway antwortet
+  immer, denn wir betreiben es.
+- Fehlerrichtung: Der Weg zum Gateway (`batctl o`: über eigene oder fremde
+  Schnittstelle) dient nur noch als billiger Auslöser für die Abfrage,
+  nicht als Urteil. Kommt das Heimat-Gateway sogar über das fremde Netz
+  (dort steckt irgendwo eine Brücke wie bei Holzmichel), löst der
+  Randknoten trotzdem auf, denn sein Beitritt ist dann überflüssig.
+- Abgefragt wird nur bei einem neuen Originator in `gwl` (Differenz zur
+  letzten Liste), nicht jedes Gateway alle 10 s. Das sind wenige kleine
+  UDP-Pakete.
 - Auslöser nicht im Minuten-Takt: Der batman-adv-uevent (BATTYPE=gw,
   add/change/del) kommt nur, wenn sich das **gewählte** Gateway ändert. Ein
   neu auftauchendes eigenes Gateway ändert die Wahl wegen der Trägheit von
@@ -279,8 +307,8 @@ aber kein Paket im Image liest den Schlüssel. Er hat derzeit keine Wirkung
 
 ## 5. Eigenes Netz wieder in Sicht: verlassen
 
-**Hauptmerkmal seit Abschnitt 1a:** ein Gateway, das über eine eigene
-Schnittstelle kommt (`gwl`-Abfrage im 10-s-Takt plus uevent, `batctl o`). Die folgenden Merkmale ergänzen
+**Hauptmerkmal seit Abschnitt 1a:** ein Gateway in `gwl`, das sich per
+respondd als Heimat-Gateway ausweist (Kette in Abschnitt 1a). Die folgenden Merkmale ergänzen
 es, vor allem für den Fall, dass das eigene Netz ohne Gateway in Sicht kommt
 (dann ist Zusammenlegen ohnehin harmlos) oder zur Bestätigung.
 
