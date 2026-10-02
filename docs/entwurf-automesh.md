@@ -8,6 +8,86 @@ Nachbar), sucht auf dem LAN-Mesh und im WLAN nach batman-Meshes anderer
 Communities. Findet er eins, tritt er bei, damit seine Clients wieder ins
 Internet kommen. Taucht das eigene Netz wieder auf, verlässt er das fremde.
 
+## 0. Hauptfall: falsche Firmware oder falsche Domain am LAN-Mesh (adorfer, 02.10.)
+
+Der eigentliche Anlass ist nicht die fremde Community in der Luft, sondern
+ein Knoten mit falscher Firmware oder falsch gewählter Domain, der in ein
+LAN-Mesh gesteckt wird. Weil wir `mesh.vxlan = false` fahren, verschmelzen
+die beiden Domains dann sofort über rohes batman: eine Domain-Brücke. Sie zu
+verhindern ist ein gewollter Nebeneffekt. Daraus ergeben sich zwei Fälle.
+
+### Fall A: Knoten mit VPN sieht ein fremdes Netz hinter dem LAN-Mesh: trennen
+
+Der Knoten hat seine eigenen Gateways über mesh-vpn. Kommen über die
+LAN-Mesh-Schnittstelle (`mesh_other`, ggf. mesh on WAN) Knoten eines fremden
+Netzes, wird diese LAN-Mesh-Verbindung zur Laufzeit getrennt:
+`ifdown mesh_other`. Damit nimmt netifd den batman-hardif sauber heraus,
+der Port selbst und ein eventueller Uplink bleiben. Ein Reboot stellt den
+Normalzustand her.
+
+Erkennung "fremd hinter LAN", vom billigsten Merkmal zum teuersten:
+
+1. **Gateway-MAC der Familie:** In 21_dias meldet `batctl gwl` den
+   Supernode als `02:ca:ff:ee:21:03`. Steckt die Domainnummer in der MAC
+   (beim Supernode-Repo bestätigen lassen), ist ein Gateway mit fremder
+   Nummer, das über `mesh_other` kommt, ein eindeutiger Beleg.
+2. **Gateway nur über LAN erreichbar:** Alle eigenen Gateways sieht ein
+   VPN-Knoten über mesh-vpn (die Supernodes einer Domain hängen untereinander
+   im Backbone). Ein Gateway, für das `batctl o` keinen Weg über mesh-vpn
+   kennt, sondern nur über `mesh_other`, gehört nicht zu uns. Das klappt
+   auch bei Netzen außerhalb der Familie.
+3. **Mengenschwelle:** mehr als N Originatoren (Vorschlag N = 12), deren
+   bester Weg über `mesh_other` geht und die über mesh-vpn nicht bekannt
+   sind. Das ist das Merkmal für fremde Netze ohne Gateway in Sicht. Die
+   Schwelle verhindert Fehlalarme durch einen einzelnen falsch geflashten
+   Nachbarn, der dann selbst trennt (Fall A gilt beidseitig, es reicht,
+   wenn eine Seite trennt).
+4. Zur Bestätigung respondd über Link-Local auf `mesh_other`
+   (`domain_code`, siehe Abschnitt 5).
+
+Erneut prüfen: nach Ablauf einer Sperrzeit (z. B. 6 h) oder wenn der Link
+neu hochkommt (Kabel umgesteckt, hotplug), `ifup mesh_other` und von vorn.
+
+Signalisierung (Ausgestaltung später): Zustand in `/tmp`, Feld im
+neanderfunk-respondd (z. B. `automesh: {state: "lan_cut", domain:
+"10_wlf"}`), Zeile auf der Statusseite, nodestatus im Banner, eine
+Syslog-Zeile an den Kollektor.
+
+### Fall B: Knoten ohne VPN sieht ein fremdes Netz am LAN-Mesh: beitreten
+
+Ohne VXLAN ist der Knoten dem fremden Mesh schon beigetreten, sobald das
+Kabel steckt: bat0 nimmt jeden batman-Nachbarn. Zu tun bleibt, die lokalen
+Dienste an das fremde Netz anzupassen.
+
+- **"Lokaler dhcpd":** Einen DHCPv4-Server gibt es auf unseren Knoten nicht
+  (`dhcp.local_client.ignore=1`, nachgesehen am WDR3600). DHCPv4 kommt
+  schon heute vom Gateway. Lokal läuft nur **uradvd** (gluon-radvd): RA
+  mit unserem ULA-`prefix6` und RDNSS = unsere next-node-Adresse. Den
+  gilt es herauszunehmen.
+- **Prefix-Filter (`LOCAL_FORWARD`), Stand am WDR3600:**
+  - IPv4 `10.0.0.0/8`: deckt alle Domains der Familie, beißt nicht.
+  - öffentlich `2a03:2260::/32` (extra_prefixes6): beißt nicht.
+  - **ULA beißt doch:** `prefix6` ist je Domain ein /64
+    (`fd66:666e:6566:64NN::/64`). Clients mit ULA-Adresse der fremden
+    Domain werden verworfen, z. B. DNS über eine ULA-Adresse. Alle 43
+    Domains in sites.nefall.sta liegen in `fd66:666e:6566:6400::/56`.
+    Vorschlag: diese /56 dauerhaft in `extra_prefixes6` der site.conf,
+    dann braucht es dafür keine Laufzeitregel.
+- **next-node der fremden Domain (zu prüfen):** `ip4`/`ip6` ist je Domain
+  verschieden (`V4PREFIX.1`, `V6PREFIX::1`). Verteilen die Gateways ihre
+  next-node-Adresse als DNS (DHCP Option 6 bzw. RDNSS), fragen die Clients
+  eine Adresse, die bei uns niemand beantwortet, und ins Mesh darf sie
+  nicht. Dann muss der Knoten die next-node-Adresse der fremden Domain
+  zusätzlich auf `local-node` legen. Die Werte kämen aus der Familienliste
+  (Abschnitt 9).
+- Austritt wie in Abschnitt 5: Kommt das eigene VPN hoch, wird aus Fall B
+  Fall A. Dann trennen und die Dienste wieder herstellen.
+
+**Nebenbefund zur Mesh-ID:** Die Domains der bgl-Familie heißen
+`mesh-bgl`, `mesh-bcd`, `mesh-lln`, `mesh-ode`, `mesh-rrh`, also mit
+Präfix, nicht mit Suffix. Ein Muster `.*-mesh` fände sie nicht. Für den
+WLAN-Pfad also die Liste nehmen, nicht ein Muster.
+
 ## Grundsätze
 
 - **Nur zur Laufzeit.** Kein `uci commit`, keine Flash-Schreibzugriffe.
