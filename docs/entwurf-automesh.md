@@ -365,10 +365,10 @@ Folgen:
 ## Entscheidungen (offen)
 
 1. v1 nur Einzelknoten-Inseln, oder auch Wolken ohne Gateway?
-2. Alle fremden Netze, nur die eigenen Domains oder auch Nachbarnetze aus
-   einer Liste (Abschnitt 9)? Nach PPA reicht grundsätzlich eine
-   Sperrliste (Abschnitt 6); die Liste in Abschnitt 9 bleibt nur als
-   technische Hilfe (VNI, Mesh-ID, Kanal vorab bekannt).
+2. ~~Welche Netze?~~ Entschieden 02.10.: alle, außer denen auf der
+   Sperrliste (`deny`, Abschnitt 7). Die Liste bekannter Netze aus
+   Abschnitt 9 ist nur noch technische Hilfe (Kanal, Algorithmus, Präfixe
+   vorab bekannt), keine Voraussetzung für den Beitritt.
 3. ~~Andere eigene Domain fremd oder eigen?~~ Entschieden 02.10.: fremd.
 4. ~~64-MB-Geräte ausschließen?~~ Entschieden 02.10.: ja, sonst wird es mit
    dem nötigen Tooling zu eng. Umsetzung wie bei usteer und whisperer:
