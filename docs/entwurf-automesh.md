@@ -301,7 +301,7 @@ Abschnitt 5.
 | gluon-radvd | verteilt lokal unseren `prefix6` und als RDNSS die next-node-Adresse. Clients hätten dann eine zweite Adresse ohne Route und einen DNS, der unsere (unerreichbaren) Server fragt | Dienst stoppen, beim Verlassen starten |
 | filter-ra-dhcp | DHCP/RA nur aus dem Mesh, passt auch im fremden Netz | bleibt |
 | next-node (local-node) | nur lokal, ebtables halten die MAC aus dem Mesh | bleibt |
-| ssid-changer | sieht das fremde Gateway | SSID regulär wie mit Heimat-Gateway, TQ-Schwelle führt in `joined`/`merged` nicht zur Offline-SSID (R18) |
+| ssid-changer | sieht das fremde Gateway | unverändert, gleiche TQ-Kriterien wie daheim (R18) |
 | tunneldigger-watchdog | startet mesh-vpn alle 5 min neu | gewollt, siehe Abschnitt 5 |
 | neanderfunk-linkcheck `no_gateway` | rebootet nach Gateway-Verlust | wertet nur den Heimat-Marker, keine Strikes in `joined`/`merged`/Sperrzeit (R4a) |
 
@@ -572,12 +572,11 @@ Sperrzeit ohne fremdes Gateway.
 17. **C-Helfer:** festgelegt: eigenes kleines Paket (z. B.
     `neanderfunk-automesh-sniff`), damit die Größe in Flash und Overlay
     messbar ist. Kleinster Overlay derzeit C6 v2 mit 576 KB.
-18. **ssid-changer im Zustand `joined`/`merged`:** Entschieden 02.10.: Die
-    Offline-SSID hilft dort niemandem. Die SSID wird regulär geschaltet,
-    genau wie mit Heimat-Gateway: Solange ein Gateway in `gwl` steht, gilt
-    der Knoten als online, die TQ-Schwelle führt in diesen Zuständen nicht
-    zur Offline-SSID. Änderung an neanderfunk-ssid-changer bei der
-    Umsetzung (liest `/tmp/automesh.state`). Gemeinsames `flock` wie in Punkt 16 gilt auch
+18. **ssid-changer im Zustand `joined`/`merged`:** Entschieden 02.10.
+    (präzisiert): gleiche TQ-Kriterien wie daheim. Weder "ständig offline,
+    weil Fremdnetz" noch "TQ-Prüfung aussetzen". Der ssid-changer bleibt
+    unverändert und bewertet das fremde Gateway mit denselben Schwellen
+    (tq_limit) wie ein Heimat-Gateway. Gemeinsames `flock` wie in Punkt 16 gilt auch
     für ssid-changer, scan-guard und ap-timer.
 
 ## Entscheidungen
@@ -612,5 +611,5 @@ Sperrzeit ohne fremdes Gateway.
    `merged <netz>` (Fall B, R5), `lan_cut <netz>`, `gw_unverified`.
 7. Marker nur durch Heimat-Gateway: ja, eigener Marker
    `/tmp/automesh.home-gw-seen` (R4, R4a linkcheck).
-8. ssid-changer: SSID regulär schalten wie mit Heimat-Gateway, keine
-   Offline-SSID in `joined`/`merged` (R18).
+8. ssid-changer: gleiche TQ-Kriterien wie daheim, keine Sonderbehandlung,
+   Paket bleibt unverändert (R18).
