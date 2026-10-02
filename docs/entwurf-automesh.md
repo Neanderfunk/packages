@@ -370,6 +370,11 @@ Folgen:
    Sperrliste (Abschnitt 6); die Liste in Abschnitt 9 bleibt nur als
    technische Hilfe (VNI, Mesh-ID, Kanal vorab bekannt).
 3. ~~Andere eigene Domain fremd oder eigen?~~ Entschieden 02.10.: fremd.
-4. 64-MB-Geräte ausschließen?
+4. ~~64-MB-Geräte ausschließen?~~ Entschieden 02.10.: ja, sonst wird es mit
+   dem nötigen Tooling zu eng. Umsetzung wie bei usteer und whisperer:
+   Paket in image-customization für die lowmem-Gruppen nicht ins Image.
+   Folge: Ein 64-MB-Knoten erkennt selbst keine Domain-Brücke. Die Trennung
+   übernimmt dann ein Nachbar mit mehr RAM und VPN (Fall A wirkt von beiden
+   Seiten, eine Seite genügt).
 5. Darf der Knoten für ein fremdes 11s-Mesh den Kanal wechseln?
 6. Signalisierung des Zustands: später (Punkt 5 der Ausgangsidee).
