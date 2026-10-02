@@ -121,7 +121,8 @@ sind Merkmale, die ohne bat0 funktionieren:
 1. **respondd über Link-Local:** `gluon-neighbour-info -i <if> -d
    ff02::2:1001 -r nodeinfo` auf jeder eigenen Mesh-Schnittstelle, wie es
    die Statusseite für ihre Nachbarliste tut. Antwortet ein Knoten mit
-   unserem `site_code`, ist das eigene Netz da. Das funktioniert auch auf
+   einem `domain_code` aus unserer Liste, ist das eigene Netz da (Feld und
+   Grund siehe unten). Das funktioniert auch auf
    rohem batman am LAN, wo der Ethertype allein nichts verrät. Zu prüfen:
    antwortet respondd auf einer Schnittstelle, die nicht in bat0 hängt?
 2. **11s-Peering auf dem eigenen Mesh-vif:** `iw dev meshN station dump`
@@ -135,8 +136,25 @@ Filter und radvd zurück, eigene Schnittstellen wieder in bat0, danach eine
 Sperrzeit gegen Pendeln (z. B. 30 min kein neuer Beitritt).
 
 Dasselbe respondd-Merkmal prüft nach dem Beitritt auch die Gegenrichtung:
-Hat das "fremde" Netz unseren `site_code`, ist es eine andere eigene Domain
-(siehe Entscheidungen).
+Steht der `domain_code` des "fremden" Netzes in unserer Liste, ist es eine
+andere eigene Domain (siehe Entscheidungen).
+
+**Welches Feld: `domain_code`, nicht `site_code`** (Rückfrage adorfer,
+02.10.). Bei uns ist der `site_code` je Domain und Firmware-Zweig
+verschieden (`METAPREFIX-DOMAINNR_SITESMALL`). Die Sackgassen-Firmware hängt
+noch `_EOL` an. Laut Karte vom 02.10. stehen z. B. `dus-13_dusfl` (35
+Knoten) und `dus-13_dusfl_EOL` (30 Knoten) im selben Mesh, `domain` ist bei
+beiden `13_dusfl`. Ein Vergleich auf den eigenen `site_code` hielte einen
+EOL-Knoten im eigenen Mesh für fremd, und der Knoten bliebe im fremden Netz,
+obwohl das eigene in Reichweite ist. Deshalb:
+
+- eigen = `nodeinfo.system.domain_code` steht in der Liste aller Domains
+  der Firmware-Familie (nef-, dus-, bgl-, Domainnummern 01-48, beim Bau aus
+  FirmwareConfigs erzeugt);
+- `site_code` nur zur Anzeige und fürs Log;
+- Knoten mit Uralt-Firmware ohne `domain_code` (z. B. `ffnefd0x` auf der
+  Karte) zählen als eigen, wenn ihr `site_code` mit `ffnef` beginnt, sonst
+  als unbekannt (kein Austritt, kein Beitritt).
 
 ## 6. Risiken
 
@@ -186,7 +204,7 @@ Was je Netz in die Liste muss (zur Bauzeit erzeugt, z. B.
 
 | Feld | Wofür | Herkunft |
 |---|---|---|
-| `site_code` | Abschnitt 5, eigen/fremd sicher unterscheiden | site.conf des Netzes |
+| `domain_code` (alle Domains des Netzes) | Abschnitt 5, eigen/fremd sicher unterscheiden; nicht `site_code`, der variiert z. B. mit `_EOL` | site.conf/domains des Netzes |
 | `vni` | VXLAN-Beitritt | aus `domain_seed` vorberechnet: `md5(… "gluon-mesh-vxlan" … seed …)`, erste 3 Byte (`gluon.util.domain_seed_bytes`). Ins Image kommt nur die VNI, nicht der Seed |
 | `mesh_id` je Band, Kanal | 11s-Beitritt ohne Scan-Raten, Kanalwechsel nur auf bekannten Kanal | site.conf/domains |
 | `routing_algo` | BATMAN_IV/V vorab bekannt | site.conf |
