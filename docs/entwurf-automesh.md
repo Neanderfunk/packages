@@ -175,10 +175,46 @@ uci-Werte tolerant lesen (1/true/yes/on), wie in allen eigenen Paketen.
   Abschnitt 5 einzeln), BATMAN_V-Netz wird übersprungen, MT7915 scannt
   nicht, Reboot stellt den Normalzustand her.
 
+## 9. Variante: nur bekannte Netze (adorfer, 02.10.)
+
+Statt "jedes fremde Mesh" nur Netze aus einer Liste: die eigenen Domains
+der Multidomain-Firmware und/oder die Nachbarnetze des Neanderfunks. Das
+nimmt das meiste Raten heraus.
+
+Was je Netz in die Liste muss (zur Bauzeit erzeugt, z. B.
+`/lib/neanderfunk/automesh/networks.json`, wenige hundert Byte je Netz):
+
+| Feld | Wofür | Herkunft |
+|---|---|---|
+| `site_code` | Abschnitt 5, eigen/fremd sicher unterscheiden | site.conf des Netzes |
+| `vni` | VXLAN-Beitritt | aus `domain_seed` vorberechnet: `md5(… "gluon-mesh-vxlan" … seed …)`, erste 3 Byte (`gluon.util.domain_seed_bytes`). Ins Image kommt nur die VNI, nicht der Seed |
+| `mesh_id` je Band, Kanal | 11s-Beitritt ohne Scan-Raten, Kanalwechsel nur auf bekannten Kanal | site.conf/domains |
+| `routing_algo` | BATMAN_IV/V vorab bekannt | site.conf |
+| `prefix4`, `prefix6` | gezielte `LOCAL_FORWARD`-Regeln statt Filter ganz auf | site.conf |
+| `vxlan` true/false | ob am LAN VXLAN oder rohes batman kommt | site.conf |
+
+Schlüssel braucht es keine: VXLAN und Gluon-11s sind unverschlüsselt. Nur
+ein Nachbar mit SAE-Mesh bräuchte dessen Passphrase, den würde man weglassen.
+
+Folgen:
+
+- Die Suche wird ein Abgleich: Mitlesen am LAN liefert VNI, Scan liefert
+  Mesh-ID. Nur Treffer aus der Liste zählen.
+- Filter präzise: Die Präfixe des Zielnetzes werden zusätzlich erlaubt, der
+  Rest bleibt gesperrt.
+- Die Liste muss gepflegt werden. Ändert ein Nachbar Seed, Mesh-ID oder
+  Präfix, passt erst die nächste Firmware wieder.
+- **Eigene Domains am LAN:** Wir fahren `vxlan = false`. Zwei eigene
+  Domains am selben Kabel verschmelzen dort also ohnehin, eine VNI gibt es
+  nicht. Für die Variante "eigene Multidomain" bleibt praktisch der
+  WLAN-Pfad (Mesh-ID je Domain). Am LAN wird es erst nützlich, wenn eine
+  Domain auf VXLAN umstellt.
+
 ## Entscheidungen (offen)
 
 1. v1 nur Einzelknoten-Inseln, oder auch Wolken ohne Gateway?
-2. Alle fremden Netze oder nur eine Erlaubnisliste?
+2. Alle fremden Netze, nur die eigenen Domains oder auch Nachbarnetze aus
+   einer Liste (Abschnitt 9)? Wenn Nachbarn: welche?
 3. Gilt eine andere eigene Domain als "fremd" (Beitritt erlaubt) oder als
    "eigen" (Verlassen)?
 4. 64-MB-Geräte ausschließen?
