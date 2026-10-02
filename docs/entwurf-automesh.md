@@ -301,8 +301,9 @@ Abschnitt 5.
 | gluon-radvd | verteilt lokal unseren `prefix6` und als RDNSS die next-node-Adresse. Clients hätten dann eine zweite Adresse ohne Route und einen DNS, der unsere (unerreichbaren) Server fragt | Dienst stoppen, beim Verlassen starten |
 | filter-ra-dhcp | DHCP/RA nur aus dem Mesh, passt auch im fremden Netz | bleibt |
 | next-node (local-node) | nur lokal, ebtables halten die MAC aus dem Mesh | bleibt |
-| ssid-changer | sieht das fremde Gateway und schaltet auf die normale SSID zurück | gewollt, nichts tun |
+| ssid-changer | sieht das fremde Gateway | SSID regulär wie mit Heimat-Gateway, TQ-Schwelle führt in `joined`/`merged` nicht zur Offline-SSID (R18) |
 | tunneldigger-watchdog | startet mesh-vpn alle 5 min neu | gewollt, siehe Abschnitt 5 |
+| neanderfunk-linkcheck `no_gateway` | rebootet nach Gateway-Verlust | wertet nur den Heimat-Marker, keine Strikes in `joined`/`merged`/Sperrzeit (R4a) |
 
 **Nebenbefund:** `roguenets_filter` steht in templates/common/site.conf,
 aber kein Paket im Image liest den Schlüssel. Er hat derzeit keine Wirkung
@@ -480,12 +481,23 @@ Nummern wie im Review. "Festgelegt" heißt: so in den Entwurf übernommen.
    (Liste `automesh.home`, Vergleich auf `site_code` oder `domain_code`).
 2. **Zwei Heimat-Definitionen:** festgelegt, nur noch die Liste.
 3. Siehe Begriffe.
-4. **Marker "seit Boot ein Gateway gesehen":** Vorschlag: Der Marker wird
-   nur von einem **Heimat**-Gateway gesetzt. Die Heimat-Prüfung läuft dafür
+4. **Marker "seit Boot ein Gateway gesehen":** Entschieden 02.10.: nur ein
+   **Heimat**-Gateway setzt ihn. Eigener Marker `/tmp/automesh.home-gw-seen`,
+   getrennt vom vorhandenen `/tmp/linkcheck.gw-seen` (siehe R4a). Die Heimat-Prüfung läuft dafür
    auch im Ruhezustand, aber nur bei Änderungen in `gwl` (neuer
    Originator), das kostet fast nichts. Damit kann nach einem Auflösen
    wieder ein Randknoten entstehen, und die Wolke bleibt nicht bis zum
-   Weekly Reboot dunkel. *Entscheidung offen.*
+   Weekly Reboot dunkel.
+4a. **Wechselwirkung mit neanderfunk-linkcheck (gefunden beim Trennen der
+   Marker):** linkcheck setzt `/tmp/linkcheck.gw-seen` bei **jedem** Gateway
+   und rebootet, wenn danach 4 Prüfungen lang `gwl` leer ist
+   (gateway.sh, `no_gateway`). Mit automesh hieße das: Ein fremdes Gateway
+   setzt den linkcheck-Marker; löst der Randknoten auf, ist `gwl` in der
+   ganzen Wolke leer, und **alle Knoten der Wolke rebooten**. Festgelegt:
+   Ist automesh installiert, wertet `no_gateway` nur noch den Heimat-Marker
+   (`/tmp/automesh.home-gw-seen`) und zählt keine Strikes, solange
+   `/tmp/automesh.state` `joined`, `merged` oder eine Sperrzeit nach
+   Auflösen anzeigt. Änderung an neanderfunk-linkcheck bei der Umsetzung.
 5. **Fall B ohne Auslöser:** festgelegt, eigener Zustand `merged`:
    "Gateway in `gwl`, keines ist Heimat-Gateway, kein VPN". Er setzt die
    Signalisierung und, außerhalb der Familie, §4. Randknoten am Kabel ist
@@ -560,10 +572,12 @@ Sperrzeit ohne fremdes Gateway.
 17. **C-Helfer:** festgelegt: eigenes kleines Paket (z. B.
     `neanderfunk-automesh-sniff`), damit die Größe in Flash und Overlay
     messbar ist. Kleinster Overlay derzeit C6 v2 mit 576 KB.
-18. **ssid-changer im Zustand `joined`/`merged`:** Vorschlag: Er pausiert
-    das Umschalten auf die Offline-SSID, solange ein Gateway in `gwl` steht,
-    weil Internet über das fremde Netz geht, auch bei schlechter TQ.
-    *Entscheidung offen.* Gemeinsames `flock` wie in Punkt 16 gilt auch
+18. **ssid-changer im Zustand `joined`/`merged`:** Entschieden 02.10.: Die
+    Offline-SSID hilft dort niemandem. Die SSID wird regulär geschaltet,
+    genau wie mit Heimat-Gateway: Solange ein Gateway in `gwl` steht, gilt
+    der Knoten als online, die TQ-Schwelle führt in diesen Zuständen nicht
+    zur Offline-SSID. Änderung an neanderfunk-ssid-changer bei der
+    Umsetzung (liest `/tmp/automesh.state`). Gemeinsames `flock` wie in Punkt 16 gilt auch
     für ssid-changer, scan-guard und ap-timer.
 
 ## Entscheidungen
@@ -596,5 +610,7 @@ Sperrzeit ohne fremdes Gateway.
      beim SSH-Login.
    Zustände mindestens: `idle`, `island`, `probing`, `joined <netz>`,
    `merged <netz>` (Fall B, R5), `lan_cut <netz>`, `gw_unverified`.
-7. Marker nur durch Heimat-Gateway? (R4) *offen*
-8. ssid-changer pausiert in `joined`/`merged`? (R18) *offen*
+7. Marker nur durch Heimat-Gateway: ja, eigener Marker
+   `/tmp/automesh.home-gw-seen` (R4, R4a linkcheck).
+8. ssid-changer: SSID regulär schalten wie mit Heimat-Gateway, keine
+   Offline-SSID in `joined`/`merged` (R18).
