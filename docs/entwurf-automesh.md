@@ -123,11 +123,13 @@ WLAN-Pfad also die Liste nehmen, nicht ein Muster.
   `gluon_wired.sh` seine VXLAN-Geräte), WLAN über uci-Delta plus
   `flock … wifi reconf` wie beim ap-timer, Filter über `ebtables`-Aufrufe.
   Ein Reboot stellt immer den Normalzustand her.
-- **Nie zwei Netze verbinden.** Solange der Knoten im fremden Mesh ist,
-  hängt keine eigene Mesh-Schnittstelle in bat0. Sonst würde der Knoten zur
-  Brücke zwischen zwei Communities: fremde Gateways in unserem Mesh, fremde
-  DHCP-Leases bei unseren Clients, gemischte Translation Tables. Selbst
-  wenige Sekunden reichen dafür, die Leases halten Minuten.
+- **Nur eine gatewaylose Wolke anbinden, nie zwei Netze mit Gateways
+  verbinden.** Eine eigene Wolke ohne Gateway darf über den Randknoten
+  am fremden Netz hängen ("ein Gateway ist besser als keins", adorfer
+  02.10., Abschnitt 1a). Sobald auf der eigenen Seite wieder ein eigenes
+  Gateway auftaucht, wäre das eine Brücke zwischen zwei Netzen mit
+  Gateways: fremde DHCP-Leases bei unseren Clients, gemischte Translation
+  Tables. Dann löst der Randknoten sofort auf.
 - Shell und ein kleiner C-Helfer, kein Lua-Daemon (64-MB-Geräte).
 
 ## 1. Insel-Erkennung (Auslöser)
@@ -140,14 +142,66 @@ Alle Bedingungen müssen erfüllt sein:
    ruhig, die bei einem Supernode-Ausfall ihr Gateway verlieren. Sonst würde
    ein netzweiter Ausfall alle Randknoten gleichzeitig in fremde Netze
    schicken.
-3. Kein batman-Nachbar auf eigenen Schnittstellen (`batctl n` leer).
+3. Gerade jetzt kein Gateway in `batctl gwl`, auch kein fremdes (dann hat
+   schon ein anderer Knoten der Wolke angebunden).
 
-Zu Punkt 3: Eine Wolke aus mehreren eigenen Knoten ohne Gateway fällt damit
-in v1 heraus. Träten dort alle Knoten einzeln bei, sähen sie sich gegenseitig
-als "eigenes Netz" und würden pendeln. Für Wolken bräuchte es eine Wahl
-(z. B. kleinste MAC tritt bei, die anderen bleiben im eigenen Mesh hinter
-ihr). Das wäre allerdings genau die Brücke, die oben ausgeschlossen ist.
-Deshalb: v1 nur Einzelknoten.
+Eigene batman-Nachbarn sind erlaubt: Auch eine Wolke ohne Gateway ist eine
+Insel (Abschnitt 1a).
+
+## 1a. Wolken ohne Gateway (adorfer, 02.10.)
+
+Grundsatz: Wenn eine Wolke kein Gateway hat, ist ein fremdes besser als
+keins. Die spannende Frage ist der Rückweg: Sieht irgendwer in der Wolke
+nachträglich doch wieder ein eigenes Gateway, muss **der Randknoten**
+auflösen, der angebunden hat, nicht irgendwer auf halbem Weg.
+
+**Anbinden: genau ein Randknoten je Wolke.**
+- Der Randknoten tritt bei und lässt seine eigenen Mesh-Schnittstellen in
+  bat0. Dadurch bekommt die ganze Wolke das fremde Gateway.
+- Alle anderen Knoten der Wolke sehen danach ein Gateway in `gwl`.
+  Bedingung 3 aus Abschnitt 1 ist für sie nicht mehr erfüllt, also treten
+  sie nicht zusätzlich bei.
+- Gegen zwei gleichzeitige Beitritte: Zufallsverzögerung (0-120 s), direkt
+  vor dem Beitritt `gwl` erneut prüfen. Sieht ein beigetretener Knoten
+  hinterher ein fremdes Gateway, das **über eigene Schnittstellen** kommt
+  (ein zweiter Randknoten, womöglich zu einem dritten Netz), tritt der mit
+  der höheren primären MAC aus.
+
+**Auflösen: nur der Randknoten, ereignisgesteuert.**
+- Der Randknoten sieht in der zusammengelegten Wolke alle Gateways. Ein
+  Gateway, dessen bester Weg (`batctl o`) über eine **eigene**
+  Schnittstelle führt und nicht über die fremde, gehört zur eigenen Seite:
+  Ein Knoten der Wolke hat sein VPN zurück, oder die Wolke hat wieder
+  Anschluss an das übrige eigene Mesh. Bestätigung über das MAC-Schema
+  (Byte 5 = eigene Domain), wo verfügbar.
+- Auslöser ist der batman-adv-uevent für Gateways (gw add/change über
+  hotplug), nicht ein Minuten-Takt. Die Reaktion kommt also nach Sekunden,
+  etwa ein OGM-Intervall plus Prüfzeit.
+- Danach fremde Schnittstelle aus bat0, Laufzeitänderungen zurücknehmen,
+  Sperrzeit gegen Pendeln.
+- Restrisiko: Für diese Sekunden sind beide Seiten verbunden. Ein Client
+  der eigenen Seite, der genau dann per DHCP anfragt, könnte eine fremde
+  Lease bekommen. batman-adv schickt DHCP aber nur an das gewählte Gateway,
+  und das bleibt bei `gw_sel_class 1` erst einmal das bisherige. Klein,
+  aber nicht null.
+
+**Die Knoten auf halbem Weg halten still.**
+- Ein Knoten der Wolke, dessen VPN zurückkommt, sieht das fremde Netz in
+  seinem Mesh. Ohne Sonderregel würde er nach Fall A sein LAN-Mesh trennen
+  und damit die eigene Wolke zerschneiden.
+- Regel: Fall A wartet nach dem Erkennen eine Frist (Vorschlag 120 s) und
+  prüft dann neu. In der Zeit hat der Randknoten längst aufgelöst, das
+  fremde Netz ist weg, Fall A entfällt.
+- Zusätzlich fragt der Knoten vor dem Trennen über respondd auf bat0, ob
+  ein Knoten der eigenen Domain `automesh: joined` meldet. Wenn ja, wartet
+  er weiter auf ihn, als Notbremse mit Obergrenze (z. B. 10 min), dann
+  trennt er doch.
+- Ergebnis: Wer beigetreten ist, löst auch auf. Fall A trifft nur echte
+  Fehlsteckungen, bei denen niemand `joined` meldet.
+
+**Massenauslösung** bleibt durch Bedingung 2 aus Abschnitt 1 gebremst ("seit
+dem Boot nie ein Gateway"): Bei einem Supernode-Ausfall haben die Knoten
+vorher Gateways gesehen und bleiben ruhig.
 
 ## 2. Suche auf dem LAN-Mesh
 
@@ -208,7 +262,7 @@ Abschnitt 5.
 
 | Was | Warum | Maßnahme |
 |---|---|---|
-| eigene Mesh-Schnittstellen | keine Brücke zwischen den Netzen | `batctl if del` (mesh-vpn, mesh_radioN, LAN-Mesh); Interfaces bleiben oben, für die Erkennung in Abschnitt 5 |
+| eigene Mesh-Schnittstellen | die gatewaylose Wolke soll das fremde Gateway mitbenutzen (Abschnitt 1a) | bleiben in bat0; aufgelöst wird, sobald ein eigenes Gateway auftaucht |
 | `LOCAL_FORWARD` (gluon-ebtables-source-filter) | lässt von lokalen Clients nur Quelladressen aus `prefix4`/`prefix6` durch. Mit fremden Leases wäre alles verworfen | `ebtables -I LOCAL_FORWARD -j RETURN`, beim Verlassen wieder `-D`. Feiner: die fremden Präfixe aus RA/DHCP lernen und nur diese erlauben |
 | gluon-radvd | verteilt lokal unseren `prefix6` und als RDNSS die next-node-Adresse. Clients hätten dann eine zweite Adresse ohne Route und einen DNS, der unsere (unerreichbaren) Server fragt | Dienst stoppen, beim Verlassen starten |
 | filter-ra-dhcp | DHCP/RA nur aus dem Mesh, passt auch im fremden Netz | bleibt |
@@ -221,6 +275,11 @@ aber kein Paket im Image liest den Schlüssel. Er hat derzeit keine Wirkung
 (wie früher preserve_channels).
 
 ## 5. Eigenes Netz wieder in Sicht: verlassen
+
+**Hauptmerkmal seit Abschnitt 1a:** ein Gateway, das über eine eigene
+Schnittstelle kommt (uevent, `batctl o`). Die folgenden Merkmale ergänzen
+es, vor allem für den Fall, dass das eigene Netz ohne Gateway in Sicht kommt
+(dann ist Zusammenlegen ohnehin harmlos) oder zur Bestätigung.
 
 Fremde Gateways im `gwl` sagen nichts. Manche Netze haben mehrere, und
 Gateways nach Community zu sortieren bräuchte gepflegte MAC-Listen. Besser
@@ -362,9 +421,11 @@ Folgen:
   WLAN-Pfad (Mesh-ID je Domain). Am LAN wird es erst nützlich, wenn eine
   Domain auf VXLAN umstellt.
 
-## Entscheidungen (offen)
+## Entscheidungen
 
-1. v1 nur Einzelknoten-Inseln, oder auch Wolken ohne Gateway?
+1. ~~Einzelknoten oder auch Wolken?~~ Entschieden 02.10.: auch Wolken, ein
+   Gateway ist besser als keins. Rückweg nur über den Randknoten
+   (Abschnitt 1a).
 2. ~~Welche Netze?~~ Entschieden 02.10.: alle, außer denen auf der
    Sperrliste (`deny`, Abschnitt 7). Die Liste bekannter Netze aus
    Abschnitt 9 ist nur noch technische Hilfe (Kanal, Algorithmus, Präfixe
