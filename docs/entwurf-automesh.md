@@ -152,9 +152,12 @@ obwohl das eigene in Reichweite ist. Deshalb:
   der Firmware-Familie (nef-, dus-, bgl-, Domainnummern 01-48, beim Bau aus
   FirmwareConfigs erzeugt);
 - `site_code` nur zur Anzeige und fürs Log;
-- Knoten mit Uralt-Firmware ohne `domain_code` (z. B. `ffnefd0x` auf der
-  Karte) zählen als eigen, wenn ihr `site_code` mit `ffnef` beginnt, sonst
-  als unbekannt (kein Austritt, kein Beitritt).
+- die Supernodes melden `site_code` = `domain_code` = `ffnefdNN`
+  (mesh-announce, z. B. `amalthea_ffnefd01`), gehören also mit
+  `^ffnefd[0-9]+$` in die Liste. Sie sind nur über mesh-vpn Nachbarn;
+- Altlasten wie `bgl`/`bgl` (ein Offline-Knoten auf der Karte) zeigen, dass
+  es auch Uralt-Domaincodes gibt. Was nicht in der Liste steht, ist
+  "unbekannt": kein Austritt, kein Beitritt.
 
 ## 6. Risiken
 
