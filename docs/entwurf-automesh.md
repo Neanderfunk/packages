@@ -381,4 +381,12 @@ Folgen:
    Verlassen wird das Delta verworfen und der alte Kanal kehrt zurück, ein
    Reboot tut dasselbe. preserve_channels und channel-Befehl bleiben
    unberührt, weil nichts committet wird.
-6. Signalisierung des Zustands: später (Punkt 5 der Ausgangsidee).
+6. Signalisierung: Entschieden 02.10.: mit der Umsetzung sofort an drei
+   Stellen, nicht später:
+   - neanderfunk-respondd: Feld in statistics (z. B. `automesh: {state,
+     domain, iface, since}`), damit Karte und Kollektor es sehen;
+   - Statusseite: Zeile über gluon-patches-packages (eigene i18n);
+   - Login-Banner (neanderfunk-banner, profile.gluon/nodestatus): Hinweis
+     beim SSH-Login.
+   Zustände mindestens: `idle`, `island`, `joined <domain>`,
+   `lan_cut <domain>`.
