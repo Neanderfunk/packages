@@ -46,6 +46,9 @@ Erkennung "fremd hinter LAN", vom billigsten Merkmal zum teuersten:
      `02:ca:ff:ee:<gültige fremde Domainnummer>:<01-06>`.
    - Befund: Ein solches Gateway mit fremder Nummer ist über `mesh_other`
      erreichbar (nicht über mesh-vpn).
+   - **Nach Review (R7): nur Auslöser, nie Urteil.** Das Urteil fällt die
+     respondd-Kette aus Abschnitt 1a. Das Schema hängt an 01-48 und
+     Supernode 01-06; ein siebter Supernode fiele heraus.
    - **Echter Feldfall** (Kartenstand 29.09., Supernode-Session):
      Holzmichel-a36a (UniFi AC Mesh Pro, dus-13_dusfl) hat Gateway
      21_dias, Nexthop Holzmichel-c501 (nef-21_dias) am selben Standort.
@@ -319,8 +322,8 @@ sind Merkmale, die ohne bat0 funktionieren:
 1. **respondd über Link-Local:** `gluon-neighbour-info -i <if> -d
    ff02::2:1001 -r nodeinfo` auf jeder eigenen Mesh-Schnittstelle, wie es
    die Statusseite für ihre Nachbarliste tut. Antwortet ein Knoten mit
-   dem eigenen `domain_code`, ist das eigene Netz da (Feld und Grund siehe
-   unten). Das funktioniert auch auf
+   `site_code`/`domain_code` aus `automesh.home`, ist das eigene Netz da
+   (siehe unten). Das funktioniert auch auf
    rohem batman am LAN, wo der Ethertype allein nichts verrät. Zu prüfen:
    antwortet respondd auf einer Schnittstelle, die nicht in bat0 hängt?
 2. **11s-Peering auf dem eigenen Mesh-vif:** `iw dev meshN station dump`
@@ -347,10 +350,15 @@ beiden `13_dusfl`. Ein Vergleich auf den eigenen `site_code` hielte einen
 EOL-Knoten im eigenen Mesh für fremd, und der Knoten bliebe im fremden Netz,
 obwohl das eigene in Reichweite ist. Deshalb:
 
-- eigen = `nodeinfo.system.domain_code` ist **genau** die eigene Domain
-  (z. B. `21_dias`, gilt auch für die Sackgasse mit `_EOL` im site_code);
+- **Korrektur nach Review (R1/R2):** Unsere Knoten melden gar keinen
+  `domain_code`. Wir bauen Single-Domain-Firmware je Template, Gluon setzt
+  `domain_code` nur bei Multidomain. Am WDR3600 steht in `nodeinfo.system`
+  nur `site_code: nef-21_dias`; das `domain` der Karte setzt yanic selbst
+  zusammen. Deshalb gilt **eine** Definition: eigen = `site_code` oder
+  `domain_code` der Antwort steht in der beim Bau erzeugten Liste
+  `automesh.home`, z. B. `{ 'nef-21_dias', 'nef-21_dias_EOL', 'ffnefd21' }`.
+  Normale Knoten, Sackgasse und Supernodes stehen damit ausdrücklich drin;
   jede andere Domain, auch aus der eigenen Familie, ist fremd;
-- `site_code` nur zur Anzeige und fürs Log;
 - die Supernodes melden `site_code` = `domain_code` = `ffnefdNN`
   (mesh-announce, z. B. `amalthea_ffnefd01`). Eigen ist also auch
   `ffnefd<eigene Nummer>`, z. B. `ffnefd21`. Sie sind nur über mesh-vpn
@@ -452,6 +460,87 @@ Folgen:
   WLAN-Pfad (Mesh-ID je Domain). Am LAN wird es erst nützlich, wenn eine
   Domain auf VXLAN umstellt.
 
+## 10. Review Buildsystem-Session (02.10., Stand 6fa200f) und Auflösungen
+
+Nummern wie im Review. "Festgelegt" heißt: so in den Entwurf übernommen.
+"Entscheidung offen" heißt: adorfer entscheidet.
+
+**Begriffe (R3), festgelegt:**
+- **Wolke** = alle Originatoren in bat0, die ohne automesh-Schnittstelle
+  erreichbar sind.
+- **Insel** = Wolke ohne Gateway. Ein Einzelknoten ist eine Wolke der
+  Größe 1. Die Einleitung ("kein eigener Nachbar") ist damit überholt.
+- **Heimat-Gateway** = Gateway, dessen respondd-Antwort die Kette aus 1a
+  besteht und dessen `site_code`/`domain_code` in `automesh.home` steht.
+- **Familie** = Netze, deren Präfixe in unseren Filtern schon enthalten sind
+  (10.0.0.0/8, 2a03:2260::/32). Erkennbar am RA-Präfix und an der
+  DHCP-Lease des fremden Netzes.
+
+1. **Kein domain_code auf eigenen Knoten:** festgelegt, siehe Abschnitt 5
+   (Liste `automesh.home`, Vergleich auf `site_code` oder `domain_code`).
+2. **Zwei Heimat-Definitionen:** festgelegt, nur noch die Liste.
+3. Siehe Begriffe.
+4. **Marker "seit Boot ein Gateway gesehen":** Vorschlag: Der Marker wird
+   nur von einem **Heimat**-Gateway gesetzt. Die Heimat-Prüfung läuft dafür
+   auch im Ruhezustand, aber nur bei Änderungen in `gwl` (neuer
+   Originator), das kostet fast nichts. Damit kann nach einem Auflösen
+   wieder ein Randknoten entstehen, und die Wolke bleibt nicht bis zum
+   Weekly Reboot dunkel. *Entscheidung offen.*
+5. **Fall B ohne Auslöser:** festgelegt, eigener Zustand `merged`:
+   "Gateway in `gwl`, keines ist Heimat-Gateway, kein VPN". Er setzt die
+   Signalisierung und, außerhalb der Familie, §4. Randknoten am Kabel ist
+   jeder Knoten, der den fremden batman-Nachbarn direkt auf `mesh_other`
+   hat (beide Enden möglich). Beide melden `merged`, damit greift die
+   Notbremse von 1a auch hier.
+6. **Filter-Widerspruch:** festgelegt: Familie = nichts am Filter, außerhalb
+   der Familie = §4 (fremde Präfixe aus RA/DHCP zusätzlich erlauben).
+7. Festgelegt, siehe Fall A Kriterium 1.
+8. **"Antwortet nicht = nicht Heimat" ist die gefährliche Richtung:**
+   festgelegt: 3 Versuche mit je 3 s. Gateways, die nicht antworten, werden
+   im festen Takt (60 s) erneut gefragt, solange der Knoten `joined` oder
+   `merged` ist, nicht nur bei neuem Originator.
+9. **Wackelkontakt bei Fall A:** festgelegt: Neuprüfung nach hotplug
+   frühestens 10 min nach dem letzten Trennen.
+10. **Heimat-Gateway kommt und geht:** festgelegt: Heimat-Gateway gilt erst
+    nach 2 min Stabilität als "da" (Hysterese). Sperrzeit nach Auflösen
+    exponentiell: 5, 10, 20, 40 min, Obergrenze 2 h, zurück auf 5 min nach
+    24 h ohne Auflösen.
+11. **Zwei Randknoten an verschiedenen fremden Netzen:** festgelegt: Jeder
+    beigetretene Knoten prüft zusätzlich, ob über eigene Schnittstellen ein
+    Gateway kommt, das sich als **anderes** fremdes Netz ausweist (anderer
+    `site_code`). Dann tritt der mit der höheren MAC aus, ohne Zufallsfrist.
+    Fällt der verbleibende Randknoten aus, darf der ausgetretene wieder
+    beitreten: Seine Sperre gilt nur gegen dasselbe Netz, und der Marker
+    stört nach Punkt 4 nicht.
+12. **Fall A und Fall B in einer Wolke:** Das Zerfallen ist gewollt. Der
+    Teil um X ist danach eine Wolke mit fremdem Gateway und ohne Heimat, X
+    meldet `merged`. Niemand wird zusätzlich Randknoten, weil dort schon ein
+    Gateway in `gwl` steht.
+13. **Reboot mitten in Fall A:** festgelegt: Fall A hängt nicht an `delay`.
+    Er prüft ab dem ersten Gateway sofort, denn er ist Schutz, kein
+    Beitritt.
+14. **Kette eigen -> fremd1 -> fremd2:** festgelegt: Ist ein Knoten
+    `joined` und `gwl` 60 s lang leer, tritt er aus und geht zurück auf
+    `island`.
+15. **autoupdater-wifi-fallback:** festgelegt: automesh startet keinen
+    WLAN-Beitritt, solange der Fallback aktiv ist. Umgekehrt muss der
+    Fallback `joined` respektieren (Zustandsdatei in /tmp prüfen; ob das
+    ohne Patch am Gluon-Paket geht, wird bei der Umsetzung geprüft).
+16. **hotfix-Checks (IfNoWificlient, watchdog, check_wifi_firmware):**
+    festgelegt: gemeinsames `flock` auf `/var/lock/neanderfunk-wifi.lock`
+    (wie ap-timer) und eine Zustandsdatei `/tmp/automesh.state`. Die
+    Checks lassen das WLAN in Ruhe, solange der Zustand `probing` ist.
+    Ein Beitritt gilt erst nach 60 s **ohne** zwischenzeitlichen wifi-Neustart
+    als gescheitert.
+17. **C-Helfer:** festgelegt: eigenes kleines Paket (z. B.
+    `neanderfunk-automesh-sniff`), damit die Größe in Flash und Overlay
+    messbar ist. Kleinster Overlay derzeit C6 v2 mit 576 KB.
+18. **ssid-changer im Zustand `joined`/`merged`:** Vorschlag: Er pausiert
+    das Umschalten auf die Offline-SSID, solange ein Gateway in `gwl` steht,
+    weil Internet über das fremde Netz geht, auch bei schlechter TQ.
+    *Entscheidung offen.* Gemeinsames `flock` wie in Punkt 16 gilt auch
+    für ssid-changer, scan-guard und ap-timer.
+
 ## Entscheidungen
 
 1. ~~Einzelknoten oder auch Wolken?~~ Entschieden 02.10.: auch Wolken, ein
@@ -480,5 +569,7 @@ Folgen:
    - Statusseite: Zeile über gluon-patches-packages (eigene i18n);
    - Login-Banner (neanderfunk-banner, profile.gluon/nodestatus): Hinweis
      beim SSH-Login.
-   Zustände mindestens: `idle`, `island`, `joined <domain>`,
-   `lan_cut <domain>`.
+   Zustände mindestens: `idle`, `island`, `probing`, `joined <netz>`,
+   `merged <netz>` (Fall B, R5), `lan_cut <netz>`.
+7. Marker nur durch Heimat-Gateway? (R4) *offen*
+8. ssid-changer pausiert in `joined`/`merged`? (R18) *offen*
