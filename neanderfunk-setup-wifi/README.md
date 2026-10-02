@@ -129,5 +129,8 @@ adorfer, Firmware 26091317bro, Handy mit Android 16: Setup-Mode am Kabel und
 statt 333/100 (war vom Setup-Mode-Takt zu schwer zu unterscheiden) und der
 Upload-Hinweis oben.
 
+Am 03.10.2026 meldet adorfer: Das Anmeldefenster (Captive Portal) geht auch
+auf einem iPhone 14 Pro mit iOS 27.0.1.
+
 Tasten ohne Finger:
 `ACTION=released BUTTON=reset SEEN=1 /sbin/hotplug-call button`.
