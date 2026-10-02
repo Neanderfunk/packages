@@ -61,25 +61,30 @@ Dienste an das fremde Netz anzupassen.
 
 - **"Lokaler dhcpd":** Einen DHCPv4-Server gibt es auf unseren Knoten nicht
   (`dhcp.local_client.ignore=1`, nachgesehen am WDR3600). DHCPv4 kommt
-  schon heute vom Gateway. Lokal läuft nur **uradvd** (gluon-radvd): RA
-  mit unserem ULA-`prefix6` und RDNSS = unsere next-node-Adresse. Den
-  gilt es herauszunehmen.
-- **Prefix-Filter (`LOCAL_FORWARD`), Stand am WDR3600:**
-  - IPv4 `10.0.0.0/8`: deckt alle Domains der Familie, beißt nicht.
-  - öffentlich `2a03:2260::/32` (extra_prefixes6): beißt nicht.
-  - **ULA beißt doch:** `prefix6` ist je Domain ein /64
-    (`fd66:666e:6566:64NN::/64`). Clients mit ULA-Adresse der fremden
-    Domain werden verworfen, z. B. DNS über eine ULA-Adresse. Alle 43
-    Domains in sites.nefall.sta liegen in `fd66:666e:6566:6400::/56`.
-    Vorschlag: diese /56 dauerhaft in `extra_prefixes6` der site.conf,
-    dann braucht es dafür keine Laufzeitregel.
-- **next-node der fremden Domain (zu prüfen):** `ip4`/`ip6` ist je Domain
-  verschieden (`V4PREFIX.1`, `V6PREFIX::1`). Verteilen die Gateways ihre
-  next-node-Adresse als DNS (DHCP Option 6 bzw. RDNSS), fragen die Clients
-  eine Adresse, die bei uns niemand beantwortet, und ins Mesh darf sie
-  nicht. Dann muss der Knoten die next-node-Adresse der fremden Domain
-  zusätzlich auf `local-node` legen. Die Werte kämen aus der Familienliste
-  (Abschnitt 9).
+  schon heute vom Gateway. Lokal läuft nur **uradvd** (gluon-radvd) auf
+  `local-node`: ULA-`prefix6` plus RDNSS = next-node-ULA.
+- **ULA bleibt lokal, Filter beißt nicht** (adorfer; nachgesehen am WDR3600,
+  21_dias, 02.10.):
+  - Die ULA-Adresse auf br-client hat die Lebensdauern des lokalen uradvd
+    (preferred ~900 s, valid ~6840 s). Das öffentliche Präfix vom Gateway
+    hat 14400/86400 s. Das Gateway-RA bringt also nur das öffentliche
+    Präfix, kein ULA und kein RDNSS (`dns-server` leer).
+  - ULA ist damit nur der Notnagel für die Statusseite bzw. next-node, wenn
+    kein Supernode in Sicht ist. Verkehr Client -> next-node ist für die
+    Bridge INPUT, nicht FORWARD, und läuft an `LOCAL_FORWARD` vorbei.
+  - IPv4 `10.0.0.0/8` und öffentlich `2a03:2260::/32` decken alle Domains
+    der Familie. Am Filter ist nichts zu tun.
+  - uradvd kann sogar weiterlaufen: Die Clients fragen den lokalen
+    next-node-DNS. Der dnsmasq fragt zuerst `V6PREFIX::5` (der eigene
+    Supernode ist im fremden Mesh nicht da) und dann die öffentlichen
+    Server aus `dns.servers` über das fremde Gateway.
+- **Offen bleibt nur DHCPv4 Option 6** (bei der Supernode-Session
+  angefragt). RDNSS kommt vom Gateway keins, siehe oben. Gibt das fremde
+  Gateway per DHCP seine next-node-IPv4 (`V4PREFIX.1` der fremden Domain)
+  als DNS aus, fragen die Clients eine Adresse, die lokal niemand
+  beantwortet. Die Antwort aus dem Mesh trägt die next-node-MAC und wird
+  verworfen. Dann müsste der Knoten diese IPv4 zusätzlich auf `local-node`
+  legen (Wert aus der Familienliste, Abschnitt 9).
 - Austritt wie in Abschnitt 5: Kommt das eigene VPN hoch, wird aus Fall B
   Fall A. Dann trennen und die Dienste wieder herstellen.
 
