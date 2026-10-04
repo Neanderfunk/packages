@@ -29,9 +29,12 @@ looking for
 moving upgradebranch from experimental to stable systematically
 and removing l2tp from branches
 
-### gluon-banner
+### neanderfunk-gluonbanner-tiny
 
-Banner file replacement, Some nice messages on login and more aliases set.
+gluon-banner, slimmed for 4/32 devices (Sackgasse 2021.1): the status block
+exists once, in `nodeinfo`; the login profile calls `nodeinfo login`,
+`switch0` calls `nodeinfo switch`. Same login text and `nodeinfo` output as
+before (compared line by line on a TL-WR841N v9). CONFLICTS gluon-banner.
 
 ### gluon-linkcheck
 

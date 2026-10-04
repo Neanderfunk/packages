@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=gluon-banner
-PKG_VERSION:=3
+PKG_NAME:=neanderfunk-gluonbanner-tiny
+PKG_VERSION:=4
 PKG_RELEASE:=$(GLUON_VERSION).$(GLUON_SITE_CODE)-$(GLUON_RELEASE).$(GLUON_CONFIG_VERSION)
 
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
@@ -13,13 +13,16 @@ define Package/$(PKG_NAME)
   CATEGORY:=Customization
   TITLE:=Banner file replacement
   DEPENDS:=+gluon-core +busybox
+  CONFLICTS:=gluon-banner
   MAINTAINER:=Eulenfunk www.eulenfunk.de Andreas Dorfer
   URL:=https://github.com/eulenfunk/packages
   SOURCE:=https://github.com/eulenfunk/packages.git
 endef
 
 define Package/$(PKG_NAME)/description
-	Banner file replacement + Tooling
+	Banner file replacement + Tooling (gluon-banner, slimmed for 4/32 devices:
+	one copy of the status block in nodeinfo, used by the login profile and
+	switch0; same login text)
 endef
 
 define Build/Prepare
@@ -84,6 +87,10 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_DATA) ./files/etc/banner.gluon $(1)/etc/
 	$(INSTALL_DATA) ./files/etc/profile.gluon $(1)/etc/
 	$(CP) ./files/* $(1)/
+	./gluonShellDiet.sh $(1)/etc/profile.gluon
+	./gluonShellDiet.sh $(1)/usr/bin/nodeinfo
+	./gluonShellDiet.sh $(1)/usr/bin/help
+	./gluonShellDiet.sh $(1)/usr/bin/switch0
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
