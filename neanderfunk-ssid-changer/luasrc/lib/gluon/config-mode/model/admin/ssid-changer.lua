@@ -1,6 +1,6 @@
 local uci = require('simple-uci').cursor()
 
-local pkg_i18n = i18n 'gluon-ssid-changer'
+local pkg_i18n = i18n 'neanderfunk-ssid-changer'
 
 local f = Form(pkg_i18n.translate('Offline-SSID'))
 

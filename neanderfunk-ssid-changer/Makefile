@@ -1,13 +1,14 @@
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=gluon-ssid-changer
-PKG_VERSION:=7
+PKG_NAME:=neanderfunk-ssid-changer
+PKG_VERSION:=8
 
 include $(TOPDIR)/../package/gluon.mk
 
 define Package/$(PKG_NAME)
   TITLE:=changes the SSID to an Offline-SSID so clients don't connect to an offline WiFi
   DEPENDS:=+gluon-web-admin +micrond
+  CONFLICTS:=gluon-ssid-changer
 endef
 
 define Package/$(PKG_NAME)/description
