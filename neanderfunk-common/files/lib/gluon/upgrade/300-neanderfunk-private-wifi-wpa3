@@ -1,0 +1,24 @@
+#!/bin/sh
+# Privates WLAN: WPA3 zurueck auf WPA2, wo das Image kein WPA3 mehr kann.
+#
+# Unter Gluon 2025.1 fehlt das Feature wpa3 auf lowmem_singleradio (1043 v2-v5,
+# CPE210/220, WBS210, OM2P, UniFi AP Outdoor+ ...), dort gibt es hostapd-mini.
+# Unter 2023.2 hatten diese Geraete WPA3. Stand das private WLAN auf sae oder
+# sae-mixed, baute 325-gluon-private-wifi es mit einer Verschluesselung, die
+# hostapd-mini nicht kann - das private WLAN war nach dem Update weg. Gluon
+# stellt das nicht selbst zurueck, die Config-Mode-Seite bietet sae nur bei
+# device_supports_wpa3() an.
+#
+# Laeuft nach 022-wireless-roles (uebertraegt wan_radioN.encryption aus 2023.2
+# nach gluon.wireless.private_encryption) und vor 325. Kein commit, das macht
+# 998-commit. Dieselbe Pruefung wie gluon.wireless.device_supports_wpa3().
+
+[ -e /lib/gluon/features/wpa3 ] && exit 0
+
+case "$(uci -q get gluon.wireless.private_encryption)" in
+	sae|sae-mixed)
+		uci -q set gluon.wireless.private_encryption=psk2
+		logger -t neanderfunk-common "private wifi: this image has no WPA3, encryption set to WPA2 (psk2)"
+		;;
+esac
+exit 0

@@ -1,0 +1,214 @@
+#!/bin/sh
+# Prueft, ob hostapd die konfigurierten AP-Interfaces wirklich bedient.
+#
+# Frueher hiess das "check_hostapd for matching pids": healthcheck.sh reichte
+# jeden hostapd-Prozess aus der ps-Ausgabe herein, dieses Skript las aus dessen
+# Kommandozeile die Optionen -B (Konfigdatei, daraus der phy) und -P (PID-Datei)
+# und verglich den Inhalt der PID-Datei mit der echten PID.
+#
+# Das lief seit Jahren ins Leere. Seit OpenWrt 21.02 gibt es keinen hostapd je
+# phy mehr, sondern genau einen globalen Prozess ohne -B und ohne -P:
+#     /usr/sbin/hostapd -s -g /var/run/hostapd/global
+# Der Filter in healthcheck.sh war "ps | grep hostapd | grep .pid", und der
+# findet daran nichts. Am Knoten gemessen (2023.2.6, 2026-09-08): null Treffer,
+# das Skript wurde also nie aufgerufen - und damit liefen auch die beiden
+# anderen Pruefungen hier drin nie.
+#
+# Jetzt zaehlt das Skript die AP-Interfaces selbst aus der wireless-Config auf
+# und fragt den globalen hostapd ueber ubus nach jedem einzelnen BSS. Das ist
+# zugleich die Vorbereitung auf Gluon 2025.1: dort kann ein phy mehrere Radios
+# tragen, "phy0 -> radio0 -> client0" gilt also nicht mehr. Hier wird nichts
+# mehr aus Indizes abgeleitet, alle drei Namen (Sektion, ifname, Radio) kommen
+# aus der Config.
+#
+# Der uci-Schluessel heisst weiterhin hotfix.hostapd_pids, obwohl es um PIDs
+# nicht mehr geht. Umbenennen wuerde ein hotfix.hostapd_pids.disabled='1', das
+# jemand bewusst gesetzt hat, stillschweigend wirkungslos machen.
+#
+# strike()/unstrike() zaehlen aufeinanderfolgende Fehlschlaege, siehe common.sh.
+. /lib/gluon/neanderfunk-hotfix/common.sh
+
+HOTFIX_TAG='neanderfunk-checkhostapd'
+
+RESTART_MARKER='/tmp/hotfix.hostapd.last-restart'
+
+# Rueckgabe 0 nur bei tatsaechlichem Neustart - der Aufrufer raeumt danach
+# Strikes weg, und das darf nicht behaupten, es sei etwas geschehen.
+restart_wifi() {
+	local age cooldown last
+
+	# Abklingzeit. Ohne sie wuerde ein dauerhaft fehlendes Radio - eine Sektion
+	# in der Config, deren phy nicht hochkommt - alle drei Laeufe einen
+	# WLAN-Neustart ausloesen, also rund dreimal pro Stunde, und jedes Mal alle
+	# Clients beider Radios abwerfen, ohne dass es etwas repariert. Genau das
+	# Muster, das auf v2023.2.x in neanderfunk-mt7915-backlog schon einmal
+	# aufgefallen ist.
+	#     uci set hotfix.settings.hostapd_cooldown_min='60' ; uci commit hotfix
+	cooldown="$(uci -q get hotfix.settings.hostapd_cooldown_min)"
+	case "$cooldown" in
+		''|*[!0-9]*) cooldown=30 ;;
+	esac
+	# Der Marker enthaelt die Sekunden seit dem Boot, nicht die Uhrzeit: Nach
+	# dem Boot steht die Uhr auf einem alten Datum und springt mit NTP, eine
+	# Zeitrechnung ueber das Dateidatum waere dann um Tage daneben (siehe
+	# neanderfunk-wifi-blackout, 04.10.2026). Leer oder alt = keine Abklingzeit.
+	if [ -f "$RESTART_MARKER" ] ; then
+		last="$(cat "$RESTART_MARKER" 2>/dev/null)"
+		case "$last" in ''|*[!0-9]*) last=0 ;; esac
+		age=$(( ( $(cut -d. -f1 /proc/uptime) - last ) / 60 ))
+		if [ "$age" -lt "$cooldown" ] ; then
+			logger -t "$HOTFIX_TAG" -p 5 "wifi restart skipped, last one was ${age}min ago (hotfix.settings.hostapd_cooldown_min=${cooldown})"
+			return 1
+		fi
+	fi
+
+	# gemeinsame Sperre, siehe common.sh
+	if ! wifi_lock ; then
+		logger -t "$HOTFIX_TAG" -p 5 "wifi restart skipped, another check is already restarting wifi"
+		return 1
+	fi
+	cut -d. -f1 /proc/uptime > "$RESTART_MARKER"
+	logger -t "$HOTFIX_TAG" -p 5 "wifi hard restart"
+	wifi down
+	killall hostapd 2>/dev/null
+	rm -f /tmp/hostapd.*.core 2>/dev/null
+	# Kein "wifi config" zwischen down und up: das erkennt unter OpenWrt 23.05
+	# neue Radios und macht dabei "uci commit wireless" - samt offener
+	# Laufzeit-Aenderungen (Offline-SSID, ap-timer). Fuer den Neustart unnoetig.
+	wifi up
+	wifi_unlock
+	sleep 60
+	return 0
+}
+
+# einmal holen statt je Interface: "wifi status" liefert den Zustand aller
+# Radios in einem JSON-Dokument.
+wifistatus="$(wifi status 2>/dev/null)"
+
+# Alle AP-Interfaces aus der Config. mode='ap' trifft die Client-SSIDs und,
+# falls konfiguriert, die OWE-Interfaces. Abgeschaltete werden uebersprungen -
+# das schliesst die OWE-Interfaces ein, die der ssid-changer waehrend einer
+# Offline-Phase deaktiviert (er setzt nur uci save, und ein uci get sieht den
+# Delta, also stimmt das auch dann).
+# wireless einmal je Lauf, Werte per nf_uci_get (common.sh) statt uci get je
+# Sektion. "uci show" sieht Laufzeit-Deltas genauso wie "uci get".
+NF_UCI_wireless="$(uci -q show wireless 2>/dev/null)"
+aps=''
+set -f ; oldifs="$IFS" ; IFS='
+'
+for l in $NF_UCI_wireless ; do
+	case "$l" in
+		wireless.*.mode=\'ap\')
+			l="${l#wireless.}"
+			aps="$aps ${l%%.*}"
+			;;
+	esac
+done
+IFS="$oldifs" ; set +f
+
+for section in $aps ; do
+	nf_uci_get "$NF_UCI_wireless" "wireless.$section.ifname" || continue
+	ifname="$NF_VAL"
+	nf_uci_get "$NF_UCI_wireless" "wireless.$section.disabled" && nf_true "$NF_VAL" && continue
+	nf_uci_get "$NF_UCI_wireless" "wireless.$section.device"
+	radio="$NF_VAL"
+
+	# Ist das Radio ueberhaupt in Betrieb? Ohne diese Abfrage wuerde Pruefung 1
+	# unten auf einem Knoten, dessen Radio abgeschaltet ist, das fehlende
+	# BSS als Fehler werten und alle 30 Minuten grundlos das WLAN neu starten -
+	# was ein abgeschaltetes Radio auch nicht zurueckbringt.
+	#
+	# Drei Wege, weil "aus" auf drei Arten zustande kommt: als Option am
+	# wifi-device, als Zustand, den netifd meldet, und dadurch, dass netifd das
+	# Radio gar nicht kennt (Hardware weg oder nie dagewesen). Ein Radio, das
+	# netifd nicht kennt, ist kein hostapd-Problem; dafuer sind die
+	# bsses- und mesh_neighbours-Checks in neanderfunk-linkcheck da.
+	[ -n "$radio" ] || continue
+	nf_uci_get "$NF_UCI_wireless" "wireless.$radio.disabled" && nf_true "$NF_VAL" && continue
+	# Drei Felder des Radios aus "wifi status" mit einem jsonfilter statt
+	# dreimal printf|jsonfilter. Im Zuweisungsmodus gibt jsonfilter
+	# Wahrheitswerte als 1/0 aus (nicht true/false), fehlende Pfade laesst
+	# es weg - deshalb vorbelegen.
+	rup='' ; rdis='' ; pending=''
+	eval "$(jsonfilter -s "$wifistatus" -e "rup=@[\"$radio\"].up" -e "rdis=@[\"$radio\"].disabled" -e "pending=@[\"$radio\"].pending" 2>/dev/null)"
+	[ -n "$rup" ] || continue
+	[ "$rdis" = "1" ] && continue
+
+	# --- 1) kennt der globale hostapd dieses BSS, und laeuft es? ------------
+	#
+	# Der Nachfolger der PID-Pruefung. hostapd legt je BSS ein ubus-Objekt
+	# hostapd.<ifname> an; fehlt es, kennt hostapd das Interface gar nicht.
+	#
+	# Bewusst NICHT ueber /var/run/hostapd/<ifname> geprueft: auf allen drei
+	# daraufhin untersuchten Knoten liegt dort nur der Socket des zweiten
+	# Radios plus "global", der von client0 fehlt. Der Socket ist als
+	# Indikator also unbrauchbar, das ubus-Objekt ist es nicht.
+	sema="/tmp/hotfix.hostapdbss"
+	raw="$(ubus call hostapd."$ifname" get_status 2>/dev/null)"
+	if [ -z "$raw" ] && ubus -S list hostapd."$ifname" >/dev/null 2>&1 ; then
+		# Sackgasse 2021.1: hostapd in OpenWrt 19.07 hat das Objekt, aber
+		# kein get_status ("Method not found"). Dann ist das BSS bekannt -
+		# mehr laesst sich nicht sagen, also wie ENABLED behandeln.
+		state='ENABLED'
+	elif [ -z "$raw" ] ; then
+		state='no-ubus-object'
+	else
+		state="$(jsonfilter -s "$raw" -e '@.status' 2>/dev/null)"
+		[ -n "$state" ] || state='no-status'
+	fi
+	case "$state" in
+		ENABLED)
+			unstrike "$sema.fail.$ifname"
+			;;
+		ACS|HT_SCAN|DFS|COUNTRY_UPDATE)
+			# Uebergangszustaende: Kanalwahl, DFS-Messung, Laenderwechsel.
+			# Weder Strike noch Entwarnung - eine DFS-Messung darf zehn
+			# Minuten dauern, und drei Laeufe dieses Checks sind erst 21.
+			;;
+		*)
+			if [ "$(strike "$sema.fail.$ifname")" -ge 3 ] ; then
+				logger -t "$HOTFIX_TAG" -p 5 "[hostapd_pids] hostapd does not serve $ifname (status: $state)"
+				restart_wifi && unstrike "$sema.fail.$ifname"
+			fi
+			;;
+	esac
+
+	# --- 2) haengt das Radio in "down und pending"? -------------------------
+	#
+	# Das Radio wird aus wireless.<section>.device gelesen, nicht mehr aus der
+	# phy-Nummer abgeleitet. jsonfilter statt grep -A 6: die Zuordnung Radio ->
+	# Feld ist damit exakt, und nicht mehr davon abhaengig, wie viele Zeilen
+	# netifd je Radio ausgibt.
+	sema="/tmp/hotfix.wifipending"
+	# pending kommt aus dem jsonfilter oben (1/0)
+	if [ "$rup" = "0" ] && [ "$pending" = "1" ] ; then
+		if [ "$(strike "$sema.fail.$radio")" -ge 3 ] ; then
+			logger -t "$HOTFIX_TAG" -p 5 "[hostapd_pids] hostapd down and pending on $radio"
+			restart_wifi && unstrike "$sema.fail.$radio"
+		fi
+	else
+		unstrike "$sema.fail.$radio"
+	fi
+
+	# --- 3) AP ohne Kanal ---------------------------------------------------
+	#
+	# Ein Interface im Master-Modus, dem iwinfo keinen Kanal nennen kann, ist
+	# oben, sendet aber nichts Brauchbares.
+	sema="/tmp/hotfix.channelunknown"
+	iwstat="$(iwinfo "$ifname" info 2>/dev/null)"
+	# case statt printf|grep -qi; iwinfo schreibt es genau so
+	case "$iwstat" in *"Mode: Master"*) master=1 ;; *) master='' ;; esac
+	if [ -n "$master" ] ; then
+		case "$iwstat" in *"Channel: unknown"*) chanunknown=1 ;; *) chanunknown='' ;; esac
+		if [ -n "$chanunknown" ] ; then
+			if [ "$(strike "$sema.fail.$ifname")" -ge 3 ] ; then
+				logger -t "$HOTFIX_TAG" -p 5 "[hostapd_pids] channel unknown on $ifname"
+				restart_wifi && unstrike "$sema.fail.$ifname"
+			fi
+		else
+			unstrike "$sema.fail.$ifname"
+		fi
+	fi
+done
+
+exit 0

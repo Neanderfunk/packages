@@ -1,0 +1,33 @@
+#!/bin/sh
+# Exakte Prozesssuche ueber den Prozessnamen, ohne die eigene Prozessgruppe.
+#
+#   nf-pgrep <name>      PIDs, eine je Zeile; Rueckgabe 1, wenn keiner laeuft
+#   nf-pgrep -c <name>   nur die Anzahl
+#   nf-pgrep -q <name>   nichts ausgeben, nur die Rueckgabe
+#
+# <name> ist der Prozessname (comm), kein Muster und kein Teilstring.
+# Busybox setzt comm bei Skripten auf den Skriptnamen, "watchdog.sh" findet
+# also das Skript. Fuer Interpreter-Aufrufe der Form "sh -c ..." steht dort
+# allerdings "sh" - solche Ziele sind so nicht unterscheidbar.
+#
+# Absichtlich kein Aequivalent zu "pgrep -f": die Suche in der Kommandozeile
+# ist genau das, was fremde Prozesse und den Suchenden selbst mitfindet.
+
+. /lib/gluon/neanderfunk/proc.sh
+
+mode=pids
+case "$1" in
+	-c) mode=count ; shift ;;
+	-q) mode=quiet ; shift ;;
+	-*) echo "usage: nf-pgrep [-c|-q] <name>" >&2 ; exit 2 ;;
+esac
+
+[ -n "$1" ] || { echo "usage: nf-pgrep [-c|-q] <name>" >&2 ; exit 2 ; }
+
+case "$mode" in
+	count) nf_count "$1" ; exit 0 ;;
+	quiet) nf_running "$1" ; exit $? ;;
+esac
+
+pids="$(nf_pids "$1")" || exit 1
+for p in $pids ; do echo "$p" ; done

@@ -1,0 +1,14 @@
+#!/bin/sh
+# Harter Reboot mit allem, was dazugehoert: Flash-Sync ohne Haengenbleiben,
+# reboot -f, und ein sysrq-Nachschlag, falls das Geraet danach noch laeuft.
+#
+#   nf-reboot
+#
+# Fuer Aufrufer, die keine Shell-Funktion sourcen koennen - derzeit das
+# Lua-Skript von neanderfunk-wifi-blackout. Shell-Skripte nehmen direkt
+#   . /lib/gluon/neanderfunk/reboot.sh
+# und rufen nf_reboot_hard; die Begruendungen stehen dort.
+
+. /lib/gluon/neanderfunk/reboot.sh
+
+nf_reboot_hard

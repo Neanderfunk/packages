@@ -1,0 +1,17 @@
+#!/bin/sh
+# Eine Zeile ins gemeinsame Reboot-Log schreiben:
+#
+#   nf-reboot-log "[check] Grund"
+#
+# Fuer Aufrufer, die keine Shell-Funktion sourcen koennen - derzeit das
+# Lua-Skript von neanderfunk-wifi-blackout. Shell-Skripte nehmen direkt
+#   . /lib/gluon/neanderfunk/reboot.sh
+# und sparen sich damit den Prozessstart.
+#
+# Deckel, Pfad und Abschaltung ueber uci: siehe /lib/gluon/neanderfunk/reboot.sh.
+
+. /lib/gluon/neanderfunk/reboot.sh
+
+[ -n "$1" ] || { echo "usage: nf-reboot-log <grund>" >&2 ; exit 2 ; }
+
+nf_reboot_log "$@"

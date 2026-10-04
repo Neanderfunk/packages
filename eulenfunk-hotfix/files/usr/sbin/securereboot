@@ -1,6 +1,0 @@
-#!/bin/sh
-# reboot, but never into a running autoupdater; flush in the background and
-# fall back to sysrq (see /lib/gluon/eulenfunk-hotfix/common.sh)
-. /lib/gluon/eulenfunk-hotfix/common.sh
-autoupdater_busy && exit 0
-reboot_hard

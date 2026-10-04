@@ -1,0 +1,327 @@
+#!/bin/sh
+# cc0, maintained by adorfer@nadeshda.org 
+
+# check_disabled(), uptime_ok(), reboot_uptime_limit(), now_reboot(),
+# safety_exit() - see common.sh for the uci keys (hotfix.<check>.disabled,
+# hotfix.settings.reboot_uptime_min)
+#
+# Keep the tag this script has always logged under, so anything watching the
+# syslog for "neanderfunk-healthcheck" keeps working.
+HOTFIX_TAG='neanderfunk-healthcheck'
+. /lib/gluon/neanderfunk-hotfix/common.sh
+
+# Rueckgabe: 0 nur, wenn wirklich neu gestartet wurde. Der Aufrufer darf
+# seinen Zustand (Strikes) nur dann aufraeumen - sonst faellt die Stoerung
+# unter den Tisch, weil sie als erledigt gilt, ohne dass etwas geschah.
+restart_wifi() {
+  # same rule as now_reboot: report below the action threshold, do not act
+  if ! uptime_ok ; then
+    no_action_yet "[wifi] wifi restart wanted"
+    return 1
+  fi
+  # gemeinsame Sperre, siehe common.sh: sieben Stellen koennen das WLAN
+  # anfassen, und ineinanderlaufende Neustarts sind schlimmer als ein
+  # ausgelassener - der naechste Lauf holt ihn nach.
+  if ! wifi_lock ; then
+    logger -s -t "neanderfunk-healthcheck" -p 5 "wifi restart skipped, another check is already restarting wifi"
+    return 1
+  fi
+  logger -s -t "neanderfunk-healthcheck" "wifi hard restart"
+  wifi down
+  killall hostapd 2>/dev/null
+  rm -f /tmp/hostapd.*.core 2>/dev/null
+  rm -f /var/run/wifi-*.pid 2>/dev/null
+  # Kein "wifi config" zwischen down und up: das erkennt unter OpenWrt 23.05
+  # neue Radios und macht dabei "uci commit wireless" - samt offener
+  # Laufzeit-Aenderungen (Offline-SSID, ap-timer). Fuer den Neustart unnoetig.
+  wifi up
+  wifi_unlock
+  return 0
+}
+
+
+# Two thresholds, deliberately separate:
+#   below hotfix.settings.check_uptime_min (default 5 min) nothing runs at all -
+#     the network is still coming up and any finding would be noise;
+#   below hotfix.settings.reboot_uptime_min (default 60 min) the checks run and
+#     report what they find, but nothing reboots or restarts wifi. That way
+#     someone watching `logread -f` right after a boot sees the finding without
+#     the node acting on a network that has not settled yet.
+checks_ok || exit 0
+
+# Einzelinstanz-Lock. Dieses Skript kann laenger laufen als sein Cron-Intervall:
+# reboot_when_not_running schlaeft zweimal 20 Sekunden, ein WLAN-Neustart
+# weitere 10. Ohne Lock
+# startet micrond den naechsten Lauf trotzdem, und zwei gleichzeitige Laeufe
+# zaehlen dieselbe Stoerung doppelt in die Strike-Dateien.
+#
+# Der Deskriptor 200 haelt das Skript selbst offen; busybox' flock kann diese
+# Form (am Knoten geprueft). Faellt flock aus, laeuft es wie bisher weiter -
+# ein fehlender Lock darf den Check nicht stilllegen.
+if command -v flock >/dev/null 2>&1 ; then
+	exec 200<"$0"
+	if ! flock -n 200 ; then
+		exit 0
+	fi
+fi
+
+# Laeuft gerade ein Autoupdater, wird hier nichts angefasst. Der Check
+# "stale_lock", der frueher an dieser Stelle stand, ist entfallen: er suchte
+# eine liegengebliebene /tmp/autoupdate.lock, und diese Datei legt seit ihrer
+# Einfuehrung 2016 niemand an - siehe common.sh.
+if autoupdater_busy ; then
+  safety_exit "autoupdate running"
+fi
+
+# Die vier Kernel-Checks lesen denselben Ringpuffer: dmesg einmal, ein awk
+# fuer alle statt je ein grep. Die Muster sind dieselben wie vorher, auch
+# "je Zeile" (ath_malloc: ath, alloc of size und failed in derselben Zeile).
+#
+# ath10k_rxhang faengt zwei Fehlerbilder des ath10k (qca988x/qca9887, 5-GHz-
+# Radio z. B. am Archer C7/C25). Beide enden mit totem 5 GHz ohne Selbst-
+# Recovery, beide traten unter WLAN-Last mit vm.min_free_kbytes=2048 auf, mit
+# 8192 nie (C25, 15./16.09.2026):
+#
+#   rxring  "ath10k_pci ...: rx ring became corrupted: -5". Der ath10k fuellt
+#           seine RX-DMA-Ring-Puffer im IRQ-Kontext per GFP_ATOMIC nach; reicht
+#           die atomare Reserve unter Last nicht, wird der Ring korrupt. `wifi`
+#           half nicht, nur ein Reboot (3x reproduziert). Eine einzige Zeile
+#           genuegt: Der Ring repariert sich nicht von selbst.
+#   fwloop  "ath10k_pci ...: failed to send pdev bss chan info request,
+#           restarting hardware" gefolgt von "already restarting", alle ~9 s.
+#           Die Chip-Firmware stuerzt ab, der Treiber-Neustart kommt nicht
+#           durch. Hier zaehlen wir: Ein einzelnes "restarting hardware" kann
+#           ein Ausrutscher sein, nach dem der Treiber sich faengt (adorfer,
+#           16.09.) - erst ab hotfix.settings.ath10k_restart_min Vorkommen
+#           (Vorgabe 3) im Ringpuffer ist es eine Schleife.
+#
+# Die Meldung nennt das Fehlerbild, damit in der Auswertung nicht nur "ath10k"
+# steht (adorfer, 16.09.). Der wifi_firmware-Check deckt nur mt76 ab
+# (rf_regval), fuer ath10k gab es bis hier keinen. Wie die anderen
+# dmesg-Checks: nach dem Reboot ist der Ringpuffer leer, also kein Loop;
+# reboot_uptime_min gilt (kein Boot-Loop bei einem Geraet, das den Fehler
+# gleich beim Start wirft).
+#
+# Grenze des Checks: Beim fwloop am 16.09. wurde der Knoten spaeter ganz
+# unerreichbar - Konsole stumm, kein Netz. Der Hardware-Watchdog (procd haelt
+# /dev/watchdog, Timeout 30 s, Fuetterung alle 5 s) loeste dabei NICHT aus, es
+# war also kein Kernel-Freeze: procd lief weiter und fuetterte, waehrend
+# Konsole, Netz und WLAN tot waren. micrond kam trotzdem nicht mehr zum Zug,
+# der Check kann in diesem Endzustand also nichts mehr ausrichten - er muss
+# vorher greifen, solange die Neustartschleife laeuft.
+kernel_bug=0 ; ath_malloc=0 ; ksoftirqd_malloc=0 ; ath10k_rxring=0 ; ath10k_fwloop=0
+if ! check_disabled kernel_bug || ! check_disabled ath_malloc || ! check_disabled ksoftirqd_malloc || ! check_disabled ath10k_rxhang ; then
+  set -- $(dmesg 2>/dev/null | awk '
+    /Kernel bug/ { k = 1 }
+    /ath/ && /alloc of size/ && /failed/ { a = 1 }
+    /ksoftirqd/ && /page allocation failure/ { s = 1 }
+    /ath10k/ && /rx ring became corrupted/ { r = 1 }
+    /ath10k/ && (/restarting hardware/ || /already restarting/) { f++ }
+    END { print k + 0, a + 0, s + 0, r + 0, f + 0 }')
+  kernel_bug="${1:-0}" ; ath_malloc="${2:-0}" ; ksoftirqd_malloc="${3:-0}"
+  ath10k_rxring="${4:-0}" ; ath10k_fwloop="${5:-0}"
+fi
+# batman-adv crash when removing interface in certain configurations
+check_disabled kernel_bug || { [ "$kernel_bug" = 1 ] && now_reboot "[kernel_bug] gluon issue #680" ; true ; }
+# ath/ksoftirq-malloc-errors (upcoming oom scenario)
+check_disabled ath_malloc || { [ "$ath_malloc" = 1 ] && now_reboot "[ath_malloc] ath0 malloc fail" ; true ; }
+check_disabled ksoftirqd_malloc || { [ "$ksoftirqd_malloc" = 1 ] && now_reboot "[ksoftirqd_malloc] kernel malloc fail" ; true ; }
+# ath10k: RX-Ring korrupt oder Firmware-Neustartschleife -> 5 GHz haengt,
+# nur Reboot hilft (siehe oben). Das Fehlerbild steht in der Meldung.
+check_disabled ath10k_rxhang || {
+  if [ "$ath10k_rxring" = 1 ] ; then
+    now_reboot "[ath10k_rxhang] rxring: rx ring corrupted, 5GHz stuck"
+  else
+    restart_min=3
+    nf_uci_get "$NF_UCI_hotfix" hotfix.settings.ath10k_restart_min
+    case "$NF_VAL" in ''|0|*[!0-9]*) ;; *) restart_min="$NF_VAL" ;; esac
+    [ "$ath10k_fwloop" -ge "$restart_min" ] && now_reboot "[ath10k_rxhang] fwloop: ath10k restarting hardware ${ath10k_fwloop}x (limit $restart_min), 5GHz stuck"
+  fi
+  true
+}
+# hostapd bedient die konfigurierten AP-Interfaces?
+#
+# Frueher wurde hier jeder hostapd-Prozess aus der ps-Ausgabe hereingereicht:
+#     ps | grep hostapd | grep .pid | xargs -r -n 10 .../check_hostapd.sh
+# Seit OpenWrt 21.02 laeuft aber ein einziger globaler hostapd ohne -P, und
+# damit fand dieses grep nichts - am Knoten gemessen null Treffer, das Skript
+# wurde nie aufgerufen. Es zaehlt seine Interfaces jetzt selbst auf.
+check_disabled hostapd_pids || /lib/gluon/neanderfunk-hotfix/check_hostapd.sh
+#check if hostapd-DFS scanning is broken according to sylogs
+# -l 200 statt -l 5: der Check laeuft alle 7 Minuten, und in dieser Zeit
+# entstehen auf einem normalen Knoten weit mehr als fuenf Logzeilen (allein
+# node-whisperer schreibt alle 30 Sekunden). Die Meldung haette also in genau
+# den letzten fuenf Zeilen stehen muessen, und das dreimal hintereinander -
+# der Check konnte praktisch nie ausloesen.
+if ! check_disabled dfs_failcheck && [ "$(logread -l 200|grep -c "daemon.warn hostapd: Failed to check if DFS is required")" -gt 0 ] ; then
+  if [ "$(strike /tmp/hotfix.dfscheckfail)" -ge 3 ] ; then
+    logger -s -t "neanderfunk-healthcheck" "[dfs_failcheck] hostapd DFS failcheck, restarting wifi"
+    # Strikes nur vergessen, wenn der Neustart auch stattgefunden hat
+    if restart_wifi ; then
+      unstrike /tmp/hotfix.dfscheckfail
+      sleep 10
+    fi
+   fi
+ else
+  unstrike /tmp/hotfix.dfscheckfail
+ fi
+
+
+# too many tunneldigger restarts
+check_disabled tunneldigger || {
+# Hier stand "ps | grep -c "[t]unneldigger"". Der Klammertrick verhindert nur,
+# dass das grep sich selbst findet - nicht, dass es die aufrufende Shell oder
+# ein Geschwister derselben Pipeline mitzaehlt. Am Knoten gemessen: aus einem
+# Aufrufer, dessen Kommandozeile das Wort fuehrt, kam die Klammervariante auf
+# 5 statt auf 3. Beide Schwellen hier loesen einen REBOOT aus, ein zu hoher
+# Zaehlerstand ist also teuer.
+#
+# nf_count vergleicht den Prozessnamen exakt, nf-ps blendet die eigene
+# Prozesskette aus - siehe /lib/gluon/neanderfunk/proc.sh. Der Watchdog-Zaehler
+# muss ueber nf-ps gehen, weil "tunneldigger-watchdog" ein Lua-Skript ist und
+# unter comm nicht eindeutig auftaucht.
+[ "$(nf-ps | grep -c -e "tunneldigger restart" -e "tunneldigger-watchdog")" -ge "4" ] && now_reboot "[tunneldigger] too many Tunneldigger watchdogs"
+[ "$(nf_count tunneldigger)" -ge "7" ] && now_reboot "[tunneldigger] too many Tunneldigger instances"
+true; }
+
+
+# Laeuft ein Dienst mit genau diesem Prozessnamen? Bewusst ohne den
+# Ahnen-Ausschluss von nf_running: der gilt dem Fall, dass ein Skript sich
+# selbst findet. Hier gesucht werden Dienste (respondd, dropbear), die nie so
+# heissen wie dieses Skript - und dropbear ist, wenn jemand healthcheck.sh
+# per SSH von Hand startet, ein Vorfahr der eigenen Prozesskette. nf_running
+# blendete ihn dann aus, und der Knoten startete mit "[dropbear] dropbear not
+# running" neu (WDR3600, 12.09.2026, beim Testen). Aus Cron fiel das nie auf.
+daemon_running() {
+  local p c
+  for p in /proc/[0-9]* ; do
+    [ -r "$p/comm" ] || continue
+    read -r c < "$p/comm" 2>/dev/null || continue
+    [ "$c" = "$1" ] && return 0
+  done
+  return 1
+}
+
+reboot_when_not_running() {
+  (daemon_running "$1" || sleep 20 ; daemon_running "$1" || now_reboot "[$1] $1 not running") &> /dev/null
+}
+
+# Load: das 15-Minuten-Mittel (Feld 3 von /proc/loadavg) ueber
+# hotfix.load.per_cpu x Kerne (Vorgabe 2), in zwei Laeufen hintereinander
+# (~7 min), dann Reboot.
+#
+# Frueher fest "ueber 2", unabhaengig von der Kernzahl, beim ersten Treffer, und
+# die Meldung sprach vom 5-Minuten-Mittel. Das warf am 14.09.2026 den Schulstr7-
+# AP01 (MT7981, 2 Kerne) im Lasttest um: 9 wget-Schleifen und uhttpd, 1-min-Load
+# 1,5-3,1, also legitime Last. Einkerner verhalten sich wie bisher (Schwelle 2),
+# nur mit Bestaetigung.
+#
+# Kerne fork-frei aus /sys/devices/system/cpu/online ("0", "0-1", "0,2-3").
+load_nproc() {
+  local list r a b n=0 oldifs="$IFS"
+  read -r list < /sys/devices/system/cpu/online 2>/dev/null || list=0
+  IFS=,
+  for r in $list ; do
+    a="${r%-*}" ; b="${r#*-}"
+    case "$a$b" in ''|*[!0-9]*) continue ;; esac
+    n=$((n + b - a + 1))
+  done
+  IFS="$oldifs"
+  [ "$n" -ge 1 ] || n=1
+  NPROC=$n
+}
+
+if ! check_disabled load ; then
+  load_nproc
+  per_cpu=2
+  nf_uci_get "$NF_UCI_hotfix" hotfix.load.per_cpu
+  case "$NF_VAL" in ''|0|*[!0-9]*) ;; *) per_cpu="$NF_VAL" ;; esac
+  load_limit=$((per_cpu * NPROC))
+  # read statt cat|cut|tr: "1.72" wird zu 172, fuehrende Nullen weg
+  read -r _ _ load15 _ < /proc/loadavg
+  l="${load15%.*}${load15#*.}"
+  while case "$l" in 0?*) true ;; *) false ;; esac ; do l="${l#0}" ; done
+  if [ "$l" -gt $((load_limit * 100)) ] 2>/dev/null ; then
+    load_msg="[load] 15min-avg $load15 > $load_limit ($per_cpu x $NPROC cores)"
+    if [ "$(strike /tmp/hotfix.load-high)" -ge 2 ] ; then
+      now_reboot "$load_msg, 2 runs in a row"
+    else
+      logger -s -t "$HOTFIX_TAG" -p 5 "$load_msg, strike 1 of 2"
+    fi
+  else
+    unstrike /tmp/hotfix.load-high
+  fi
+fi
+
+# respondd or dropbear not running
+check_disabled respondd || reboot_when_not_running respondd
+check_disabled dropbear || reboot_when_not_running dropbear
+
+# Remote-Syslog (system.@system[0].log_ip): logread -r verbindet seinen UDP-
+# Socket einmal beim Start, und das ist beim Boot zu frueh. Entweder scheitert
+# der connect() still und logread laeuft tatenlos weiter, oder er gelingt mit
+# der Absenderadresse, die es gerade gab - meist nur die ULA der Domain, bevor
+# das oeffentliche Praefix per RA da ist. Pakete mit ULA-Absender an eine
+# oeffentliche Adresse verwirft der Supernode. Beides am 15.09.2026 auf allen 13
+# Schulstr7-Geraeten und dem MR90X nach dem Update, geschrieben wurde nichts.
+# Dasselbe droht, wenn das Praefix spaeter wechselt (Supernode-Wechsel). Die
+# procd-Instanz "logremote" hat kein respawn.
+#
+# Deshalb: Weicht die Absenderadresse des Sockets von der ab, die der Kernel
+# jetzt waehlen wuerde (oder gibt es keinen Socket), nur die logremote-Instanz
+# neu starten - kein Reboot, logd und sein Puffer bleiben. Ohne log_ip (fast die
+# ganze Flotte) kein Prozessstart: /etc/config/system wird per read gelesen.
+logremote_check() {
+  local kw opt val lip='' lport='514' lremote=1 want have pidf p fam=''
+  [ -r /etc/config/system ] || return 0
+  while read -r kw opt val ; do
+    [ "$kw" = option ] || continue
+    val="${val#\'}" ; val="${val%\'}"
+    case "$opt" in
+      log_ip) lip="$val" ;;
+      log_port) lport="$val" ;;
+      log_remote) lremote="$val" ;;
+    esac
+  done < /etc/config/system
+  # log_remote wie in /etc/init.d/log (config_get_bool): jedes "aus" zaehlt
+  [ -n "$lip" ] && ! nf_false "$lremote" || return 0
+  # nur Adressen, keine Namen; IPv6 am Doppelpunkt erkennen, Klammern weg
+  lip="${lip#\[}" ; lip="${lip%\]}"
+  case "$lip" in
+    *:*) fam=-6 ;;
+    *[!0-9.]*) return 0 ;;
+  esac
+  want="$(ip $fam route get "$lip" 2>/dev/null | sed -n 's/.* src \([^ ]*\).*/\1/p' | head -n 1)"
+  # keine Route (kein Uplink): nichts zu tun, nicht jede Runde neu starten
+  [ -n "$want" ] || return 0
+  have="$(netstat -anup 2>/dev/null | awk -v p=":$lport" '$NF ~ /\/logread$/ && substr($5, length($5) - length(p) + 1) == p { print $4; exit }')"
+  have="${have%:*}"
+  [ "$have" = "$want" ] && return 0
+  for pidf in /var/run/logread.*.pid ; do
+    [ -r "$pidf" ] || continue
+    read -r p < "$pidf"
+    grep -q -- '-r' "/proc/$p/cmdline" 2>/dev/null && kill "$p" 2>/dev/null
+  done
+  sleep 1
+  /etc/init.d/log start >/dev/null 2>&1
+  logger -s -t "$HOTFIX_TAG" -p 5 "[logremote] remote syslog socket from ${have:-nowhere} to $lip, kernel would use $want - restarted logread"
+}
+check_disabled logremote || logremote_check
+
+# br-client without an address from the site prefix. site.conf's prefix6 is the
+# domain's own ULA prefix (fd..), which the node assigns to itself - so this is a
+# local network-config fault, not a question of reachability, and it stays here
+# rather than in linkcheck. Escalates over four runs before rebooting.
+if ! check_disabled br_client_ipv6 ; then
+  prefix="$(jsonfilter -i /lib/gluon/site.json -e '@.prefix6' 2>/dev/null)"
+  # without a prefix6 there is nothing to compare against, so do not reboot. The
+  # old version compared against an empty prefix, which made grep -c report 0 and
+  # would have rebooted the node every 7 minutes.
+  if [ -n "$prefix" ] ; then
+    if [ "$(ip -6 addr show to "$prefix" dev br-client 2>/dev/null | grep -c inet6)" = "0" ] ; then
+      [ "$(strike /tmp/hotfix.brclient-noaddr)" -ge 4 ] && now_reboot "[br_client_ipv6] br-client has no address from the site prefix"
+    else
+      unstrike /tmp/hotfix.brclient-noaddr
+    fi
+  fi
+fi

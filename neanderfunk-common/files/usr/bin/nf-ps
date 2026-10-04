@@ -1,0 +1,34 @@
+#!/bin/sh
+# ps, das die eigene Prozessgruppe ausblendet.
+#
+# Ersatz fuer "ps" ueberall dort, wo anschliessend gegreppt wird. Die
+# klassische Zeile
+#     ps | grep -c hostapd
+# zaehlt den grep und die aufrufende Shell mit, wenn deren Kommandozeile das
+# Wort enthaelt. Mit
+#     nf-ps | grep -c hostapd
+# ist das ausgeschlossen, ohne dass man an den Klammertrick denken muss.
+#
+# Was es NICHT kann: fremde Prozesse erkennen, die zufaellig denselben String
+# fuehren - ein anderes Skript etwa, das gleichzeitig nach demselben Namen
+# sucht. Dagegen hilft nur der exakte Namensvergleich, siehe nf-pgrep.
+#
+# Argumente werden an ps durchgereicht (nf-ps w).
+
+. /lib/gluon/neanderfunk/proc.sh
+
+chain="$(nf_own_chain)"
+
+ps "$@" | {
+	# Kopfzeile durchlassen, danach je Zeile die PID pruefen
+	IFS= read -r head && printf '%s\n' "$head"
+	while IFS= read -r line ; do
+		set -- $line
+		pid="$1"
+		case "$pid" in
+			''|*[!0-9]*) printf '%s\n' "$line" ; continue ;;
+		esac
+		nf_is_own "$pid" "$chain" && continue
+		printf '%s\n' "$line"
+	done
+}

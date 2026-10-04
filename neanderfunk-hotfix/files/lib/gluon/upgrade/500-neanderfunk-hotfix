@@ -1,0 +1,86 @@
+#!/bin/sh
+# Seeds the hotfix UCI defaults from the site.conf. Runs on every
+# gluon-reconfigure, but never overwrites what an operator has set on the node,
+# so a local `uci set hotfix...` always wins over the community default.
+#
+# site.conf:
+#   hotfix = {
+#     check_uptime_min  = 5,
+#     reboot_uptime_min = 60,                        -- optional, minutes
+#     eth_tx_stall_dry_run = 0,                      -- optional, eth_tx_stall darf rebooten
+#     load_per_cpu = 2,                              -- optional, Load-Schwelle je Kern
+#     disabled_checks = { 'load', 'tunneldigger' },  -- optional
+#   },
+
+# Alle Checks, die dieses Paket kennt - hier und nur hier. /etc/config/hotfix
+# fuehrt sie bewusst NICHT mehr auf: die Datei ist ein conffile und ueberlebt
+# den sysupgrade, das ausgelieferte Exemplar wird verworfen. Eine Sektion, die
+# dort neu dazukam, erreichte einen bestehenden Knoten also nie, und eine dort
+# geloeschte verschwand nie. Im Feld gemessen: Knoten auf 26090710bro hatten
+# noch 'stale_lock' und kein 'wifi_firmware', und
+#     uci set hotfix.wifi_firmware.disabled='1'
+# schlug mit rc=1 fehl, weil uci keine Option in einer fehlenden Sektion setzt -
+# der dokumentierte Ausschalter des neuesten Checks funktionierte damit nicht.
+CHECKS='kernel_bug ath_malloc ksoftirqd_malloc hostapd_pids dfs_failcheck
+	tunneldigger load respondd dropbear watchdog no_wifi_clients
+	br_client_ipv6 logremote ath10k_rxhang'
+
+# Sektionen, die es einmal gab und die ersatzlos entfallen sind. Sie liegen
+# sonst bis in alle Ewigkeit im uci und lassen `uci show hotfix` Checks
+# anzeigen, die es nicht mehr gibt.
+OBSOLETE_CHECKS='stale_lock'
+
+sitefile=/lib/gluon/site.json
+
+uci -q get hotfix.settings >/dev/null || uci -q set hotfix.settings=settings
+
+# Fehlende Sektionen anlegen. Das ueberschreibt nichts: eine fehlende Sektion
+# bedeutet nie "aus" (check_disabled liefert dann "nicht deaktiviert"), sie
+# nachzutragen aendert also kein Verhalten - sie macht den Check nur wieder
+# abschaltbar und in `uci show hotfix` sichtbar.
+for c in $CHECKS ; do
+	if ! uci -q get hotfix."$c" >/dev/null ; then
+		uci -q set hotfix."$c"=check
+	fi
+done
+
+# if statt "uci get ... && uci delete ...": bei der Kurzform ist der Rueckgabe-
+# wert der letzten Schleifenrunde der des fehlgeschlagenen get, und unter
+# "set -e" reisst das das ganze Skript ab.
+for c in $OBSOLETE_CHECKS ; do
+	if uci -q get hotfix."$c" >/dev/null ; then
+		uci -q delete hotfix."$c"
+	fi
+done
+
+# only when the node has no value of its own; unset means the built-in default
+if [ -z "$(uci -q get hotfix.settings.check_uptime_min)" ] ; then
+	v="$(jsonfilter -i "$sitefile" -e '@.hotfix.check_uptime_min' 2>/dev/null)"
+	[ -n "$v" ] && uci -q set hotfix.settings.check_uptime_min="$v"
+fi
+
+if [ -z "$(uci -q get hotfix.settings.reboot_uptime_min)" ] ; then
+	v="$(jsonfilter -i "$sitefile" -e '@.hotfix.reboot_uptime_min' 2>/dev/null)"
+	[ -n "$v" ] && uci -q set hotfix.settings.reboot_uptime_min="$v"
+fi
+
+# Load-Schwelle je Kern (Vorgabe im Check: 2), ganze Zahl
+if [ -z "$(uci -q get hotfix.load.per_cpu)" ] ; then
+	v="$(jsonfilter -i "$sitefile" -e '@.hotfix.load_per_cpu' 2>/dev/null)"
+	case "$v" in
+		''|0|*[!0-9]*) ;;
+		*) uci -q set hotfix.load.per_cpu="$v" ;;
+	esac
+fi
+
+# checks the community wants switched off by default
+for c in $(jsonfilter -i "$sitefile" -e '@.hotfix.disabled_checks[*]' 2>/dev/null) ; do
+	uci -q get hotfix."$c" >/dev/null || uci -q set hotfix."$c"=check
+	[ -z "$(uci -q get hotfix."$c".disabled)" ] && uci -q set hotfix."$c".disabled=1
+done
+
+# Schreibt nur, wenn oben tatsaechlich etwas geaendert wurde - ohne vorgemerkte
+# Aenderungen ist commit ein no-op und fasst den Flash nicht an. Und dieses
+# Skript laeuft ohnehin nur bei gluon-reconfigure, also zur Update-Zeit.
+uci -q commit hotfix
+exit 0
