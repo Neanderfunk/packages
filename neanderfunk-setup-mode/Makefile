@@ -21,6 +21,10 @@ define Package/$(PKG_NAME)/description
   the packages' own; information and firmware upgrade stay pages of their
   own. Needs neanderfunk-config-mode-theme (and so -gluon-config-mode-theme).
   Without this package the regular wizard is back.
+
+  Also ends a forgotten setup mode by itself after 24 h (save and restart,
+  same lock as the wizard), switchable by site.conf setup_mode.autoexit and
+  uci gluon-setup-mode.@setup_mode[0].autoexit(_timeout).
 endef
 
 $(eval $(call BuildPackageGluon,$(PKG_NAME)))

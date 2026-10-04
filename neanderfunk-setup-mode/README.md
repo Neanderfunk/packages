@@ -98,6 +98,59 @@ Bei jedem Gluon-Update prüfen, besonders beim Wechsel auf 2025.1:
 - **Form-IDs** werden eindeutig gemacht (`id.nf-<seite>[-<form>]`), sonst
   hießen die Formulare aller Seiten `id.1`.
 
+Setup-Mode beendet sich selbst
+------------------------------
+
+Ein Knoten, der im Setup-Mode vergessen wird, kommt nach einer Frist (Vorgabe
+24 h) von allein zurück ins Netz: Nach Ablauf geschieht dasselbe wie bei
+„Speichern & Neustarten“ (configured=1, `gluon-reconfigure`, Neustart). Auf
+einem nie eingerichteten Knoten bleiben es die Standardwerte. Anlass: ein Cudy
+in der Werkstatt, gut 25 h im Setup-Mode vergessen (adorfer, 04.10.2026).
+
+Dateien: `/lib/gluon/setup-mode/rc.d/S98neanderfunk-setup-autoexit` startet
+beim Eintritt in den Setup-Mode eine procd-Instanz mit
+`/lib/gluon/neanderfunk-setup-mode/autoexit run <sekunden>`. Die Frist misst
+`sleep`, also unabhängig von der Uhrzeit (die steht im Setup-Mode ohne NTP).
+
+Einstellung, die erste gesetzte gilt:
+
+| Ort | Schlüssel | Werte |
+|---|---|---|
+| uci | `gluon-setup-mode.@setup_mode[0].autoexit` | 0/1 (auch true/false, on/off, yes/no) |
+| uci | `gluon-setup-mode.@setup_mode[0].autoexit_timeout` | Sekunden |
+| site.conf | `setup_mode.autoexit.enabled` | true/false |
+| site.conf | `setup_mode.autoexit.timeout` | Sekunden, 600 bis 604800 (check_site) |
+| Vorgabe | | an, 86400 s |
+
+    setup_mode = {
+      autoexit = {
+        enabled = true,      -- ohne Angabe: an
+        timeout = 86400,     -- ohne Angabe: 24 h
+      },
+    },
+
+`/lib/gluon/neanderfunk-setup-mode/autoexit conf` zeigt, was gilt
+(`<an> <sekunden>`).
+
+**Kein paralleles Speichern.** Das Skript nimmt dieselbe Sperre wie der
+Wizard (`/var/gluon/setup-mode/wizard-save`, gluon-patches-fixes
+`wizard-save-lock`): atomar anlegen, PID hinein, nach `gluon-reconfigure`
+`wizard-save.done`. Hält das Skript die Sperre, wartet ein Klick auf
+„Speichern & Neustarten“ und bekommt danach nur die Neustart-Seite. Hält ein
+Klick die Sperre, tritt das Skript zurück und versucht es alle 30 s wieder.
+Startet der Knoten danach nicht neu (Formular ungültig, der Wizard gibt die
+Sperre frei), läuft es weiter, bis es die Sperre bekommt oder ein `.done`
+sieht. Eine verwaiste Sperre (Prozess weg, kein `.done`) übernimmt es wie der
+Wizard.
+
+Geprüft am 04.10.2026 in QEMU (x86-64, 26100312bro, frisches Image im
+Setup-Mode): Vorgaben und uci-Varianten von `conf`; Ablauf nach 90 s
+(gespeichert, Neustart, Normalbetrieb mit configured=1, enabled=0);
+fremde Sperre mit lebendem Prozess (Rückzug, alle 30 s neu), danach
+verwaiste Sperre übernommen und neu gestartet; umgekehrt Klick per CGI-POST,
+während die Sperre gehalten wird (wartet, kein zweites `gluon-reconfigure`,
+nach `.done` Neustart-Seite).
+
 Test
 ----
 
