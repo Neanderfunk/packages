@@ -1,0 +1,158 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: neanderfunk-setup-mode\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "%d SSH keys"
+msgstr "%d clés SSH"
+
+msgid "%d fields need a correction. Nothing was saved."
+msgstr "%d champs doivent être corrigés. Rien n'a été enregistré."
+
+msgid "%d unsaved changes"
+msgstr "%d à enregistrer"
+
+msgid "1 SSH key"
+msgstr "1 clé SSH"
+
+msgid "1 unsaved change"
+msgstr "1 à enregistrer"
+
+msgid "A number from %s to %s."
+msgstr "Un nombre de %s à %s."
+
+msgid "A whole number from %s to %s."
+msgstr "Un nombre entier de %s à %s."
+
+msgid "Advanced settings"
+msgstr "Paramètres avancés"
+
+msgid "At least %s characters."
+msgstr "Au moins %s caractères."
+
+msgid "At most %s characters."
+msgstr "Au plus %s caractères."
+
+msgid "Info and firmware: top right."
+msgstr "Infos et firmware : en haut à droite."
+
+msgid "Internet connection"
+msgstr "Connexion Internet"
+
+msgid "Location"
+msgstr "Emplacement"
+
+msgid "Log in with the SSH keys above only. Without keys there is no remote access at all."
+msgstr "Connexion uniquement avec les clés SSH ci-dessus. Sans clé, plus aucun accès à distance."
+
+msgid "No SSH keys"
+msgstr "Aucune clé SSH"
+
+msgid "No changes"
+msgstr "Aucune modification"
+
+msgid "Node"
+msgstr "Nœud"
+
+msgid "Not a valid IP address."
+msgstr "Adresse IP non valide."
+
+msgid "Not a valid IPv4 address."
+msgstr "Adresse IPv4 non valide."
+
+msgid "Not a valid IPv6 address."
+msgstr "Adresse IPv6 non valide."
+
+msgid "Not everything could be saved, see the marked section. The node was not restarted."
+msgstr "Tout n'a pas pu être enregistré, voir la section marquée. Le nœud n'a pas été redémarré."
+
+msgid "Off"
+msgstr "Désactivé"
+
+msgid "On"
+msgstr "Activé"
+
+msgid "One field needs a correction. Nothing was saved."
+msgstr "Un champ doit être corrigé. Rien n'a été enregistré."
+
+msgid "Open it on its own page"
+msgstr "Ouvrir sur sa propre page"
+
+msgid "Outdoor installation"
+msgstr "Installation extérieure"
+
+msgid "Please check this input."
+msgstr "Veuillez vérifier cette saisie."
+
+msgid "Please enter a number."
+msgstr "Veuillez saisir un nombre."
+
+msgid "Please enter a whole number."
+msgstr "Veuillez saisir un nombre entier."
+
+msgid "Remove password"
+msgstr "Supprimer le mot de passe"
+
+msgid "Save"
+msgstr "Enregistrer"
+
+msgid "Save and restart"
+msgstr "Enregistrer et redémarrer"
+
+msgid "Saving..."
+msgstr "Enregistrement…"
+
+msgid "Setup"
+msgstr "Configuration"
+
+msgid "Some fields need a correction, they are marked. Nothing was saved."
+msgstr "Certains champs doivent être corrigés, ils sont marqués. Rien n'a été enregistré."
+
+msgid "The key needs 8 to 63 characters."
+msgstr "La clé doit comporter de 8 à 63 caractères."
+
+msgid "The passwords do not match."
+msgstr "Les mots de passe ne correspondent pas."
+
+msgid "This field is required."
+msgstr "Ce champ est obligatoire."
+
+msgid "This section could not be loaded."
+msgstr "Cette section n'a pas pu être chargée."
+
+msgid "auto"
+msgstr "auto"
+
+msgid "changed"
+msgstr "modifié"
+
+msgid "client"
+msgstr "client"
+
+msgid "collapsed, open only when needed"
+msgstr "repliés, à ouvrir seulement si nécessaire"
+
+msgid "mesh"
+msgstr "mesh"
+
+msgid "new password"
+msgstr "nouveau mot de passe"
+
+msgid "no client"
+msgstr "pas de client"
+
+msgid "no password"
+msgstr "pas de mot de passe"
+
+msgid "password set"
+msgstr "mot de passe défini"
+
+msgid "password will be removed"
+msgstr "le mot de passe sera supprimé"
+
+msgid "static"
+msgstr "statique"

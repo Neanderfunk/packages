@@ -1,0 +1,94 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Setup-Mode nach einer Frist von selbst beenden, wie "Speichern & Neustarten"
+# (adorfer, 04.10.2026): Ein Knoten, der im Setup-Mode vergessen wurde (Cudy
+# in der Schulstrasse, gut 25 h), kommt so von allein zurueck ins Netz.
+#
+#   autoexit conf                 Einstellung ausgeben: "<an 0|1> <sekunden>"
+#   autoexit run <sekunden> <id>  warten, dann speichern und neu starten
+#                                 (<id> nur fuer procd, siehe rc.d-Skript)
+#
+# Einstellung, die erste gesetzte gilt:
+#   uci   gluon-setup-mode.@setup_mode[0].autoexit          0/1 (auch true/off ...)
+#         gluon-setup-mode.@setup_mode[0].autoexit_timeout  Sekunden
+#   site  setup_mode.autoexit.enabled (true/false), setup_mode.autoexit.timeout
+#   sonst an, 86400 s (24 h).
+#
+# "Speichern" heisst dasselbe wie im Wizard (gluon-config-mode-core
+# wizard.lua): configured=1 setzen, gluon-reconfigure (dessen 998-commit
+# committet), Neustart. Auf einem nie eingerichteten Knoten bleiben es die
+# Standardwerte. Zur Sperre gegen gleichzeitiges Speichern siehe take_lock().
+
+LOCK=/var/gluon/setup-mode/wizard-save
+TAG=neanderfunk-setup-mode
+
+bool() {
+	case "$1" in
+		1|true|yes|on|enabled) echo 1 ;;
+		0|false|no|off|disabled) echo 0 ;;
+	esac
+}
+
+conf() {
+	local en to site
+	en="$(bool "$(uci -q get 'gluon-setup-mode.@setup_mode[0].autoexit')")"
+	to="$(uci -q get 'gluon-setup-mode.@setup_mode[0].autoexit_timeout')"
+	site="$(lua -e '
+		local a = require("gluon.site").setup_mode.autoexit
+		print(a.enabled(true) and 1 or 0)
+		print(math.floor(tonumber(a.timeout(86400)) or 86400))
+	' 2>/dev/null)"
+	[ -n "$en" ] || en="$(echo "$site" | sed -n 1p)"
+	case "$to" in ''|*[!0-9]*) to="$(echo "$site" | sed -n 2p)" ;; esac
+	case "$en" in 0|1) ;; *) en=1 ;; esac
+	case "$to" in ''|*[!0-9]*) to=86400 ;; esac
+	echo "$en $to"
+}
+
+# Dieselbe Sperre wie der Wizard (gluon-patches-fixes wizard-save-lock):
+# $LOCK atomar anlegen (noclobber = O_EXCL), PID hinein; nach gluon-reconfigure
+# kommt $LOCK.done dazu. Waehrend dieses Skript die Sperre haelt, wartet jeder
+# Klick auf "Speichern & Neustarten" und bekommt nach .done nur die
+# Neustart-Seite - es laufen nie zwei gluon-reconfigure nebeneinander.
+# Umgekehrt: Haelt ein Klick die Sperre, tritt dieses Skript zurueck. Startet
+# der Knoten danach nicht neu (Formular ungueltig, der Wizard gibt die Sperre
+# frei), versucht es das Skript alle 30 s wieder.
+# Eine verwaiste Sperre (Prozess weg, kein .done) wird uebernommen, wie im
+# Wizard; eine leere ist gerade erst angelegt und gilt als belegt.
+take_lock() {
+	local pid
+	( set -C; echo $$ > "$LOCK" ) 2>/dev/null && return 0
+	pid="$(cat "$LOCK" 2>/dev/null)"
+	if [ -n "$pid" ] && [ ! -d "/proc/$pid" ]; then
+		rm -f "$LOCK"
+		( set -C; echo $$ > "$LOCK" ) 2>/dev/null && return 0
+	fi
+	return 1
+}
+
+run() {
+	sleep "$1"
+	while :; do
+		[ -d /var/gluon/setup-mode ] || exit 0
+		# Ein Speichern ist durch, der Neustart kommt von dort.
+		[ -f "$LOCK.done" ] && exit 0
+		take_lock && break
+		logger -t "$TAG" "setup mode auto exit: a save is running, trying again in 30 s"
+		sleep 30
+	done
+
+	logger -t "$TAG" "setup mode auto exit after $1 s: saving and restarting"
+	uci set 'gluon-setup-mode.@setup_mode[0].configured=1'
+	gluon-reconfigure >/dev/null 2>&1
+	: > "$LOCK.done"
+	sync
+	reboot
+}
+
+case "$1" in
+	conf) conf ;;
+	run) run "${2:-86400}" ;;
+	*) echo "Aufruf: $0 conf | run <sekunden> <id>" >&2; exit 2 ;;
+esac

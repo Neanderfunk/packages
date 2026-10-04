@@ -1,0 +1,245 @@
+<%#
+SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+SPDX-License-Identifier: BSD-3-Clause
+
+Replaces Gluon's theme/layout. Same inputs (content, scope, pkg, hidenav)
+and the same menu logic: top level = the visible categories of the
+dispatcher tree, below that the pages of the current category as tabs.
+-%>
+<%
+	local pretty_hostname = require 'pretty_hostname'
+	local uci = require('simple-uci').cursor()
+	local util = require 'gluon.util'
+	local site = require 'gluon.site'
+
+	local t = i18n('neanderfunk-config-mode-theme')
+
+	local hostname = pretty_hostname.get(uci)
+	local release = util.trim(util.readfile('/lib/gluon/release') or '')
+	local model = util.trim(util.readfile('/tmp/sysinfo/model') or '')
+	local site_name = site.site_name('')
+
+	local root = node()
+	local rnode = node(unpack(request))
+	local category = request[1]
+
+	local function title(n)
+		return i18n(n.pkg).translate(n.title)
+	end
+
+	local function children(n)
+		local ret = {}
+		if not n then return ret end
+		for k, v in pairs(n.nodes) do
+			if v.title and v.target and not v.hidden then
+				table.insert(ret, k)
+			end
+		end
+		table.sort(ret, function(a, b)
+			return (n.nodes[a].order or 100) < (n.nodes[b].order or 100)
+		end)
+		return ret
+	end
+
+	local categories = children(root)
+	local tabs = category and children(root.nodes[category]) or {}
+
+	-- /static/ comes without Cache-Control and with a fixed Last-Modified;
+	-- the release in the URL makes browsers fetch the new stylesheet after
+	-- an update instead of keeping last month's.
+	local v = '?v=' .. urlencode(release)
+
+	http:prepare_content('text/html')
+-%>
+<!DOCTYPE html>
+<%# The language of the page: our catalog translates "en" to its own code. %>
+<html lang="<%|t.translate('en')%>">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<%#
+	Referrer only to the node itself: the map tile proxy (tiles.ffdus.de)
+	answers 403 to any referrer outside its map domains, and the config
+	mode's own (http://192.168.1.1/, http://198.51.100.1/) is one, so the map
+	stayed empty. Cross-origin requests now go without a referrer and get
+	their tiles. NOT "no-referrer": with it browsers send "Origin: null" on
+	the form POST, and gluon-web rejects every save with "POST request with
+	invalid Origin header". (30.09.2026)
+%>
+<meta name="referrer" content="same-origin">
+<link rel="stylesheet" href="/static/neanderfunk.css<%=v%>">
+<%#
+	Without an icon link browsers ask for /favicon.ico, which Gluon answers
+	with a redirect to the config mode, so every page view rendered the whole
+	page a second time on the node (Firefox profile, 30.09.2026).
+%>
+<link rel="icon" type="image/svg+xml" href="/static/neanderfunk-logo.svg<%=v%>">
+<title><%| hostname .. ((rnode and rnode.title) and ' - ' .. title(rnode) or '') %></title>
+</head>
+<body>
+<div class="app">
+<header class="app-header">
+	<a class="brand" href="<%|url({})%>">
+		<svg class="logo" viewBox="0 0 76.8 54.9" aria-hidden="true"><g fill="none" stroke="#DC0167" stroke-miterlimit="3.86"><path stroke-width=".88" d="M.4 36.4a17.6 17.7 0 1 1 35.2 0a17.6 17.7 0 1 1-35.2 0z"/><path stroke-width="5.31" d="M24.8 27.4a24.7 24.8 0 1 1 49.4 0a24.7 24.8 0 1 1-49.4 0z"/><path stroke-width=".88" d="M30.5 27.4a18.9 19 0 1 1 37.8 0a18.9 19 0 1 1-37.8 0z"/></g><g fill="#FAB314"><polygon points="40.7,32.3 48.1,24.8 55.2,24.8 50.2,29.8 60.1,29.8 60.1,34.8 50.2,34.8 55.2,39.8 48.1,39.8"/><polygon points="18.5,32.3 14.1,27.9 10,27.9 12.9,30.9 7,30.9 7,33.8 12.9,33.8 10,36.8 14.1,36.8"/></g><g font-family="'Myriad Pro',system-ui,sans-serif" font-weight="700"><text transform="matrix(.7813 -.7813 .7071 .7071 44.0364 34.7411)" font-size="4.68" fill="#FFF">funk</text><text transform="matrix(.7813 -.7813 .7071 .7071 40.2654 30.97)" font-size="5.24" fill="currentColor">neander</text></g></svg>
+		<span>
+			<span class="brand-name"><%| site_name ~= '' and site_name or hostname %></span>
+			<span class="brand-sub"><%|hostname%></span>
+		</span>
+	</a>
+	<div class="head-right">
+		<span class="device"><% if model ~= '' then %><b><%|model%></b><% end %><span class="mono"><%|release%></span></span>
+		<% if #categories > 1 and not hidenav then %>
+		<nav class="head-links">
+			<% for _, r in ipairs(categories) do %>
+			<a href="<%|url({r})%>"<% if r == category then %> aria-current="page"<% end %>><%|title(root.nodes[r])%></a>
+			<% end %>
+		</nav>
+		<% end %>
+	</div>
+</header>
+<% if #tabs > 1 and not hidenav then %>
+<nav class="tabs">
+	<% for _, r in ipairs(tabs) do %>
+	<a href="<%|url({category, r})%>"<% if r == request[2] then %> aria-current="page"<% end %>><%|title(root.nodes[category].nodes[r])%></a>
+	<% end %>
+</nav>
+<% end %>
+<div class="page">
+	<noscript>
+		<div class="errorbox">
+			<strong><%|t.translate('JavaScript required!')%></strong><br>
+			<%|t.translate('You must enable JavaScript in your browser or the web interface will not work properly.')%>
+		</div>
+	</noscript>
+	<%
+		-- The browser a phone or laptop opens for a captive portal (the
+		-- "sign in to network" notice, e.g. over neanderfunk-setup-wifi)
+		-- cannot upload files: the button is inert, without an error.
+		-- Detecting that browser is unreliable, so the upgrade page always
+		-- says it, with the address this page came in on.
+		if content == 'admin/upgrade' then
+			local addr = http:getenv('SERVER_ADDR') or ''
+			if addr == '' then addr = '192.168.1.1' end
+			if addr:find(':', 1, true) then addr = '[' .. addr .. ']' end
+			local base = 'http://' .. addr
+			local link = '<a href="' .. pcdata(base .. url(request)) .. '">' .. pcdata(base) .. '</a>'
+	%>
+	<p class="gluon-warning"><%|t.translate('The sign-in window of your phone cannot upload files.')%>
+	<%=t.translatef('Open %s in your normal browser.', link)%></p>
+	<% end %>
+	<%
+		ok, err = pcall(renderer.render, content, scope, pkg)
+		if not ok then
+			renderer.render('error/500', {message = err}, 'gluon-web')
+		end
+	%>
+</div>
+</div>
+<script>
+	// Location picker (gluon-config-mode-geo-location): once coordinates are
+	// entered - typed, or by a click into the map, which sets the fields and
+	// fires "gluon-revalidate" - tick "Advertise node position" as well
+	// (adorfer, 30.09.2026). Only on a change, never on load, so a node that
+	// keeps its position private stays so, and unticking afterwards sticks.
+	// gluon-web takes fields whose dependency is unmet out of the document,
+	// so nothing is looked up in advance: one capturing listener on the
+	// document (capture also sees the non-bubbling "gluon-revalidate") and
+	// the checkbox is searched at the moment of the change.
+	(function() {
+		function handler(e) {
+			var el = e.target;
+			if (!el || !el.id || !/\.(latitude|longitude)$/.test(el.id))
+				return;
+			if (el.value.trim() === '')
+				return;
+			var share = document.querySelector('input[type="checkbox"][id$=".share_location"]');
+			if (!share || share.checked)
+				return;
+			share.checked = true;
+			share.dispatchEvent(new Event('change', {bubbles: true}));
+		}
+		['input', 'change', 'gluon-revalidate'].forEach(function(type) {
+			document.addEventListener(type, handler, true);
+		});
+	})();
+
+	// Invalid fields turn red only after they were left or changed, or once a
+	// save was tried (CSS: .nf-touched / .nf-tried). Capturing on the
+	// document, because gluon-web adds and removes fields.
+	(function() {
+		function touch(e) {
+			var el = e.target;
+			if (el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) el.classList.add('nf-touched');
+		}
+		document.addEventListener('focusout', touch, true);
+		document.addEventListener('change', touch, true);
+		document.addEventListener('submit', function(e) { e.target.classList.add('nf-tried'); }, true);
+	})();
+
+	// Band headings: Gluon's German "2,4GHz-WLAN" becomes "2.4GHz-WLAN" (dot,
+	// as everywhere in Neanderfunk texts), the unit stays "GHz" in the
+	// uppercase headings, and where the heading would wrap, the unit goes:
+	// "2.4-WLAN". Display only, Gluon's catalog stays as it is.
+	(function() {
+		var rx = /(\d)(?:[,.](\d))?\s?GHz/;
+		function fix(el) {
+			if (el.dataset.nfBand) return;
+			var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+			var n;
+			while ((n = w.nextNode())) {
+				var m = n.nodeValue.match(rx);
+				if (!m) continue;
+				var num = m[1] + (m[2] ? '.' + m[2] : '');
+				var before = n.nodeValue.slice(0, m.index), after = n.nodeValue.slice(m.index + m[0].length);
+				var unit = document.createElement('span');
+				unit.className = 'nf-unit';
+				unit.textContent = 'GHz';
+				var frag = document.createDocumentFragment();
+				frag.appendChild(document.createTextNode(before + num));
+				frag.appendChild(unit);
+				frag.appendChild(document.createTextNode(after));
+				n.parentNode.replaceChild(frag, n);
+				el.dataset.nfBand = '1';
+				break;
+			}
+		}
+		function lines(el) {
+			var lh = parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.3;
+			var cs = getComputedStyle(el);
+			return Math.round((el.getBoundingClientRect().height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)) / lh);
+		}
+		function fit() {
+			document.querySelectorAll('.subhead, .gluon-section > legend').forEach(function(el) {
+				fix(el);
+				var u = el.querySelector('.nf-unit');
+				if (!u) return;
+				u.hidden = false;
+				if (lines(el) > 1) u.hidden = true;
+			});
+		}
+		fit();
+		window.addEventListener('resize', fit);
+		window.addEventListener('gluon-update', fit);
+	})();
+
+	// Swipeable tab row on phones (CSS): bring the current tab into view and
+	// fade only the side where more tabs are.
+	(function() {
+		var tabs = document.querySelector('.tabs');
+		if (!tabs) return;
+		function edges() {
+			var more = tabs.scrollWidth - tabs.clientWidth > 1;
+			tabs.classList.toggle('more-l', more && tabs.scrollLeft > 1);
+			tabs.classList.toggle('more-r', more && tabs.scrollLeft < tabs.scrollWidth - tabs.clientWidth - 1);
+		}
+		var cur = tabs.querySelector('a[aria-current]');
+		if (cur && tabs.scrollWidth > tabs.clientWidth)
+			tabs.scrollLeft = cur.offsetLeft - (tabs.clientWidth - cur.offsetWidth) / 2;
+		edges();
+		tabs.addEventListener('scroll', edges, { passive: true });
+		window.addEventListener('resize', edges);
+	})();
+</script>
+</body>
+</html>

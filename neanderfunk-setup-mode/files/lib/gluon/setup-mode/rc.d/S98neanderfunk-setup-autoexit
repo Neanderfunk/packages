@@ -1,0 +1,21 @@
+#!/bin/sh /etc/rc.common
+# SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Setup-Mode nach einer Frist von selbst beenden (Vorgabe 24 h), siehe
+# /lib/gluon/neanderfunk-setup-mode/autoexit. Die Frist laeuft ab dem Start
+# des Setup-Mode und misst mit sleep, also unabhaengig von der Uhrzeit.
+
+START=98
+USE_PROCD=1
+
+start_service() {
+	local en to
+	set -- $(/lib/gluon/neanderfunk-setup-mode/autoexit conf)
+	en="$1"; to="$2"
+	[ "$en" = 1 ] || { logger -t neanderfunk-setup-mode "setup mode auto exit is off"; return 0; }
+	logger -t neanderfunk-setup-mode "setup mode ends by itself in $to s (save and restart)"
+	procd_open_instance autoexit
+	procd_set_param command /lib/gluon/neanderfunk-setup-mode/autoexit run "$to" "$(cut -d. -f1 /proc/uptime)"
+	procd_close_instance
+}
