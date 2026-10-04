@@ -1,0 +1,19 @@
+# Note that the clock has been set by ntp during this boot.
+#
+# ntpd runs with "-S /usr/sbin/ntpd-hotplug", which fires an ntp hotplug event
+# on synchronisation; ACTION=stratum is the one that means "time is valid" -
+# OpenWrt's own 25-dnsmasqsec handler uses exactly that condition.
+#
+# The marker lives in /tmp on purpose: it is gone after a reboot and has to be
+# earned again, so it always answers "was the clock set since THIS boot".
+#
+# Why weeklyreboot cares: without an RTC, sysfixtime sets the clock at boot to
+# the newest mtime of any file under /etc, so it starts at the same wrong time
+# after every boot. If that lies shortly before Thursday 03:15, the node reaches
+# the cron time "15 3 * * 4" the same short while after every boot - and
+# reboots again, forever. Without this marker weeklyreboot.sh therefore does
+# not go by the weekday but reboots only once the uptime exceeds 7 days.
+
+[ "$ACTION" = "stratum" ] || exit 0
+
+touch /tmp/weeklyreboot.clock-synced

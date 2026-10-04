@@ -1,4 +1,7 @@
 #!/bin/sh
+# Sackgasse 2021.1: neanderfunk-migrate-updatebranch with the Sackgasse target
+# branch - v2025.1.x maps old branches to 'stable', here everything goes to
+# 'sackgasse' (the 4/32 devices have no newer release).
 
 UPDATE_BRANCH=$(uci get autoupdater.settings.branch)
 
