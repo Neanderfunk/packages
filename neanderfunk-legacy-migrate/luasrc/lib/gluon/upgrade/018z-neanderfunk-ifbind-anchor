@@ -7,14 +7,22 @@
 -- 020-interfaces die Namen neu verteilen (siehe neanderfunk/ifbind.lua).
 -- Hier stehen in sysconfig noch lan_ifname/wan_ifname der alten Firmware.
 -- Anker ist primary_mac: die MAC der Karte, die bei der Erstinstallation
--- eth0 war. Nur bei genau zwei Karten und alten Namen eth0/eth1 eindeutig;
--- sonst bleibt es bei Gluons 019 (und 020a bindet danach den Stand).
+-- eth0 war. Nur bei genau zwei Karten und alten Namen eth0/eth1 eindeutig.
+-- Nur bei Herkunft vor 2022.1 (noch keine gluon.iface_*-Rollen): genau dort
+-- steigt 019 aus. Ab 2022.1 rechnet 019 mit der echten alten Ladereihenfolge
+-- der Treiber und ist genauer als primary_mac (Erstinstallation, nicht
+-- letzter Stand); 020a bindet danach den Stand.
 -- Gelingt die Bindung, uebernimmt sie das Umsortieren, und 019 wird
 -- uebersprungen, damit nicht doppelt getauscht wird.
 
 local platform = require 'gluon.platform'
 local sysconfig = require 'gluon.sysconfig'
 if not platform.match('x86') or sysconfig.neanderfunk_bind_wan then
+	return
+end
+
+local uci = require('simple-uci').cursor()
+if #uci:get_list('gluon', 'iface_lan', 'role') > 0 or #uci:get_list('gluon', 'iface_wan', 'role') > 0 then
 	return
 end
 

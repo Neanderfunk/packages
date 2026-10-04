@@ -22,7 +22,9 @@ end
 
 -- 0. gluon-simple-tc heisst seit 2016.2 simple-tc (v2016.2.7 420, fc7c8cb0);
 --    vor jedem Zugriff auf simple-tc umbenennen
--- (ueberschreibt die Vorgabe-Datei des neuen Images, wie die Vorlage)
+-- (ueberschreibt die Vorgabe-Datei des neuen Images, wie die Vorlage).
+-- Laeuft vor der Herkunftspruefung, also auf jedem Knoten; ab 2016.2 fehlt
+-- die Datei, dann passiert nichts.
 if util.readfile('/etc/config/gluon-simple-tc') then
 	os.rename('/etc/config/gluon-simple-tc', '/etc/config/simple-tc')
 end
@@ -88,20 +90,11 @@ if not uci:get('gluon', 'iface_lan') and not uci:get('gluon', 'iface_wan') and n
 	}
 	roles.single = site.interfaces.single.default_roles({unpack(roles.wan)})
 	local mlan, mwan = old_enabled('mesh_lan'), old_enabled('mesh_wan')
-	-- Steckte LAN in der Client-Bridge, war Mesh auf LAN aus (220) und LAN
-	-- ein Client-Port. Verglichen wird mit den ALTEN Namen (mesh_lan.ifname
-	-- der Altkonfiguration); lan_ifname haben 020/020a schon neu gesetzt.
-	-- Die Werte stehen je nach Version als Liste oder als "eth0 bat0".
-	local function words(sec, opt)
-		local v = uci:get('network_gluon-old', sec, opt)
-		return table.concat(type(v) == 'table' and v or { v or '' }, ' ')
-	end
-	local client, in_client = ' ' .. words('client', 'ifname') .. ' ', false
-	for lanif in words('mesh_lan', 'ifname'):gmatch('%S+') do
-		if client:find(' ' .. lanif .. ' ', 1, true) then in_client = true end
-	end
-	if in_client then
-		mlan = false
+	-- mesh_lan aus hiess bis 2021.1 immer: LAN steckt in der Client-Bridge
+	-- (220-interface-lan), also Rolle client. Die Bridge selbst ist nicht mehr
+	-- lesbar: 11_network-migrate-bridges (uci-defaults, laeuft vor
+	-- zzz-gluon-upgrade) hat client.ifname schon nach device/ports verschoben.
+	if mlan == false then
 		util.add_to_set(roles.lan, 'client')
 	end
 	for _, v in ipairs({ { mwan, { 'wan', 'single' } }, { mlan, { 'lan', 'single' } } }) do
