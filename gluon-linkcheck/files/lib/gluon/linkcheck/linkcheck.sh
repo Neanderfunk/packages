@@ -1,107 +1,72 @@
 #! /bin/sh
+# Nachbarpruefung alle 15 min (micron.d). Je Pruefung (batman-Interface,
+# WLAN-Radio) erst "in der Nachbarschaft" (mindestens 2 Nachbarn) merken.
+# Danach ohne Nachbarn: 1. Mal merken, 2. Mal WLAN neu, 3. Mal Reboot.
+# (Kommentare entfernt gluonShellDiet.sh beim Bau.)
+
+# Waehrend der Autoupdater laeuft (haelt das flock bis in den sysupgrade
+# hinein), weder WLAN noch Reboot anfassen.
+flock -n /var/lock/autoupdater.lock true || exit 0
+
 valuecheck ()
 {
-  logstring=$logstring" "$linkname"."$check":"$wert
-  if [ ! -f /tmp/linkcheck.$linkname.$check.inhood ] ; then
-    if [ "$wert" -gt 1 ] ; then #minimum 2 neighbors
-     echo 1>/tmp/linkcheck.$linkname.$check.inhood
+  f=/tmp/linkcheck.$linkname.$check
+  if [ ! -f $f.inhood ] ; then
+    if [ "$wert" -gt 1 ] ; then
+      echo 1 >$f.inhood
+    fi
+  elif [ "$wert" -lt 1 ] ; then
+    if [ ! -f $f.linkpb1 ] ; then
+      logger -t gluon-linkcheck -p 5 "lost neighbours $linkname.$check"
+      echo 1 >$f.linkpb1
+    elif [ ! -f $f.linkpb2 ] ; then
+      logger -t gluon-linkcheck -p 5 "still no neighbours $linkname.$check, wifi restart"
+      echo 1 >$f.linkpb2
+      # hoechstens ein WLAN-Neustart je Lauf, auch wenn mehrere Pruefungen
+      # gleichzeitig eskalieren
+      [ -n "$wr" ] && return
+      wr=1
+      wifi down
+      killall hostapd >/dev/null 2>&1
+      rm -f /var/run/wifi-*.pid
+      wifi config
+      wifi up
+      sleep 10
+    else
+      # Frueher stand hier noch ein network restart vor dem Reboot, der im
+      # selben Lauf sofort vom Reboot ueberholt wurde (fi an falscher Stelle).
+      logger -t gluon-linkcheck -p 5 "3rd time no neighbours $linkname.$check, rebooting!"
+      sleep 10
+      flock -n /var/lock/autoupdater.lock true || exit 0
+      reboot -f
     fi
   else
-    if [ "$wert" -lt 1 ] ; then # alone?
-      if [ -f /tmp/linkcheck.$linkname.$check.linkpb1 ] ; then
-        if [ -f /tmp/linkcheck.$linkname.$check.linkpb2 ] ; then
-          if [ -f /tmp/linkcheck.$linkname.$check.linkpb3 ] ; then
-            logger -s -t "gluon-linkcheck" -p 5 "3nd time no neighbours $linkname.$check, rebooting!"
-            sleep 10
-            upgrade_started='/tmp/autoupdate.lock'
-            [ -f $upgrade_started ] && exit
-            reboot -f
-           else
-            logger -s -t "gluon-linkcheck" -p 5 "still no neighbours $linkname.$check, network restart"
-            echo 1>/tmp/linkcheck.$linkname.$check.linkpb3
-            /etc/init.d/network restart
-            sleep 10
-           fi
-          logger -s -t "gluon-linkcheck" -p 5 "2nd time no neighbours $linkname.$check, rebooting!"
-          sleep 10
-          upgrade_started='/tmp/autoupdate.lock'
-          [ -f $upgrade_started ] && exit
-          reboot -f
-        else
-          logger -s -t "gluon-linkcheck" -p 5 "still no neighbours $linkname.$check, wifi restart"
-          echo 1>/tmp/linkcheck.$linkname.$check.linkpb2
-          wifi down
-          killall hostapd >/dev/null 2>&1
-          rm -f /var/run/wifi-*.pid  >/dev/null 2>&1
-          wifi config
-          wifi up
-          sleep 10
-        fi
-      else
-        logger -s -t "gluon-linkcheck" -p 5 "lost neighbours $linkname.$check"
-        echo 1>/tmp/linkcheck.$linkname.$check.linkpb1
-      fi
-    else
-      if [ -f /tmp/linkcheck.$linkname.$check.linkpb1 ] ; then
-        rm /tmp/linkcheck.$linkname.$check.linkpb1
-      fi
-      if [ -f /tmp/linkcheck.$linkname.$check.linkpb2 ] ; then
-        rm /tmp/linkcheck.$linkname.$check.linkpb2
-      fi
-      if [ -f /tmp/linkcheck.$linkname.$check.linkpb3 ] ; then
-        rm /tmp/linkcheck.$linkname.$check.linkpb3
-      fi
-    fi
+    rm -f $f.linkpb1 $f.linkpb2
   fi
 }
 
-upgrade_started='/tmp/autoupdate.lock'
-[ -f $upgrade_started ] && exit
-batversion=$(batctl -v |cut -d" " -f 2|grep -o '[0-9]\+'| tr -d '\012\015')
 linkname=batadv
-batmeshs=$(batctl if|cut -d":" -f 1|tr '\n' ' ')
-for batm in $batmeshs; do
-  if [ $batversion -gt 20163 ] ; then
-   result=$(batctl n|grep $batm|awk '{print $2}'|sort|uniq|wc -l)
-  else
-   result=$(batctl n|grep $batm|awk '{print $2}'|sort|uniq|wc -l)
-  fi
-  check=$batm
-  wert=$result
-  valuecheck $check
+for check in $(batctl if | cut -d: -f1); do
+  wert=$(batctl n | grep $check | awk '{print $2}' | sort -u | wc -l)
+  valuecheck
 done
 
-checks=""
-linksexist=""
-links="wireless.mesh_radio0 wireless.batmesh_radio0 wireless.mesh_radio1 wireless.batmesh_radio1 wireless.mesh_radio2 wireless.batmesh_radio2 wireless.client_radio0 wireless.client_radio1 wireless.client_radio2"
-for link in $links; do
-  linkname=$(uci get $link.ifname 2>/dev/null)
-  if [ ! -z "$linkname" ] ; then
-    linksexist="$linksexist $link"
-   fi
-done
-rm /tmp/linkcheck.iwscan.* 2>/dev/null
-
-for linkexist in $linksexist; do
-  linkname=$(uci get $linkexist.ifname)
-  iwfile=/tmp/linkcheck.iwscan.$(uci get $linkexist.device)
-  if [ ! -f $iwfile ] ; then
-    sleep 4
-    iw dev $linkname scan lowpri passive > $iwfile
-    sleep 4
-   fi
-  bsses=$(cat $iwfile|grep "BSS .*:.*:.*:.*:.*:.*(on.*)"|wc -l)
-#  unset bssid
-#  bssid=$(uci get $linkexist.mesh_id 2>/dev/null)
-#  if [ -z "$bssid" ] ; then
-#    bssid=$(uci get $linkexist.ssid)
-#   fi
-#  neighbours=$(cat $iwfile|grep $bssid|wc -l)
-#  checks="neighbours bsses"
-  checks="bsses"
-  for check in $checks; do
-    wert=$(eval echo \$$check)
-    valuecheck $check
+# WLAN: je Radio ein Scan und eine Pruefung, am ersten vorhandenen Interface
+# (mesh vor client). Frueher eskalierten mesh- und client-Interface desselben
+# Radios getrennt, der WLAN-Neustart lief dann zwei- bis dreimal.
+check=bsses
+for radio in radio0 radio1 radio2; do
+  for sec in mesh_$radio client_$radio; do
+    linkname=$(uci -q get wireless.$sec.ifname) && break
   done
+  [ -n "$linkname" ] || continue
+  iwfile=/tmp/linkcheck.iwscan.$radio
+  sleep 4
+  # Scan fehlgeschlagen (Interface weg, busy): kein Befund, nicht als
+  # Nachbarverlust zaehlen
+  iw dev $linkname scan lowpri passive >$iwfile 2>/dev/null || { rm -f $iwfile; continue; }
+  sleep 4
+  wert=$(grep -c "BSS .*:.*:.*:.*:.*:.*(on.*)" $iwfile)
+  rm -f $iwfile
+  valuecheck
 done
-logger -s -t "gluon-linkcheck" -p 5 $logstring
