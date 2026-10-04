@@ -1,0 +1,51 @@
+#!/usr/bin/lua
+-- SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+-- SPDX-License-Identifier: BSD-3-Clause
+--
+-- x86, bei jedem Reconfigure nach 020-interfaces: lan_ifname/wan_ifname auf
+-- die gebundenen Karten zurueckstellen (siehe neanderfunk/ifbind.lua). Gibt
+-- es noch keine Bindung, wird der jetzige Stand gebunden - ab dann bleiben
+-- die Rollen bei ihrer Karte, auch wenn sich ethN spaeter wieder aendert.
+
+local platform = require 'gluon.platform'
+local sysconfig = require 'gluon.sysconfig'
+if not platform.match('x86') then
+	return
+end
+
+local ifbind = require 'neanderfunk.ifbind'
+local nics = ifbind.nics()
+local lan, wan = sysconfig.lan_ifname, sysconfig.wan_ifname
+
+if not sysconfig.neanderfunk_bind_wan then
+	local l, w = lan and ifbind.byname(nics, lan), wan and ifbind.byname(nics, wan)
+	if l and w then
+		sysconfig.neanderfunk_bind_lan = ifbind.key(l)
+		sysconfig.neanderfunk_bind_wan = ifbind.key(w)
+		print(string.format('neanderfunk-ifbind: bound LAN=%s (%s) WAN=%s (%s)',
+			lan, sysconfig.neanderfunk_bind_lan, wan, sysconfig.neanderfunk_bind_wan))
+	end
+	return
+end
+
+local l = ifbind.find(nics, sysconfig.neanderfunk_bind_lan)
+local w = ifbind.find(nics, sysconfig.neanderfunk_bind_wan)
+if not l or not w or l == w then
+	print('neanderfunk-ifbind: bound cards not found, keeping ' .. tostring(lan) .. '/' .. tostring(wan))
+	return
+end
+
+-- MAC nachtragen, sobald sie echt lesbar ist
+for role, n in pairs({ lan = l, wan = w }) do
+	if n.mac and n.mac ~= '' then
+		sysconfig['neanderfunk_bind_' .. role] = ifbind.key(n)
+	end
+end
+
+if l.name ~= lan or w.name ~= wan then
+	print(string.format('neanderfunk-ifbind: LAN %s -> %s, WAN %s -> %s (bound to card)',
+		tostring(lan), l.name, tostring(wan), w.name))
+end
+sysconfig.lan_ifname = l.name
+sysconfig.wan_ifname = w.name
+sysconfig.single_ifname = nil

@@ -1,0 +1,50 @@
+#!/usr/bin/lua
+-- SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+-- SPDX-License-Identifier: BSD-3-Clause
+--
+-- x86, einmalig beim Sprung von einer aelteren Firmware: die alte Zuordnung
+-- LAN/WAN an die Karte binden, BEVOR 019-migrate-interface-order und
+-- 020-interfaces die Namen neu verteilen (siehe neanderfunk/ifbind.lua).
+-- Hier stehen in sysconfig noch lan_ifname/wan_ifname der alten Firmware.
+-- Anker ist primary_mac: die MAC der Karte, die bei der Erstinstallation
+-- eth0 war. Nur bei genau zwei Karten und alten Namen eth0/eth1 eindeutig;
+-- sonst bleibt es bei Gluons 019 (und 020a bindet danach den Stand).
+-- Gelingt die Bindung, uebernimmt sie das Umsortieren, und 019 wird
+-- uebersprungen, damit nicht doppelt getauscht wird.
+
+local platform = require 'gluon.platform'
+local sysconfig = require 'gluon.sysconfig'
+if not platform.match('x86') or sysconfig.neanderfunk_bind_wan then
+	return
+end
+
+local ifbind = require 'neanderfunk.ifbind'
+local lan, wan, prim = sysconfig.lan_ifname, sysconfig.wan_ifname, sysconfig.primary_mac
+if not lan or not wan or not prim then
+	return
+end
+local old0
+if lan == 'eth0' and wan == 'eth1' then
+	old0 = 'lan'
+elseif wan == 'eth0' and lan == 'eth1' then
+	old0 = 'wan'
+else
+	return
+end
+
+local nics = ifbind.nics()
+if #nics ~= 2 then
+	return
+end
+local a = ifbind.find(nics, prim:lower() .. ' ')
+if not a then
+	return
+end
+local b = nics[1] == a and nics[2] or nics[1]
+
+local bind = { [old0] = a, [old0 == 'lan' and 'wan' or 'lan'] = b }
+sysconfig.neanderfunk_bind_lan = ifbind.key(bind.lan)
+sysconfig.neanderfunk_bind_wan = ifbind.key(bind.wan)
+sysconfig.migrated_interface_order = ''
+print(string.format('neanderfunk-ifbind: anchored LAN=%s WAN=%s (primary_mac was old eth0, %s)',
+	sysconfig.neanderfunk_bind_lan, sysconfig.neanderfunk_bind_wan, old0))

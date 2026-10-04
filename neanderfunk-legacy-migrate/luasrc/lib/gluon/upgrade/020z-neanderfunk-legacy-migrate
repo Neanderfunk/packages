@@ -1,0 +1,189 @@
+#!/usr/bin/lua
+-- SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+-- SPDX-License-Identifier: BSD-3-Clause
+--
+-- Grosse Spruenge auf 2025.1, etwa bei der Uebernahme einer Community auf
+-- Gluon 2016.2 (router-werkstatt docs/gluon-migrationspfade.md). Gluon hat die
+-- alten Migrationen entfernt; ohne sie gehen WLAN (kein band), Mesh auf
+-- WAN/LAN, VPN-Schalter und preserve_channels verloren, und der Knoten haengt
+-- am fremden Autoupdater. Laeuft zwischen 020-interfaces und
+-- 021-interface-roles: network und system liegen schon als *_gluon-old,
+-- wireless, firewall, fastd, simple-tc und autoupdater sind noch unberuehrt.
+-- Nur bei alter Herkunft, einmal (sysconfig neanderfunk_legacy_migrated).
+
+local site = require 'gluon.site'
+local sysconfig = require 'gluon.sysconfig'
+local util = require 'gluon.util'
+local uci = require('simple-uci').cursor()
+
+if sysconfig.neanderfunk_legacy_migrated then
+	return
+end
+
+-- 0. gluon-simple-tc heisst seit 2016.2 simple-tc (v2016.2.7 420, fc7c8cb0);
+--    vor jedem Zugriff auf simple-tc umbenennen
+-- (ueberschreibt die Vorgabe-Datei des neuen Images, wie die Vorlage)
+if util.readfile('/etc/config/gluon-simple-tc') then
+	os.rename('/etc/config/gluon-simple-tc', '/etc/config/simple-tc')
+end
+
+-- Herkunft: gluon_version steht bis 999-version noch auf der alten Firmware
+-- (z. B. "v2016.2.7"); dazu Merkmale, falls die Datei fehlt oder nicht passt.
+local year = tonumber(((sysconfig.gluon_version or ''):match('^v?(20%d%d)%.')))
+local radio_old = false
+uci:foreach('wireless', 'wifi-device', function(r)
+	if r.hwmode and not r.band then radio_old = true end
+end)
+local legacy = (year and year < 2022) or radio_old or uci:get('firewall', 'client') ~= nil
+	or (uci:get('fastd', 'mesh_vpn') ~= nil and not uci:get('gluon', 'mesh_vpn'))
+if not legacy then
+	return
+end
+print('neanderfunk-legacy-migrate: migrating config from ' .. (sysconfig.gluon_version or '?'))
+
+-- 1. hwmode -> band (Vorlage d7225ba7^ 005-wireless-migration)
+uci:foreach('wireless', 'wifi-device', function(r)
+	if not r.band then
+		if r.hwmode == '11g' or r.hwmode == '11ng' then
+			uci:set('wireless', r['.name'], 'band', '2g')
+		elseif r.hwmode == '11a' or r.hwmode == '11na' then
+			uci:set('wireless', r['.name'], 'band', '5g')
+		end
+	end
+	uci:delete('wireless', r['.name'], 'hwmode')
+end)
+-- IBSS-Mesh (2016.1 bis 2019.1: ibss_radioX, 2015.1: mesh_radioX mit mode
+-- adhoc): 022-wireless-roles kennt nur client_/mesh_/wan_. War IBSS an, steht
+-- mesh_radioX danach auf an, damit der Knoten die Rolle mesh bekommt
+-- (delete_ibss aus v2021.1.2 200-wireless, 97747da2).
+uci:foreach('wireless', 'wifi-iface', function(i)
+	local name = i['.name']
+	local radio = name:match('^ibss_(.+)$')
+	if radio then
+		if i.disabled ~= '1' then
+			if not uci:get('wireless', 'mesh_' .. radio) then
+				uci:section('wireless', 'wifi-iface', 'mesh_' .. radio, { device = radio })
+			end
+			uci:set('wireless', 'mesh_' .. radio, 'disabled', false)
+		end
+		uci:delete('wireless', name)
+	elseif name:match('^mesh_') and i.mode == 'adhoc' then
+		uci:delete('wireless', name, 'mode')
+	end
+end)
+uci:save('wireless')
+
+-- 2. mesh_wan/mesh_lan -> Rollen (v2021.1.2 210/220, 021 vor d7225ba7).
+--    Nur wenn es noch keine Rollen gibt; 021 legt fehlende Sektionen danach an.
+local function old_enabled(sec)
+	local auto = uci:get('network_gluon-old', sec, 'auto')
+	local disabled = uci:get('network_gluon-old', sec, 'disabled')
+	if auto == nil and disabled == nil then return nil end
+	return auto ~= '0' and disabled ~= '1'
+end
+if not uci:get('gluon', 'iface_lan') and not uci:get('gluon', 'iface_wan') and not uci:get('gluon', 'iface_single') then
+	local roles = {
+		lan = site.interfaces.lan.default_roles({'client'}),
+		wan = site.interfaces.wan.default_roles({'uplink'}),
+	}
+	roles.single = site.interfaces.single.default_roles({unpack(roles.wan)})
+	local mlan, mwan = old_enabled('mesh_lan'), old_enabled('mesh_wan')
+	-- Steckte LAN in der Client-Bridge, war Mesh auf LAN aus (220) und LAN
+	-- ein Client-Port. Verglichen wird mit den ALTEN Namen (mesh_lan.ifname
+	-- der Altkonfiguration); lan_ifname haben 020/020a schon neu gesetzt.
+	-- Die Werte stehen je nach Version als Liste oder als "eth0 bat0".
+	local function words(sec, opt)
+		local v = uci:get('network_gluon-old', sec, opt)
+		return table.concat(type(v) == 'table' and v or { v or '' }, ' ')
+	end
+	local client, in_client = ' ' .. words('client', 'ifname') .. ' ', false
+	for lanif in words('mesh_lan', 'ifname'):gmatch('%S+') do
+		if client:find(' ' .. lanif .. ' ', 1, true) then in_client = true end
+	end
+	if in_client then
+		mlan = false
+		util.add_to_set(roles.lan, 'client')
+	end
+	for _, v in ipairs({ { mwan, { 'wan', 'single' } }, { mlan, { 'lan', 'single' } } }) do
+		for _, r in ipairs(v[2]) do
+			if v[1] == true then util.add_to_set(roles[r], 'mesh')
+			elseif v[1] == false then util.remove_from_set(roles[r], 'mesh') end
+		end
+	end
+	for _, r in ipairs({ 'lan', 'wan', 'single' }) do
+		if sysconfig[r .. '_ifname'] then
+			uci:section('gluon', 'interface', 'iface_' .. r, { name = '/' .. r, role = roles[r] })
+		end
+	end
+end
+
+-- 3. VPN an/aus und Bandbreite -> gluon.mesh_vpn (74681fcd^ 500-mesh-vpn)
+if not uci:get('gluon', 'mesh_vpn') then
+	local f, t = uci:get('fastd', 'mesh_vpn', 'enabled'), uci:get('tunneldigger', 'mesh_vpn', 'enabled')
+	if f or t then
+		local le = tonumber((uci:get('simple-tc', 'mesh_vpn', 'enabled')))
+		local li = tonumber((uci:get('tunneldigger', 'mesh_vpn', 'limit_bw_down')))
+			or tonumber((uci:get('simple-tc', 'mesh_vpn', 'limit_ingress')))
+		local lo = tonumber((uci:get('simple-tc', 'mesh_vpn', 'limit_egress')))
+		uci:section('gluon', 'mesh_vpn', 'mesh_vpn', {
+			enabled = f == '1' or t == '1',
+			limit_enabled = le == nil and site.mesh_vpn.bandwidth_limit.enabled(false) or le == 1,
+			limit_ingress = li or site.mesh_vpn.bandwidth_limit.ingress(),
+			limit_egress = lo or site.mesh_vpn.bandwidth_limit.egress(),
+		})
+	end
+end
+
+-- 4. preserve_channels (190 vor d7225ba7)
+local cw = uci:get_first('gluon-core', 'wireless')
+if cw then
+	if uci:get_bool('gluon-core', cw, 'preserve_channels') then
+		uci:section('gluon', 'wireless', 'wireless', { preserve_channels = true })
+	end
+	uci:delete('gluon-core', cw)
+	uci:save('gluon-core')
+end
+uci:save('gluon')
+
+-- Koordinaten mit Leerzeichen (520-node-info-whitespace-fix, d8f6ed24)
+uci:foreach('gluon-node-info', 'location', function(l)
+	for _, k in ipairs({ 'latitude', 'longitude' }) do
+		if l[k] and l[k] ~= util.trim(l[k]) then
+			uci:set('gluon-node-info', l['.name'], k, util.trim(l[k]))
+		end
+	end
+end)
+uci:save('gluon-node-info')
+
+-- 5. Alte Zonen und sysctl.conf (ab2f82ca)
+uci:delete('firewall', 'client')
+uci:delete('firewall', 'local_node')
+uci:save('firewall')
+uci:delete('dhcp', 'client')
+uci:save('dhcp')
+local sc = util.readfile('/etc/sysctl.conf') or ''
+if sc:match('\nnet%.ipv4%.ip_forward=1\n') or sc:match('^net%.ipv4%.ip_forward=1\n') then
+	local f = io.open('/etc/sysctl.conf', 'w')
+	f:write('# Defaults are configured in /etc/sysctl.d/* and can be customized in this file\n')
+	f:close()
+end
+
+-- 6. Fremden Autoupdater-Zweig auf unseren abbilden, fremde Zweige loeschen
+--    (500-autoupdater behaelt sonst Zweig samt fremden Mirrors und Schluesseln)
+local ours = site.autoupdater.branches()
+local br = uci:get('autoupdater', 'settings', 'branch')
+if br and not ours[br] then
+	uci:delete('autoupdater', 'settings', 'branch')
+end
+uci:delete_all('autoupdater', 'branch', function(s) return not ours[s['.name']] end)
+uci:save('autoupdater')
+
+-- 7. Fremde SSH-Schluessel bleiben (100-authorized-keys haengt nur an); nur
+--    melden, entfernen ist eine Entscheidung der Betreiber.
+local n = 0
+for l in (util.readfile('/etc/dropbear/authorized_keys') or ''):gmatch('[^\n]+') do
+	if l:match('^ssh%-') or l:match('^ecdsa%-') then n = n + 1 end
+end
+print('neanderfunk-legacy-migrate: done, ' .. n .. ' SSH keys in authorized_keys (foreign ones stay)')
+
+sysconfig.neanderfunk_legacy_migrated = sysconfig.gluon_version or '?'
