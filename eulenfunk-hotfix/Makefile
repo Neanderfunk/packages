@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=eulenfunk-hotfix
-PKG_VERSION:=2
+PKG_VERSION:=3
 
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
 
@@ -31,6 +31,7 @@ define Package/$(PKG_NAME)/install
 	./gluonShellDiet.sh $(1)/usr/sbin/securereboot
 	./gluonShellDiet.sh $(1)/lib/gluon/eulenfunk-hotfix/healthcheck.sh
 	./gluonShellDiet.sh $(1)/lib/gluon/eulenfunk-hotfix/check_hostapd.sh
+	./gluonShellDiet.sh $(1)/lib/gluon/eulenfunk-hotfix/common.sh
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))

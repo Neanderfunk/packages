@@ -1,32 +1,60 @@
 #!/bin/sh
-# Reboot if the ::ac1 anycast address in the client prefix has not answered
-# for four runs in a row (every 8 min), once it had answered since boot.
-# Removed 2026-10 (Sackgasse 2021.1): the gateway ladder on "No gateways in
-# range" (batctl 2019.2 no longer prints that text, it never fired; the ::ac1
-# ping covers the case) and the log line on every successful run.
-flock -n /var/lock/autoupdater.lock true || exit 0
+# Every 8 min. Reboot after four runs in a row without
+# - any batman gateway, once one was seen since boot, or
+# - an answer from <public client prefix>::ac1, once it answered since boot.
+# Nothing the first hour after boot.
+# Sackgasse 2021.1, repairs backported from neanderfunk-linkcheck gateway.sh
+# (v2025.1.x):
+# - the gateway check looked for the text "No gateways in range", which
+#   batctl 2019.2 no longer prints, so it never fired; now an empty
+#   "batctl gwl -H" means no gateway
+# - the anycast ping took the first address on br-client, which can be the
+#   ULA; now only public prefixes are tried, each until one answers
+# - no log line on every successful run, failures with a tag
 
-ipv6_subnet="$(ip -6 -o addr show dev br-client| head -1 |awk -v N=4 '{print $N}'|sed -e 's/\/64//'|cut -d":" -f1-4)"
-returnval=1
-if [ -n "$ipv6_subnet" ]; then
-  ping6 "${ipv6_subnet}::ac1" -c 10 >/dev/null 2>&1
-  returnval="$?"
+. /lib/gluon/eulenfunk-hotfix/common.sh
+
+autoupdater_busy && exit 0
+exec 200<"$0"
+flock -n 200 || exit 0
+
+reboot_if_old() {
+  if [ "$(uptime_s)" -le 3600 ] ; then
+    logger -t eulenfunk-rebootifnogw -p 5 "$1 - no action taken during the first hour"
+    return 0
+  fi
+  logger -t eulenfunk-rebootifnogw -p 5 "$1, rebooting"
+  securereboot
+  exit 0
+}
+
+if [ -z "$(batctl gwl -H 2>/dev/null)" ] ; then
+  if [ -f /tmp/hotfix.gw-seen ] ; then
+    logger -t eulenfunk-rebootifnogw -p 5 "no batman gateway"
+    [ "$(strike /tmp/hotfix.gw-gone)" -ge 4 ] && reboot_if_old "no batman gateway for 4 checks"
+  fi
+else
+  : > /tmp/hotfix.gw-seen
+  unstrike /tmp/hotfix.gw-gone
 fi
-if [ "$returnval" -ne 0 ]; then
+
+prefixes="$(ip -6 -o addr show dev br-client scope global 2>/dev/null \
+  | awk '{ split($4, a, "/"); p = tolower(a[1]); if (p ~ /^f[cd]/) next;
+    split(a[1], g, ":"); x = g[1] ":" g[2] ":" g[3] ":" g[4];
+    if (!seen[x]++) print x }')"
+ok=''
+for pfx in $prefixes ; do
+  if ping6 "${pfx}::ac1" -c 10 -w 15 >/dev/null 2>&1 ; then
+    ok=1
+    break
+  fi
+done
+if [ -z "$ok" ] ; then
   if [ -f /tmp/ip6anycast ] ; then
-    logger -t eulenfunk-rebootifnogw "IPv6 Anycast-IP NOT reachable."
-    if [ -f /tmp/ip6anycastgone.3 ] ; then
-      securereboot
-      exit 0
-    elif [ -f /tmp/ip6anycastgone.2 ] ; then
-      touch /tmp/ip6anycastgone.3
-    elif [ -f /tmp/ip6anycastgone.1 ] ; then
-      touch /tmp/ip6anycastgone.2
-    else
-      touch /tmp/ip6anycastgone.1
-    fi
+    logger -t eulenfunk-rebootifnogw -p 5 "IPv6 Anycast-IP NOT reachable."
+    [ "$(strike /tmp/ip6anycastgone)" -ge 4 ] && reboot_if_old "IPv6 anycast unreachable for 4 checks"
   fi
 else
   touch /tmp/ip6anycast
-  rm -f /tmp/ip6anycastgone.* 2>/dev/null
+  unstrike /tmp/ip6anycastgone
 fi
