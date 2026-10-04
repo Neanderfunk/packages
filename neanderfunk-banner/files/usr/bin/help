@@ -1,0 +1,41 @@
+#!/bin/sh
+# help - Spickzettel fuer die Kommandozeile eines Gluon-Knotens
+cat <<'HILFE'
+Status
+  status / nodestatus   Uebersicht wie beim Login
+  nodeinfo              dazu Nachbarn einzeln, Gateways, VPN-Broker, Adressen,
+                        oeffentliche IPv4 mit rDNS und ASN (Provider)
+  switch0 / ports       Port-Tabelle (auch DSA): Link, Rolle, Mesh, Traffic,
+                        oeffentliche IPv4 mit rDNS und ASN
+  switchstatus [-r]     Ports ausfuehrlich: MAC, MTU, Link-Wechsel, Drops;
+                        -r: rohe swconfig-Ausgabe
+Mesh (batman-adv)
+  gwl                   Gateways, der gewaehlte mit *       (batctl gwl)
+  nb                    direkte Nachbarn je Interface       (batctl n)
+  batctl o              alle Knoten der Domain mit Weg und TQ
+  batctl if             batman-Interfaces
+  gwtr                  batman-Traceroute zum gewaehlten Gateway
+  batctl tl | tg        Clients lokal | im ganzen Mesh
+WLAN
+  wlc                   verbundene WLAN-Clients je Interface
+  iwinfo                Radios und Interfaces, Kanal, Sendeleistung
+Netz
+  myip                  Adressen im Client-Netz, eigene SSH-Verbindung
+  ip a / ip r s t all   alle Adressen / alle Routing-Tabellen
+  brctl show            Bridges
+  ping6 / traceroute6   IPv6 zuerst - IPv4 hat ein Knoten oft nur ueber WAN
+Logs
+  logf                  Syslog laufend                      (logread -f)
+  logerr                letzte Fehler und Warnungen im Syslog
+  vpnlog                letzte Meldungen des VPN (tunneldigger, fastd, wg)
+Firmware
+  autoupdater -n        pruefen und laden, aber NICHT flashen
+  autoupdater -f        Update erzwingen
+  sysupgrade <datei>    Image von Hand flashen (vorher nach /tmp kopieren)
+Eingriffe (schreiben, wirksam nach "reconf")
+  reconf                gluon-reconfigure + Neustart im Hintergrund
+  v4up                  IPv4 per DHCP aus dem Mesh - nur ohne IPv4 am Uplink
+  vpn [on|off]          Mesh-VPN zeigen, dauerhaft an/aus (sofort wirksam)
+  routername [name]     Knotennamen zeigen/setzen (Leerzeichen, Umlaute ok)
+  kontakt [adresse]     Kontaktadresse des Betreibers zeigen/setzen (--delete entfernt)
+HILFE

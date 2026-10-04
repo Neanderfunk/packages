@@ -1,0 +1,261 @@
+neanderfunk-banner
+===================
+
+**Branch v2021.1.x (Sackgasse, OpenWrt 19.07, swconfig):** core of the
+v2025.1.x package (decision adorfer 2026-10-04: nodestatus at login, without
+portrole, channel, offlinescan, scan-guard and flash; replaces
+neanderfunk-gluonbanner-tiny). Adapted in nodestatus: roles from
+`network.mesh_wan`/`mesh_lan` (2021.1 has no `gluon.iface_*`), board.json
+`ifname` (19.07 format), `preserve_channels` from `gluon-core`, band from
+`hwmode`, HT mode from uci (iwinfo 2019 does not report it; tx power stays
+live from iwinfo). The Lua tools live in `luasrc/` so luasrcdiet minifies them.
+Tested on a TL-WR841N v9: login overview in 1.5 s, ports, nodeinfo, vpn.
+
+Replaces the stock OpenWrt `/etc/banner` and `/etc/profile` with Gluon-specific
+versions (as symlinks to `banner.gluon`/`profile.gluon`, so the originals are
+kept as `.openwrt` and restored automatically on removal).
+
+The login banner shows a short ASCII graphic and points to `help`. The
+profile first runs OpenWrt's own profile unchanged (PATH, `ENV=/etc/shinit`,
+failsafe, `/etc/profile.d`, the read-only-overlay hint), then - in interactive
+shells only - `nodestatus`.
+
+`nodestatus` prints an 80-column overview with fixed columns, coloured on a
+terminal (`NO_COLOR` disables, `FORCE_COLOR` forces colour). It shows what is
+actually running, not just what is configured:
+
+- node, image name, domain, firmware, uptime, load, free RAM and flash,
+  the SoC temperature where the hardware has a sensor (`SoC 56.3 C` next to
+  RAM and flash, from `statistics.neanderfunk.temperature.soc` of
+  neanderfunk-respondd - the same value as on the status page; nothing on
+  hardware without one or on firmware without that field), autoupdater,
+  contact and location
+- ports with link and speed from `/sys` (DSA) or `swconfig`, mapped to their
+  Gluon roles via `/etc/board.json`, WAN addresses. Ports split off into
+  further `gluon` interface sections (e.g. `iface_client`) or into own mesh
+  ports in `network` (`proto gluon_wired`, `gluon_preserve 1`, as set up by
+  the workshop guide "LAN-Ports trennen") get rows of their own; a port with a
+  role in more than one section is warned about.
+- VPN connected or not from `batctl if` (independent of the gateway TQ; right
+  after boot it says "baut auf"), gateway with TQ and outgoing interface
+- clients (local, per band, mesh-wide), SSID, and the offline SSID worded
+  like the status page: `online`, `offline` (red) or `aus`, with the
+  counters now/switches since boot/gateway losses since boot
+- a radio table with the live channel, width, HT mode and tx power per radio
+  (from `iwinfo`), AP and mesh state, clients and mesh neighbours with TQ
+- a warning when a radio's channel differs from the firmware (site.conf /
+  domain, as Gluon's `200-wireless` would set it) while neither
+  `preserve_channels` nor `preserve_channels_<band>` keeps that band - the
+  next update would reset it
+- ports outside Gluon's LAN/WAN groups get their own row (label `Port`):
+  ports with their own `gluon.iface_*` section (e.g. `eth2` on x86), ports
+  hung into `br-client` or batman by hand without a Gluon role (role with `*`
+  and a warning: they are gone after the next `gluon-reconfigure`, i.e. the
+  next update), and on x86 or with a link, ports with no role at all (`-`)
+- on devices without wifi (x86, ERX, ...) a port table in its place: per port
+  link, traffic since boot and error counters, per role group mesh state and
+  neighbours; on swconfig switches the real link per switch port.
+  `NODESTATUS_NOWIFI=1` shows this layout on a wifi device for testing
+- warnings, only when they apply: no gateway, VPN down (with the likely
+  reason), mesh interface configured but down, radio disabled, multiple roles
+  on one interface, location set but not shared, load above the core count,
+  flash full or read-only, clock before the firmware build, autoupdater off,
+  no contact or location
+
+Data comes from respondd (`gluon-neighbour-info`, the same data the map gets),
+`uci`, `batctl`, `iwinfo`, `ubus` and `/sys`. It only reads, never writes.
+
+It also installs these commands (all listed by `help`):
+
+- `nodestatus` (alias `status`) - the overview above, on demand.
+  `nodestatus details` adds every mesh neighbour with TQ and signal, all
+  gateways, the VPN brokers with the connected one marked, and the node's
+  addresses; `nodestatus ports [-v]` prints just the port table.
+- `nodeinfo` - `nodestatus details`, including the public IPv4 lines below.
+- `switch0` (alias `ports`) - the port table on any device, swconfig or DSA.
+- **Public IPv4** (in `nodeinfo` and `switch0`, below the uplink; the login
+  overview does not ask): asked in parallel from `ipv4.icanhazip.com`
+  (Cloudflare) and `checkip.amazonaws.com` (AWS) with `wget -4`, so over the
+  WAN and not through the mesh; at most 4 s, marked `direkt`, `hinter NAT`
+  or `hinter CGNAT`; `kein IPv4 am WAN` or `nicht ermittelbar` if there is
+  no answer. Below it the reverse DNS name of that address
+  (`...dip0.t-ipconnect.de` = Telekom) and the ASN with its name
+  (`AS3320 DTAG - Deutsche Telekom AG`), from Team Cymru's DNS service
+  (`<d.c.b.a>.origin.asn.cymru.com`, `AS<n>.asn.cymru.com`, TXT). The ASN
+  names the provider even where the line has its own PTR (business lines).
+  All through the node's own resolver (the mesh DNS, not the WAN router's),
+  rDNS and ASN in parallel, at most 2 s per step, each line left out if
+  there is no answer.
+- `switchstatus` - the port table with MAC, MTU, bridge, link changes since
+  boot and drops per port; `-r` shows the raw swconfig output.
+- `portrole [lan|wan|single|<port>|<section> [roles] [-y]]` - without
+  arguments it lists every role section, own mesh ports and ethernet ports
+  without any section. With an interface it shows or sets its roles, checked
+  like Gluon's Advanced Settings (client only alone, uplink+mesh allowed).
+  Besides Gluon's groups lan/wan/single it takes a port name: Gluon only knows
+  the ports in `board.json` (on x86 `eth0` LAN and `eth1` WAN); any further
+  port such as `eth2` needs its own `gluon.iface_<port>` section, which
+  `portrole eth2 client` creates (`.` becomes `_`) and `portrole eth2 none`
+  removes. Only such a section survives `gluon-reconfigure`; a port hung into
+  `network.client` by hand is gone after the next update. A port inside a
+  group with several ports (DSA `lan3` in `/lan`, or a list like
+  `eth0 eth2`) is split out: `portrole lan3 client` gives the group the list
+  of the remaining ports and `lan3` its own section (asks first, `-y`);
+  `portrole lan3 lan` puts it back, and a group that is complete again gets
+  `/lan` back. `portrole eth2 lan` also adds an extra port to the LAN group.
+  Gluon bridges all mesh ports together, so a separate batman interface per
+  port still needs the workshop guide for splitting LAN ports. Removing the last uplink or a mesh role asks first
+  (`-y` to skip); it refuses (also with `-y`) to give ports a role they
+  already have elsewhere. Replaces `lanrole`/`wanrole`. On Gluon 2025.1
+  `portrole <lan|wan|port|2g|5g> hp [value|none]` shows or sets the per-
+  interface hop penalty (`gluon.iface_<name>.batadv_hop_penalty`,
+  `gluon.band_<band>.batadv_hop_penalty`, #3454); `nodestatus` lists non-zero
+  per-interface values below the gateway line.
+- `reconf` - `gluon-reconfigure` and then reboot, detached in the background
+  (survives the SSH session ending); log in `/tmp/reconf.log`, no reboot if
+  the reconfigure fails.
+- `v4up` - fetches IPv4 via DHCP from the mesh on `br-client`. Refused if the
+  uplink already has IPv4: a second default route would pull the tunnel into
+  the mesh and, without another uplink there, cut the node off.
+- `routername [name ...]` (alias `nodename`) - shows the node name, or sets it like the setup
+  wizard's "node name": Gluon's `pretty_hostname.set()` keeps the name as
+  typed (spaces, umlauts, emoji - that is what the map shows, respondd reports
+  `pretty_hostname` first) and derives the hostname (a-z, 0-9, `-`), the
+  kernel hostname applies at once, then `uci commit system`. Several words
+  need no quotes; `--default` goes back to the firmware's default name;
+  nothing is written if the name is unchanged. Gluon's own `pretty-hostname`
+  does the same without these extras.
+- `kontakt [address ...]` (alias `contact`) - shows the operator's contact
+  address, or sets it like the setup wizard's "contact info"
+  (`gluon-node-info.@owner[0].contact`, then `uci commit gluon-node-info`).
+  Several words need no quotes; `--delete` removes it; nothing is written if
+  it is unchanged. respondd reads it on every request, so the map shows it on
+  its next nodeinfo query. The value is public.
+- `vpn [on|off]` (also `enable`/`disable`) - without an argument shows the
+  mesh VPN state (both switches, daemon running, neighbours over
+  `mesh-vpn`). `on`/`off` sets `gluon.mesh_vpn.enabled` and lets Gluon's
+  `/lib/gluon/mesh-vpn/update-config` derive the daemon's own switch
+  (`tunneldigger.mesh_vpn.enabled`, or fastd's), commits both packages (a
+  manual change that should survive updates) and starts or stops the daemon
+  via its init script, as Gluon's `reload.d` does. With the daemon switch off
+  neither `tunneldigger-watchdog` nor neanderfunk-hotfix restarts it.
+- `channel [2.4-GHz-channel [5-GHz-channel]] [--no-keep] [-f]` - without
+  arguments, per radio: band, live and uci channel, HT mode, whether the
+  channel survives updates, mesh neighbours. With arguments it sets the
+  channels: the first value is always 2.4 GHz, the second 5 GHz, whichever
+  radio has which band (`wireless.<radio>.band`); `auto` for autochannel, `-`
+  leaves a band as it is. `autofix` (also `fixauto`) picks a channel by scan
+  on which the node's own mesh is not heard (fewest other Freifunk next,
+  random if the scan returns nothing); on 5 GHz it takes 36-48 first and DFS
+  (52-144) only as a way out, and says so, because the 5 GHz mesh does not come
+  up on DFS channels (measured on MT7981 and ath10k); `channel autofix` alone does all
+  bands, `channel - autofix` only 5 GHz, `channel autofix -` only 2.4 GHz.
+  `mesh` is the opposite, for a node that is offline or barely reached by
+  mesh: it switches the radio's mesh on if it is off and moves to the channel
+  where the node hears its own mesh (the `mesh_id` of that radio, which may
+  differ per band) the strongest; if it hears none, the channel stays. It
+  needs no `-f` when the new channel's mesh is stronger than the current one.
+  `-n` shows what would happen. A channel the radio cannot use (`iwinfo freqlist`)
+  is refused, 5 GHz in outdoor mode is left to Gluon. The width stays. Unless
+  `--no-keep` is given, each changed band gets
+  `gluon.wireless.preserve_channels_<band>=1`, which
+  neanderfunk-preserve-wifichannel honours in addition to Gluon's global
+  `preserve_channels`; a global switch still set to 1 is carried over into the
+  per-band keys (all bands 1, global 0). If the path to the selected gateway
+  (`batctl gwl`) goes out via a radio's mesh interface, that radio's channel
+  is only changed with `-f`, always, also for `autofix` and `mesh` (the node
+  would probably lose its best path to the gateway). If mesh neighbours hang on a radio's
+  mesh interface, that radio is only changed with `-f` - a channel change
+  cuts those links, possibly the one the SSH session runs over. After its own
+  change it deletes neanderfunk-linkcheck's arming markers for that radio's
+  mesh checks, so the planned loss of mesh neighbours does not end in a
+  reboot 20 minutes later. It writes
+  only its own options to `/etc/config` (a renamed copy, so runtime changes in
+  the uci delta such as the offline SSID stay out of the flash), then
+  restarts only the changed radio with `wifi up <radio>` (`wifi reload` leaves
+  the AP without its hostapd BSS after a channel change). After its scans
+  (`autofix`, `mesh`) it runs `/usr/lib/neanderfunk/scan-guard` on the scanned
+  radios: on mt76/mt7915e under Gluon 2023.2 (MR90X, NWA50AX Pro) a scan left
+  the scanned radio without unicast while batman neighbours stayed listed; the
+  guard pings up to three batman neighbours per radio on its mesh interface
+  (up to 60 s) and otherwise restarts wifi, also with clients connected.
+- `offlinescan` - scans on all radios for neighbouring nodes that fell into
+  the offline SSID, by this node's ssid-changer prefixes (`prefix`,
+  `prefix_owe`). One line per node and channel: name (the SSID suffix: node
+  name, MAC or nothing), band, channel, signal, BSSID, strongest first. Such a
+  node's mesh is on the same channel, so a neighbour can reconnect it via wifi
+  mesh with `channel <channel>`. Afterwards it runs `scan-guard` on the
+  scanned radios, like `channel`.
+- `flash <url|directory-url|file> [sysupgrade options]` - downloads a
+  firmware image to `/tmp` (an `https://` URL is fetched as `http://`, not
+  every node has TLS), shows size, free RAM and sha256, checks it with
+  `sysupgrade -T` and only then runs `sysupgrade`. A URL without a file name
+  (e.g. `.../sysupgrade/`) makes it look for this device's image itself: in
+  the autoupdater manifests there (configured branch first), whose sha256 the
+  download must then match, else in the server's directory listing, by the
+  Gluon image name (`platform_info`). Options after the URL are passed on, in
+  front of the file as sysupgrade expects, e.g. `flash <url> -n` to drop the
+  configuration. With little RAM (MemAvailable below 32 MB before the
+  download, or below 16 MB with the image in `/tmp`) it goes the
+  autoupdater's way: first the services in `/usr/lib/autoupdater/download.d`
+  are stopped (respondd, uhttpd, cron, micrond ...), at the end
+  `upgrade.d` (wifi down, network stopped, bat0 removed) and sysupgrade run
+  detached from the session - "wifi down" cuts an SSH session over wifi or
+  mesh. Log in `/tmp/flash.log` and syslog (`logread -e flash`).
+  sysupgrade is exec'ed, as the autoupdater does: nothing of `flash` runs
+  after it. (Until September 2026 `flash` cleaned up after sysupgrade
+  returned. sysupgrade returns as soon as it has handed over to procd, while
+  stage2 reads the image seconds later, so `flash` deleted the image it had
+  downloaded under stage2's feet and the node came back on the old firmware,
+  on any device.) `--hooks` forces
+  this path, `--no-hooks` disables it (anywhere on the command line, not
+  passed to sysupgrade; also via `FLASH_HOOKS=1`/`0`). `flash -h` explains
+  all of this; in interactive shells `sysupgrade -h` prints OpenWrt's help
+  followed by the same text. In interactive shells plain
+  `sysupgrade <url>` does the same (see below); `flash` is for
+  `ssh node flash <url>`.
+- `help` - cheat sheet.
+
+Read-only aliases in the profile: `gwl`, `nb`, `gwtr` (batman traceroute to
+the selected gateway), `wlc` (wifi clients), `myip`, `logf`, `logerr`,
+`vpnlog`, `ports`.
+
+`uci` guard (interactive shells only): a bare `uci commit`, `uci commit
+wireless` or `uci commit autoupdater` is refused while runtime-only changes
+are pending - the ssid-changer's Offline-SSID (with OWE switched off), with
+ap-timer enabled client APs switched off, and during a nodeplacer firmware
+move the autoupdater branch it overrides. Committed like that they would
+stick. `uci commit <package>` always works; `command uci commit`
+forces it. Scripts are not affected.
+
+`sysupgrade` wrapper (interactive shells only): when the image argument is an
+`http://` or `https://` URL (file or directory) or an existing file, the call
+goes to `flash` (checks, and the autoupdater's service stops when RAM is
+low), with the image first and all options behind it - so options may also
+follow the image, which the real sysupgrade silently ignores. The value of
+`-f`, `-b` and `-r` is not taken for the image. Anything else (`-b`, `-l`,
+`-h`, no argument) runs the original unchanged, and so do scripts and the
+autoupdater (`/sbin/sysupgrade`). `command sysupgrade <image>` bypasses the
+wrapper.
+
+Add the feed to your site's `modules` file (next to `site.conf`):
+
+```
+GLUON_SITE_FEEDS="neanderfunk"
+PACKAGES_NEANDERFUNK_REPO=https://github.com/Neanderfunk/packages.git
+PACKAGES_NEANDERFUNK_BRANCH=v2023.2.x
+PACKAGES_NEANDERFUNK_COMMIT=<commit>
+```
+
+Then add `neanderfunk-banner` to your `site.mk` or `image-customization.lua`. Replace
+`<commit>` with a commit of the `v2023.2.x` branch. If your site already uses
+other feeds, append `neanderfunk` to the existing `GLUON_SITE_FEEDS` instead
+of replacing it. See also [Using this feed](../README.md#using-this-feed).
+
+
+Mutually exclusive packages
+---------------------------
+
+Declares `CONFLICTS:=ffmuc-custom-banner`. That package also owns
+`/etc/banner.gluon` and also replaces the login banner - it templates it from an
+upgrade script rather than symlinking - so the two would clobber each other.

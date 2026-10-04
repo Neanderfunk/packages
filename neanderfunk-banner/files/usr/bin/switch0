@@ -1,0 +1,4 @@
+#!/bin/sh
+# switch0 - Port-Tabelle: Link, Rolle, Mesh, Traffic, Fehler. Auf allen
+# Geraeten, swconfig wie DSA. Ausfuehrlich: switchstatus.
+exec /usr/bin/nodestatus ports "$@"

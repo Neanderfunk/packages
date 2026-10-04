@@ -1,0 +1,83 @@
+# /etc/profile auf Gluon-Knoten mit neanderfunk-banner
+#
+# Zuerst das Profil von OpenWrt, unveraendert: PATH, ENV=/etc/shinit (Aliase
+# wie ll auch in weiteren Shells), Failsafe, /etc/profile.d und der Hinweis
+# bei vollem Overlay. Es zeigt auch /etc/banner an.
+#
+# Dahinter die Statusuebersicht (nodestatus), aber nur in einer interaktiven
+# Shell und nicht im Failsafe: "ssh knoten befehl" und Skripte mit "sh -l"
+# bekommen sie nicht.
+
+if [ -f /etc/profile.openwrt ]; then
+	. /etc/profile.openwrt
+else
+	export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+	export HOME=$(grep -e "^${USER:-root}:" /etc/passwd | cut -d ":" -f 6)
+	export HOME=${HOME:-/root}
+	export PS1='\u@\h:\w\$ '
+	[ -f /etc/banner ] && cat /etc/banner
+fi
+
+# Kurzbefehle, alle nur lesend - siehe "help". Die schreibenden (portrole,
+# reconf, v4up) sind eigene Skripte mit Pruefungen.
+alias cd..='cd ..'
+alias status='nodestatus'
+alias ports='nodestatus ports'
+alias myip='ip -o addr show dev br-client | awk "{print \$4}"; echo "SSH von: ${SSH_CONNECTION%% *}"'
+alias gwl='batctl gwl'
+alias nb='batctl n'
+alias gwtr='batctl tr $(batctl gwl -H | awk "/^\*/{print \$2}")'
+alias wlc='for i in client0 client1 owe0 owe1; do [ -d /sys/class/net/$i ] && { echo "== $i"; iwinfo $i assoclist; }; done'
+alias logf='logread -f'
+alias logerr='logread | grep -iE "err|fail|warn|crit" | tail -n 40'
+alias vpnlog='logread | grep -iE "tunneldigger|fastd|wireguard|wg[0-9]" | tail -n 40'
+
+# uci commit ohne Paketnamen (oder "uci commit wireless"/"autoupdater")
+# schreibt auch Aenderungen ins Flash, die nur zur Laufzeit im uci-Delta
+# stehen sollen: die Offline-SSID des ssid-changers (samt abgeschaltetem OWE),
+# das Abschalten der Client-APs durch ap-timer und die Autoupdater-Branch, die
+# nodeplacer fuer einen Firmware-Umzug ueberschreibt. Die haengen danach fest.
+# In interaktiven Shells verweigert diese Huelle das dann; gezielt
+# committen (uci commit gluon) geht immer, "command uci commit" erzwingt es.
+# Skripte sind nicht betroffen, sie sehen die Funktion nicht.
+nf_uci_guard() {
+	local prefix rt
+	prefix=$(command uci -q get ssid-changer.settings.prefix || echo FF_Offline_)
+	rt=$(command uci -q changes wireless | grep -E "^wireless\.client_radio[0-9]+\.ssid='$prefix")
+	if [ -n "$rt" ]; then
+		rt="$rt
+$(command uci -q changes wireless | grep -E '^wireless\.owe_radio[0-9]+\.disabled=')"
+	fi
+	if case "$(command uci -q get ap-timer.settings.enabled)" in 1|true|yes|on|enabled) true ;; *) false ;; esac; then
+		rt="$rt
+$(command uci -q changes wireless | grep -E '^wireless\.client_radio[0-9]+\.disabled=')"
+	fi
+	# nodeplacer ueberschreibt waehrend eines Firmware-Umzugs eine
+	# Autoupdater-Branch im Delta und nennt sie in dieser Datei (D-041)
+	if [ -f /tmp/nodeplacer.autoupdater-override ]; then
+		rt="$rt
+$(command uci -q changes autoupdater)"
+	fi
+	echo "$rt" | grep -v '^$'
+}
+
+case "$-" in
+	*i*)
+		uci() {
+			if [ "$1" = commit ] && { [ -z "$2" ] || [ "$2" = wireless ] || [ "$2" = autoupdater ]; }; then
+				local rt
+				rt=$(nf_uci_guard | grep "^${2:-.}")
+				if [ -n "$rt" ]; then
+					echo "uci commit${2:+ $2}: nicht ausgefuehrt - offene Laufzeit-Aenderungen" >&2
+					echo "(ssid-changer/ap-timer/nodeplacer), die so ins Flash kaemen und festhingen:" >&2
+					echo "$rt" | sed 's/^/  /' >&2
+					echo "Gezielt committen, z.B.:  uci commit gluon" >&2
+					echo "Trotzdem alles schreiben: command uci commit${2:+ $2}" >&2
+					return 1
+				fi
+			fi
+			command uci "$@"
+		}
+		[ -z "$FAILSAFE" ] && [ -x /usr/bin/nodestatus ] && /usr/bin/nodestatus
+		;;
+esac

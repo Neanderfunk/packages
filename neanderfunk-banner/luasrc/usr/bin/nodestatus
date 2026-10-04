@@ -1,0 +1,1680 @@
+#!/usr/bin/lua
+-- nodestatus - Lageuebersicht eines Gluon-Knotens fuer den SSH-Login.
+--
+-- Zeigt, was tatsaechlich laeuft, nicht nur, was konfiguriert ist: Kanal,
+-- Kanalbreite, HT-Mode und Sendeleistung kommen vom Interface, der VPN-Status
+-- aus "batctl if", die Ports aus /sys bzw. swconfig. Wo Konfiguration und
+-- Wirklichkeit auseinanderlaufen, steht das dabei.
+--
+-- Aufbau: hoechstens 80 Spalten, feste Spalten ueber alle Zeilen (Label, dann
+-- ab Spalte 8, 32 und 56), die Radios als Tabelle. Warnungen am Ende, nur wenn
+-- es etwas zu warnen gibt. Farbe nur auf einem Terminal; NO_COLOR schaltet sie
+-- ab, FORCE_COLOR erzwingt sie.
+--
+-- Aufruf:
+--   nodestatus            Uebersicht (so beim Login)
+--   nodestatus details    dazu Nachbarn einzeln, Gateways, Broker, Adressen
+--                         (das ist "nodeinfo")
+--   nodestatus ports      nur die Port-Tabelle ("switch0")
+--   nodestatus ports -v   Port-Tabelle mit MAC, MTU, Bridge, Link-Wechsel,
+--                         Drops je Port ("switchstatus")
+--
+-- Nur lesend: schreibt nichts, weder uci noch Flash.
+--
+-- Fehlt eine Quelle (uci-Schluessel, Datei, Kommando, Modul), heisst das
+-- "unbekannt" und wird als "?" gezeigt - nie als "nein". Warnungen nur, wenn
+-- der Befund belegt ist: ohne batctl kein "kein Gateway", ohne /sys kein
+-- "DOWN", ohne autoupdater-Config kein "abgeschaltet".
+
+-- Alles in main(): geht trotz aller Vorsicht etwas schief, steht beim Login
+-- eine Zeile statt eines Stacktrace, und was schon ausgegeben ist, bleibt.
+local function main()
+
+-- Selbst die beiden festen Abhaengigkeiten von gluon-core duerfen fehlen: ohne
+-- simple-uci antwortet ein Ersatz auf alles mit "nicht gesetzt", ohne jsonc
+-- gibt es keine respondd- und board.json-Daten. Angezeigt wird, was bleibt.
+local uci
+do
+	local ok, su = pcall(require, 'simple-uci')
+	uci = ok and su.cursor() or nil
+	if not uci then
+		uci = {
+			get = function() return nil end,
+			get_first = function() return nil end,
+			get_bool = function() return false end,
+			get_all = function() return nil end,
+			foreach = function() end,
+		}
+	end
+end
+
+-- Sackgasse 2021.1 (Gluon 2021.1/OpenWrt 19.07): preserve_channels steht in
+-- gluon-core.@wireless[0] (jeder gesetzte Wert gilt als an), Radios haben
+-- hwmode statt band.
+local function preserve_global()
+	return uci:get_bool('gluon', 'wireless', 'preserve_channels')
+		or uci:get_first('gluon-core', 'wireless', 'preserve_channels') ~= nil
+end
+local function radio_band(radio)
+	local b = uci:get('wireless', radio, 'band')
+	if b then return b end
+	local h = uci:get('wireless', radio, 'hwmode')
+	if h == '11a' or h == '11na' then return '5g' end
+	if h == '11g' or h == '11ng' or h == '11b' then return '2g' end
+	return nil
+end
+
+-- uci booleans. Gluon's own keys (gluon.wireless.preserve_channels, outdoor,
+-- mesh_vpn.*) and autoupdater.enabled are read by Gluon and the autoupdater
+-- as exactly "1" (simple-uci get_bool, strcmp) - those stay get_bool / == '1',
+-- or we would show a state the node does not have. Our own keys and
+-- wireless.*.disabled (netifd) accept every OpenWrt spelling.
+local function is_true(v)
+	return v == '1' or v == 'true' or v == 'yes' or v == 'on' or v == 'enabled'
+end
+local function is_false(v)
+	return v == '0' or v == 'false' or v == 'no' or v == 'off' or v == 'disabled'
+end
+local json
+do
+	local ok, j = pcall(require, 'jsonc')
+	json = ok and j or { parse = function() error('jsonc fehlt') end }
+end
+
+
+-- --- Helfer -----------------------------------------------------------------
+
+local function trim(s)
+	if not s then return nil end
+	return (s:gsub('^%s+', ''):gsub('%s+$', ''))
+end
+
+local function readfile(path)
+	local f = io.open(path)
+	if not f then return nil end
+	local s = f:read('*a')
+	f:close()
+	return s
+end
+
+local function readline(path)
+	local s = readfile(path)
+	return s and trim(s:match('[^\n]*'))
+end
+
+local function sh(cmd)
+	local p = io.popen(cmd .. ' 2>/dev/null')
+	if not p then return '' end
+	local s = p:read('*a') or ''
+	p:close()
+	return s
+end
+
+local function exists(path)
+	local f = io.open(path)
+	if f then f:close() return true end
+	return false
+end
+
+-- uci-Optionen koennen Listen sein (role = 'uplink' 'mesh').
+local function aslist(v)
+	if v == nil then return {} end
+	if type(v) == 'table' then return v end
+	return { v }
+end
+
+local function join(t, sep)
+	return table.concat(t, sep or ' ')
+end
+
+local function respondd(what)
+	local out = sh('gluon-neighbour-info -d ::1 -p 1001 -t 2 -c 1 -r ' .. what)
+	local ok, data = pcall(json.parse, out)
+	if ok and type(data) == 'table' then return data end
+	return {}
+end
+
+
+-- --- Farbe und Spalten -----------------------------------------------------
+
+local color = os.getenv('FORCE_COLOR') ~= nil or
+	(os.getenv('NO_COLOR') == nil and os.getenv('TERM') ~= 'dumb' and os.execute('[ -t 1 ]') == 0)
+
+local CODES = { red = '1;31', green = '32', yellow = '1;33', cyan = '36', bold = '1', dim = '2' }
+
+local function c(col, s)
+	s = tostring(s)
+	if not color or s == '' then return s end
+	return '\27[' .. CODES[col] .. 'm' .. s .. '\27[0m'
+end
+
+-- Sichtbare Breite: ohne Farbcodes, UTF-8-Folgebytes nicht mitgezaehlt.
+local function vlen(s)
+	s = tostring(s or ''):gsub('\27%[[%d;]*m', '')
+	return #(s:gsub('[\128-\191]', ''))
+end
+
+-- Kuerzt auf n sichtbare Zeichen, ohne ein UTF-8-Zeichen zu zerschneiden.
+local function cut(s, n)
+	s = tostring(s or '')
+	if vlen(s) <= n then return s end
+	local out, k = '', 0
+	for ch in s:gmatch('[%z\1-\127\194-\244][\128-\191]*') do
+		if k >= n - 1 then break end
+		out = out .. ch
+		k = k + 1
+	end
+	return out .. '~'
+end
+
+-- Kuerzt von links: das Ende bleibt stehen. Fuer Hostnamen und Image-Namen,
+-- bei denen gerade der Schluss zaehlt ("-EG", "-OG", "-v2").
+local function cut_left(s, n)
+	s = tostring(s or '')
+	if vlen(s) <= n then return s end
+	local chars = {}
+	for ch in s:gmatch('[%z\1-\127\194-\244][\128-\191]*') do table.insert(chars, ch) end
+	return '~' .. table.concat(chars, '', #chars - (n - 2))
+end
+
+local MODE = (arg and arg[1]) or ''
+local VERBOSE = arg and arg[2] == '-v'
+-- Im Port-Modus wird alles gesammelt, aber nur die Port-Tabelle ausgegeben.
+local out_on = MODE ~= 'ports'
+
+-- Setzt Zellen an feste Startspalten. Laeuft eine Zelle ueber, bekommt die
+-- naechste nur ein Leerzeichen Abstand - die Zeile verrutscht, der Rest nicht.
+local function place(cols, cells)
+	local out, pos = '', 0
+	for i, cell in ipairs(cells) do
+		if cell and cell ~= '' then
+			local start = cols[i]
+			if pos > 0 and pos >= start then
+				out = out .. ' '
+				pos = pos + 1
+			elseif pos < start then
+				out = out .. string.rep(' ', start - pos)
+				pos = start
+			end
+			out = out .. cell
+			pos = pos + vlen(cell)
+		end
+	end
+	if out_on then print(out) end
+end
+
+local COLS = { 0, 8, 32, 56 }
+
+local function row(label, a, b, cc)
+	place(COLS, { c('bold', label), a, b, cc })
+end
+
+local warnings = {}
+local function warn(level, text)
+	table.insert(warnings, { level, text })
+end
+
+
+-- --- Daten -------------------------------------------------------------------
+
+local nodeinfo = respondd('nodeinfo')
+local stats = respondd('statistics')
+local neigh = respondd('neighbours')
+
+local uptime = tonumber((readline('/proc/uptime') or ''):match('^[%d.]+'))
+
+local function duration(sec)
+	sec = math.floor(sec)
+	local d, h, m = math.floor(sec / 86400), math.floor(sec % 86400 / 3600), math.floor(sec % 3600 / 60)
+	if d > 0 then return string.format('%dd %d:%02d', d, h, m) end
+	return string.format('%d:%02d', h, m)
+end
+
+-- batctl if: Name -> Zustand
+local batif = {}
+for name, state in sh('batctl if'):gmatch('([%w%.%-_]+): (%w+)') do
+	batif[name] = state
+end
+
+-- Auf einem Gluon-Knoten gibt es immer mindestens primary0. Liefert batctl
+-- nichts, fehlt batctl - dann ist alles aus batctl unbekannt, nicht "keins".
+local batctl_ok = next(batif) ~= nil
+
+-- MAC eines Interfaces -> Name, fuer die Nachbarschaftsdaten aus respondd
+local function ifaddr(name)
+	return readline('/sys/class/net/' .. name .. '/address')
+end
+
+-- true: oben, false: da, aber nicht oben, nil: unbekannt (kein Name, kein /sys)
+local function operup(name)
+	if not name then return nil end
+	local st = readline('/sys/class/net/' .. name .. '/operstate')
+	if st == nil then return nil end
+	return st == 'up'
+end
+
+-- Nachbarn eines Mesh-Interfaces: Anzahl und TQ-Spanne
+-- nil: unbekannt (keine MAC lesbar oder keine respondd-Daten), sonst Anzahl
+local function neighbours_of(ifname)
+	local mac = ifaddr(ifname)
+	if not mac or not neigh.batadv then return nil end
+	local bat = neigh.batadv[mac]
+	if not bat or not bat.neighbours then return 0, nil, nil end
+	local n, lo, hi = 0, nil, nil
+	for _, v in pairs(bat.neighbours) do
+		local tq = tonumber(v.tq)
+		-- TQ 0: keine beidseitige Verbindung mehr, nur noch nicht ausgelaufen
+		if tq and tq > 0 then
+			n = n + 1
+			lo = (lo and math.min(lo, tq)) or tq
+			hi = (hi and math.max(hi, tq)) or tq
+		end
+	end
+	return n, lo, hi
+end
+
+local function neighbour_cell(ifname)
+	local n, lo, hi = neighbours_of(ifname)
+	if n == nil then return c('dim', '?') end
+	if n == 0 then return c('dim', '0') end
+	if lo == hi then return string.format('%d TQ%d', n, lo) end
+	return string.format('%d TQ%d-%d', n, lo, hi)
+end
+
+
+-- --- Knoten, Firmware, System -----------------------------------------------
+
+local hostname = uci:get_first('system', 'system', 'hostname') or readline('/proc/sys/kernel/hostname') or '?'
+local model = readline('/tmp/sysinfo/model') or '?'
+
+local owrt = {}
+for k, v in (readfile('/etc/openwrt_release') or ''):gmatch("(DISTRIB_[%u_]+)='([^']*)'") do
+	owrt[k] = v
+end
+
+local site_code, site_name = '?', ''
+pcall(function()
+	local site = require('gluon.site')
+	site_code = site.site_code()
+	site_name = site.site_name() or ''
+end)
+local domain = uci:get('gluon', 'core', 'domain')
+
+local node_id = nodeinfo.node_id or ''
+
+-- Radios gleich hier: ohne WLAN (x86, reine LAN-Geraete) fallen alle
+-- WLAN-Teile weg - SSID-Zeile, WLAN-Clients, wifi-fallback, Radio-Tabelle.
+local radios = {}
+uci:foreach('wireless', 'wifi-device', function(s)
+	table.insert(radios, s['.name'])
+end)
+table.sort(radios)
+-- NODESTATUS_NOWIFI=1 zeigt das Layout ohne WLAN auch auf einem WLAN-Geraet,
+-- zum Ausprobieren.
+local has_wifi = #radios > 0 and os.getenv('NODESTATUS_NOWIFI') ~= '1'
+
+-- Kerne: fuer die Einordnung der Load
+local nproc = nodeinfo.hardware and tonumber(nodeinfo.hardware.nproc)
+if not nproc then
+	nproc = 0
+	for _ in (readfile('/proc/cpuinfo') or ''):gmatch('\nprocessor') do nproc = nproc + 1 end
+	if (readfile('/proc/cpuinfo') or ''):match('^processor') then nproc = nproc + 1 end
+	if nproc == 0 then nproc = 1 end
+end
+
+local image_name = nodeinfo.software and nodeinfo.software.firmware and nodeinfo.software.firmware.image_name
+if not image_name then
+	pcall(function() image_name = require('platform_info').get_image_name() end)
+end
+
+-- Breiten gemessen an den 1205 Knoten von map.eulenfunk.de (10.09.2026):
+-- Hostname ueber 23 Zeichen bei 33 %, bis 57 -> eigene Zeile. Modell ueber 23
+-- bei 22 %, Image bei 11 %, Kontakt bei 27 % -> Spalte A und B (47 Zeichen),
+-- das passt bis auf 0,2 % der Kontakte.
+local AB = COLS[4] - COLS[2] - 1
+
+model = model:gsub('%s+', ' ')
+row('Knoten', c('cyan', cut_left(hostname, 80 - COLS[2])), '', '')
+row('Modell', cut(model, AB), '', node_id)
+row('Image', cut_left(image_name or '?', AB), '', owrt.DISTRIB_TARGET or '')
+
+-- Domainname in Spalte B und C. Zu lang ist er bei 44 % unserer Domains,
+-- immer wegen eines Zusatzes wie "(Neanderfunk)" am Ende oder "Freifunk "
+-- am Anfang - der faellt zuerst weg, gekuerzt wird erst danach.
+local sname = site_name
+local room = 80 - COLS[3]
+if vlen(sname) > room then sname = sname:gsub('%s*%b()$', '') end
+if vlen(sname) > room then sname = sname:gsub('^Freifunk ', '') end
+-- Nodeplacer (serverseitiger Domainwechsel): NP:1 an, NP:0 aus, nichts wenn
+-- das Paket fehlt. Wie auf der Karte aus respondd, sonst aus uci.
+local np
+if nodeinfo.software and nodeinfo.software.nodeplacer then
+	np = nodeinfo.software.nodeplacer.enabled and 1 or 0
+elseif uci:get('nodeplacer', 'settings') then
+	np = is_true(uci:get('nodeplacer', 'settings', 'disable')) and 0 or 1
+end
+row('Domain', site_code .. (domain and (' / ' .. domain) or '') .. (np and ('  NP:' .. np) or ''), cut(sname, room), '')
+
+row('Firmw.', readline('/lib/gluon/release') or '?',
+	-- ohne "Gluon "-Praefix: die meisten Knoten auf der Karte laufen mit einem
+	-- Git-Stand wie v2021.1.2-21-gb015481d+ (23 Zeichen), mit Praefix passte
+	-- das nur bei 8 % in die Spalte
+	readline('/lib/gluon/gluon-version') or '?',
+	'OpenWrt ' .. (owrt.DISTRIB_RELEASE or '?'))
+
+-- RAM, Flash
+local mem = {}
+for k, v in (readfile('/proc/meminfo') or ''):gmatch('(%w+):%s+(%d+) kB') do mem[k] = tonumber(v) end
+local memtxt, memwarn = '', false
+if mem.MemTotal and mem.MemAvailable then
+	memtxt = string.format('RAM %d von %d MB', math.floor(mem.MemAvailable / 1024), math.floor(mem.MemTotal / 1024))
+	memwarn = mem.MemAvailable < mem.MemTotal * 0.1
+end
+
+local flashtxt, flashwarn = '', false
+local size, avail = sh('df -k /overlay'):match('\n%S+%s+(%d+)%s+%d+%s+(%d+)')
+if size then
+	size, avail = tonumber(size), tonumber(avail)
+	flashtxt = size >= 1024
+		and string.format('Flash %.1f von %.1f MB', avail / 1024, size / 1024)
+		or string.format('Flash %d von %d kB', avail, size)
+	flashwarn = avail < size * 0.1
+end
+local overlay_ro = (readfile('/proc/mounts') or ''):find('/ overlay ro,', 1, true) ~= nil
+
+-- SoC-Temperatur aus neanderfunk-respondd (statistics.neanderfunk.temperature,
+-- dort gefiltert und 10 s gecacht) - dieselbe Zahl wie auf der Statusseite.
+-- Ohne Sensor oder mit aelterer Firmware steht nichts da. ASCII "C" statt
+-- Gradzeichen: auch die serielle Konsole soll es lesen koennen.
+local soc = stats.neanderfunk and stats.neanderfunk.temperature
+	and tonumber(stats.neanderfunk.temperature.soc)
+local soctxt = soc and string.format('SoC %.1f C', soc) or ''
+
+local l1, l5, l15 = (readline('/proc/loadavg') or ''):match('^(%S+) (%S+) (%S+)')
+local loadwarn = tonumber(l5) and tonumber(l5) > nproc
+local loadtxt = 'load ' .. (l1 or '?') .. ' ' .. (l5 or '?') .. ' ' .. (l15 or '?')
+row('System', 'up ' .. (uptime and duration(uptime) or '?') .. '  ' .. nproc .. (nproc == 1 and ' Kern' or ' Kerne'),
+	loadwarn and c('yellow', loadtxt) or loadtxt, 'Kernel ' .. (readline('/proc/sys/kernel/osrelease') or '?'))
+if memtxt ~= '' or flashtxt ~= '' or soctxt ~= '' then
+	row('Frei', memwarn and c('yellow', memtxt) or memtxt,
+		(flashwarn or overlay_ro) and c('red', flashtxt) or flashtxt, soctxt)
+end
+
+if overlay_ro then warn('red', 'Overlay ist read-only - Flash voll? Dateien unter /overlay/upper pruefen, dann reboot') end
+if flashwarn then warn('yellow', 'Flash fast voll') end
+if memwarn then warn('yellow', 'RAM knapp') end
+if loadwarn then warn('yellow', 'Load im 5-min-Mittel (' .. l5 .. ') ueber der Zahl der Kerne (' .. nproc .. ')') end
+
+-- Uhrzeit: vor dem Bau der Firmware kann sie nicht stimmen.
+local built = tonumber(trim(sh('date -r /lib/gluon/release +%s')))
+if built and os.time() < built then
+	warn('yellow', 'Uhrzeit liegt vor dem Firmware-Bau - NTP noch nicht synchron?')
+end
+
+-- Autoupdater
+local au_known = uci:get('autoupdater', 'settings', 'enabled') ~= nil
+local au_enabled = uci:get('autoupdater', 'settings', 'enabled') == '1'
+local au_branch = uci:get('autoupdater', 'settings', 'branch') or '?'
+local au_sigs = uci:get('autoupdater', au_branch, 'good_signatures') or '?'
+local au_fallback = uci:get('autoupdater-wifi-fallback', 'settings', 'enabled')
+row('Update', (not au_known and c('yellow', '?')) or (au_enabled and (c('green', 'an') .. '  ' .. au_branch .. '  min ' .. au_sigs .. ' Sig')) or c('yellow', 'AUS'),
+	(has_wifi and au_fallback) and ('wifi-fallback ' .. (au_fallback == '1' and 'an' or 'aus')) or '',
+	'')
+if not au_known then
+	warn('yellow', 'Autoupdater-Konfiguration fehlt (autoupdater.settings)')
+elseif not au_enabled then
+	warn('yellow', 'Autoupdater ist abgeschaltet')
+end
+
+-- Kontakt, Standort
+local contact = uci:get_first('gluon-node-info', 'owner', 'contact')
+local share = uci:get_first('gluon-node-info', 'location', 'share_location') == '1'
+local lat = uci:get_first('gluon-node-info', 'location', 'latitude')
+local lon = uci:get_first('gluon-node-info', 'location', 'longitude')
+local loctxt
+if lat and lon then
+	loctxt = string.format('%.5f,%.5f', tonumber(lat) or 0, tonumber(lon) or 0)
+	-- nicht uebermittelt: gelb, die Warnung unten sagt warum
+	if not share then loctxt = c('yellow', loctxt) end
+else
+	loctxt = c('yellow', 'kein Standort')
+end
+row('Kontakt', (contact and contact ~= '') and cut(contact, AB) or c('yellow', 'kein Kontakt'), '', loctxt)
+if not contact or contact == '' then warn('yellow', 'kein Kontakt eingetragen') end
+if not (lat and lon) then
+	warn('yellow', 'kein Standort eingetragen')
+elseif not share then
+	warn('yellow', 'Koordinaten gesetzt, aber "Koordinaten uebermitteln" ist aus - der Knoten fehlt auf der Karte')
+end
+
+
+-- --- Ports -------------------------------------------------------------------
+
+local board = {}
+do
+	local ok, data = pcall(json.parse, readfile('/etc/board.json') or '')
+	if ok and type(data) == 'table' then board = data end
+end
+
+-- Ports einer board.json-Netzgruppe. Sackgasse 2021.1: OpenWrt 19.07 schreibt
+-- dort noch "ifname" (Leerzeichen-Liste) statt "ports"/"device".
+local function board_net_devs(net)
+	if type(net) ~= 'table' then return {} end
+	if net.ports then return net.ports end
+	if net.device then return { net.device } end
+	local t = {}
+	for d in (type(net.ifname) == 'string' and net.ifname or ''):gmatch('%S+') do table.insert(t, d) end
+	return t
+end
+
+-- Rollen jenseits der drei Gluon-Gruppen: weitere interface-Sektionen in
+-- gluon (etwa iface_client) und eigene Mesh-Ports in network (proto
+-- gluon_wired mit gluon_preserve=1) - so richtet die Werkstatt-Anleitung
+-- "LAN-Ports trennen" einzelne Ports ein. Sie stehen als eigene Zeilen da,
+-- ihre Ports fallen aus der LAN-/WAN-Gruppe heraus.
+local function resolve_ports(name)
+	local t = {}
+	if type(name) == 'table' then name = join(name) end
+	if type(name) ~= 'string' then return t end
+	if name:sub(1, 1) == '/' then
+		name = readline('/lib/gluon/core/sysconfig/' .. name:sub(2) .. '_ifname') or ''
+	end
+	for p in name:gmatch('%S+') do table.insert(t, p) end
+	return t
+end
+
+-- CPU-Ports der swconfig-Switches (board.json), hier schon gebraucht; die
+-- Pruefung weiter unten nutzt dieselbe Liste
+local cpu_ports_early = {}
+for _, sw in pairs(type(board.switch) == 'table' and board.switch or {}) do
+	for _, p in ipairs(type(sw) == 'table' and type(sw.ports) == 'table' and sw.ports or {}) do
+		if type(p) == 'table' and p.device then cpu_ports_early[p.device] = true end
+	end
+end
+
+local extra_groups, used_by, taken, port_roles = {}, {}, {}, {}
+local function use(ports, sec, roles)
+	for _, p in ipairs(ports) do
+		used_by[p] = used_by[p] or {}
+		table.insert(used_by[p], sec)
+		port_roles[p] = port_roles[p] or {}
+		for _, r in ipairs(roles or {}) do port_roles[p][r] = true end
+	end
+end
+uci:foreach('gluon', 'interface', function(s)
+	local sec = s['.name']
+	local ports = resolve_ports(s.name)
+	local r = aslist(s.role)
+	if #r > 0 then use(ports, sec, r) end
+	if sec ~= 'iface_wan' and sec ~= 'iface_lan' and sec ~= 'iface_single' and #ports > 0 then
+		table.insert(extra_groups, { role = #r > 0 and join(r, '+') or nil, devs = ports })
+		for _, p in ipairs(ports) do taken[p] = true end
+	end
+end)
+uci:foreach('network', 'interface', function(s)
+	if s.gluon_preserve == '1' and s.proto == 'gluon_wired' then
+		local ports = resolve_ports(s.ifname or s.device)
+		if #ports > 0 then
+			table.insert(extra_groups, { role = 'mesh', devs = ports })
+			use(ports, s['.name'], { 'mesh' })
+			for _, p in ipairs(ports) do taken[p] = true end
+		end
+	end
+end)
+
+-- Ports mit Wirkung, aber ohne Gluon-Rolle: von Hand in br-client gehaengt
+-- (network.client.ifname) oder direkt in batman. Das laeuft, bis zum
+-- naechsten gluon-reconfigure - also bis zum naechsten Update: 020-interfaces
+-- loescht alle network-Interfaces, 110-network baut sie nur aus den Rollen
+-- neu (am Kollektor-Gluon 839d am 27.09.2026 so passiert). Sie bekommen eine
+-- eigene Zeile mit "*" an der Rolle und eine Warnung.
+local function physical(dev)
+	local base = '/sys/class/net/' .. dev .. '/'
+	return exists(base .. 'device')
+		and not (readfile(base .. 'uevent') or ''):find('DEVTYPE=wlan')
+		and not exists(base .. 'dsa') and not cpu_ports_early[dev]
+end
+do
+	local manual = {}
+	for m in sh('ls /sys/class/net/br-client/brif'):gmatch('%S+') do
+		if not used_by[m] and not taken[m] and physical(m) then
+			table.insert(manual, { dev = m, role = 'client' })
+		end
+	end
+	for name in pairs(batif) do
+		if not used_by[name] and not taken[name] and physical(name) then
+			table.insert(manual, { dev = name, role = 'mesh' })
+		end
+	end
+	table.sort(manual, function(x, y) return x.dev < y.dev end)
+	for _, m in ipairs(manual) do
+		table.insert(extra_groups, { role = m.role .. '*', devs = { m.dev }, manual = true })
+		taken[m.dev] = true
+		warn('yellow', m.dev .. ' haengt von Hand als ' .. m.role .. ' drin (keine Gluon-Rolle, * in der Tabelle)'
+			.. ' und fehlt nach dem naechsten Update.')
+	end
+end
+
+-- Ports mit Gluon-Rolle, die tatsaechlich woanders haengen: etwa lan4 aus
+-- der Mesh-Gruppe von Hand in br-client verschoben (oder umgekehrt). Auch das
+-- ueberlebt kein gluon-reconfigure; die Rolle gewinnt beim naechsten Update.
+do
+	local in_client, in_mesh = {}, {}
+	for m in sh('ls /sys/class/net/br-client/brif'):gmatch('%S+') do in_client[m] = true end
+	for name in pairs(batif) do
+		in_mesh[name] = true
+		for m in sh('ls /sys/class/net/' .. name .. '/brif'):gmatch('%S+') do in_mesh[m] = true end
+	end
+	local odd = {}
+	for p, roles in pairs(port_roles) do
+		local secs = join(used_by[p] or {}, ', ')
+		if in_client[p] and not roles.client then
+			table.insert(odd, p .. ' haengt in br-client, laut Gluon-Rolle (' .. secs .. ') aber nicht client')
+		elseif in_mesh[p] and not roles.mesh and not in_client[p] then
+			table.insert(odd, p .. ' haengt im Mesh, laut Gluon-Rolle (' .. secs .. ') aber nicht mesh')
+		elseif roles.client and not in_client[p] and exists('/sys/class/net/' .. p) then
+			table.insert(odd, p .. ' hat die Rolle client (' .. secs .. '), haengt aber nicht in br-client')
+		end
+	end
+	table.sort(odd)
+	for _, o in ipairs(odd) do
+		warn('yellow', o .. ' - vermutlich von Hand, nicht update-fest (nach dem naechsten Update gilt die Rolle)')
+	end
+end
+
+-- Ethernet-Ports ganz ohne Rolle, etwa eth2 an x86: Gluons board.json kennt
+-- dort nur eth0 (LAN) und eth1 (WAN), jeder weitere Port gehoert zu keiner
+-- Gruppe und tut nichts, bis er eine eigene Sektion bekommt.
+do
+	local board_devs = {}
+	for _, key in ipairs({ 'lan', 'wan' }) do
+		local net = board.network and board.network[key]
+		for _, d in ipairs(board_net_devs(net)) do board_devs[d] = true end
+	end
+	-- Nur mit Link oder auf x86: manche Router haben eine zweite, intern
+	-- verdrahtete Netzwerkschnittstelle ohne Buchse, die hier nichts zu suchen hat.
+	local x86 = (readfile('/etc/openwrt_release') or ''):find("DISTRIB_TARGET='x86/") ~= nil
+	local idle = {}
+	for dev in sh('ls /sys/class/net'):gmatch('%S+') do
+		if not board_devs[dev] and not used_by[dev] and not taken[dev] and physical(dev)
+				and (x86 or readline('/sys/class/net/' .. dev .. '/carrier') == '1') then
+			table.insert(idle, dev)
+		end
+	end
+	table.sort(idle)
+	for _, dev in ipairs(idle) do
+		table.insert(extra_groups, { role = '-', devs = { dev }, idle = true })
+		taken[dev] = true
+	end
+end
+
+-- Ein Port in mehreren Sektionen mit Rolle: Gluon und netifd nehmen dann
+-- eine davon, welche, ist nicht festgelegt.
+do
+	local dup = {}
+	for p, secs in pairs(used_by) do
+		if #secs > 1 then table.insert(dup, p .. ' (' .. join(secs, ', ') .. ')') end
+	end
+	table.sort(dup)
+	for _, d in ipairs(dup) do warn('red', 'Port in mehreren Rollen: ' .. d) end
+end
+
+-- Interne Links zwischen SoC und Switch sind keine Buchsen: der DSA-Conduit
+-- (nur er hat /sys/class/net/<if>/dsa) und bei swconfig der CPU-Port, den
+-- board.json unter switch.<name>.ports[].device fuehrt. Die Board-Rollen
+-- nennen sie nie; steht einer in einer Rollen-Sektion, ist das eine
+-- Fehlkonfiguration - die Rolle trifft dann den Link zu allen Ports.
+-- Regeln aus der Statusseite (patches/statuspage-ethlinks.patch, 4355a30).
+local cpu_ports = {}
+for _, sw in pairs(type(board.switch) == 'table' and board.switch or {}) do
+	for _, p in ipairs(type(sw) == 'table' and type(sw.ports) == 'table' and sw.ports or {}) do
+		if type(p) == 'table' and p.device then cpu_ports[p.device] = true end
+	end
+end
+do
+	local bad = {}
+	for p, secs in pairs(used_by) do
+		if exists('/sys/class/net/' .. p .. '/dsa/tagging') or cpu_ports[p] then
+			table.insert(bad, p .. ' (' .. join(secs, ', ') .. ')')
+		end
+	end
+	table.sort(bad)
+	for _, b in ipairs(bad) do warn('red', 'interner CPU-Port mit Rolle, keine Buchse: ' .. b) end
+end
+
+-- Board-Ports einer Gruppe ohne die, die eine eigene Zeile haben
+local function group_devs(net)
+	local devs = {}
+	for _, d in ipairs(board_net_devs(net)) do
+		if not taken[d] then table.insert(devs, d) end
+	end
+	return devs
+end
+
+-- Zeilen-Label einer Zusatzgruppe: WAN, wenn alle Ports WAN-Ports sind
+local function extra_label(g)
+	local wan, lan = {}, {}
+	for key, set in pairs({ wan = wan, lan = lan }) do
+		local net = board.network and board.network[key]
+		for _, d in ipairs(board_net_devs(net)) do set[d] = true end
+	end
+	local all_wan, any_board = true, false
+	for _, d in ipairs(g.devs) do
+		local base = d:gsub('%..*$', '')
+		if wan[d] or lan[d] or wan[base] or lan[base] then any_board = true end
+		if not wan[d] then all_wan = false end
+	end
+	if all_wan then return 'WAN' end
+	-- Ports ausserhalb der Board-Gruppen (x86 eth2 ...) sind weder LAN noch WAN
+	return any_board and 'LAN' or 'Port'
+end
+
+local function speedtxt(speed, duplex)
+	speed = tonumber(speed)
+	if not speed or speed <= 0 then return 'up' end
+	local s = speed >= 1000 and (string.format('%g', speed / 1000) .. 'G') or tostring(speed)
+	if duplex == 'half' then s = s .. 'H' end
+	return s
+end
+
+-- Zustand eines Netzwerk-Devices (DSA-Port, eth, ...)
+local function devstate(dev)
+	local base = '/sys/class/net/' .. dev .. '/'
+	if not exists(base .. 'operstate') then return nil end
+	if readline(base .. 'carrier') ~= '1' then return false end
+	return speedtxt(readline(base .. 'speed'), readline(base .. 'duplex'))
+end
+
+-- swconfig: Port-Nummern je Rolle aus board.json
+local function switch_ports(role)
+	local sw = board.switch and board.switch.switch0
+	if not sw or not sw.ports then return nil end
+	local ports = {}
+	for _, p in ipairs(sw.ports) do
+		if p.role == role then table.insert(ports, p) end
+	end
+	table.sort(ports, function(a, b) return (a.index or 0) < (b.index or 0) end)
+	return ports
+end
+
+local function swport_state(num)
+	local out = sh('swconfig dev switch0 port ' .. num .. ' get link')
+	if not out:find('link:') then return '?' end
+	if not out:find('link:up') then return false end
+	local sp = out:match('speed:(%d+)')
+	return speedtxt(sp, out:find('half%-duplex') and 'half' or 'full')
+end
+
+-- Liste "name:zustand" fuer eine board.json-Rolle (lan/wan)
+local function port_cells(role)
+	local net = board.network and board.network[role]
+	if not net then return nil end
+	local cells = {}
+	local function add(name, st)
+		if st == nil then return end
+		table.insert(cells, name .. ':' .. ((st == '?' and c('dim', '?')) or (st and c('green', st)) or c('dim', '-')))
+	end
+	local devs = group_devs(net)
+	-- swconfig: das Device ist ein VLAN auf dem Switch (eth0.1), die Ports
+	-- selbst sieht man nur ueber swconfig.
+	local swp = (#devs == 1 and devs[1]:find('%.') and exists('/sbin/swconfig')) and switch_ports(role)
+	if swp and #swp > 0 then
+		for _, p in ipairs(swp) do
+			add(#swp > 1 and tostring(p.index or p.num) or role, swport_state(p.num))
+		end
+	else
+		for _, d in ipairs(devs) do add(d, devstate(d)) end
+	end
+	return cells
+end
+
+local function dev_cells(devs)
+	local cells = {}
+	for _, d in ipairs(devs) do
+		local st = devstate(d)
+		if st ~= nil then
+			table.insert(cells, d .. ':' .. ((st == '?' and c('dim', '?')) or (st and c('green', st)) or c('dim', '-')))
+		end
+	end
+	return cells
+end
+
+local function roles_of(ifsection)
+	local r = aslist(uci:get('gluon', ifsection, 'role'))
+	if #r == 0 and not uci:get('gluon', 'iface_wan') and not uci:get('gluon', 'iface_lan') then
+		-- Sackgasse 2021.1: noch keine gluon.iface_*-Rollen. Gluon 2021.1 kennt
+		-- WAN als Uplink, Mesh darauf per network.mesh_wan, und LAN als Mesh
+		-- (network.mesh_lan an) oder Client-Port (mesh_lan aus).
+		if ifsection == 'iface_wan' and uci:get('network', 'wan') then
+			r = { 'uplink' }
+			if uci:get('network', 'mesh_wan') and uci:get('network', 'mesh_wan', 'disabled') ~= '1' then
+				table.insert(r, 'mesh')
+			end
+		elseif ifsection == 'iface_lan' and uci:get('network', 'mesh_lan') then
+			r = { uci:get('network', 'mesh_lan', 'disabled') ~= '1' and 'mesh' or 'client' }
+		end
+	end
+	return #r > 0 and join(r, '+') or nil
+end
+
+local wan_link, wan_link_known = false, false
+local wan_role = roles_of('iface_wan')
+local lan_role = roles_of('iface_lan')
+local single_role = roles_of('iface_single')
+
+-- WAN-Adressen, nur wenn das Interface oben ist.
+--
+-- ubus.connect() ohne zweites Argument wartet in der Lua-Anbindung 30 s auf
+-- jede Antwort. Kurz nach dem Boot ist netifd noch mit den Interfaces
+-- beschaeftigt, der Login stand dann bis zu einer halben Minute hinter
+-- "Kontakt" (FUTRO, 13.09.2026). UBUS_TIMEOUT begrenzt jeden Aufruf; kommt
+-- nichts, bleiben die Angaben eben leer.
+local UBUS_TIMEOUT = 3
+local wan_v4, wan_v6, wan_gw
+pcall(function()
+	local ubus = require('ubus')
+	local conn = ubus.connect(nil, UBUS_TIMEOUT)
+	if not conn then return end
+	local w4 = conn:call('network.interface.wan', 'status', {})
+	if w4 and w4.up and w4['ipv4-address'] and w4['ipv4-address'][1] then
+		wan_v4 = w4['ipv4-address'][1].address
+	end
+	for _, r in ipairs((w4 and w4.up and w4.route) or {}) do
+		if r.target == '0.0.0.0' and tonumber(r.mask) == 0 and r.nexthop then wan_gw = r.nexthop break end
+	end
+	local w6 = conn:call('network.interface.wan6', 'status', {})
+	if w6 and w6.up then
+		for _, a in ipairs(w6['ipv6-address'] or {}) do
+			if not a.address:find('^fe80') then wan_v6 = a.address break end
+		end
+	end
+	conn:close()
+end)
+
+-- Oeffentliche IPv4 des Uplinks, fuer switch0 ("nodestatus ports") und
+-- nodeinfo ("nodestatus details"); der Login-Splash fragt kein Netz ab. Zwei unabhaengige Dienste parallel, beide
+-- mit reinen IPv4-Namen und "wget -4" - die Anfrage geht also ueber IPv4 und
+-- damit ueber das WAN, nicht per IPv6 durchs Mesh:
+--   http://ipv4.icanhazip.com     (Cloudflare, seit 2009)
+--   http://checkip.amazonaws.com  (AWS)
+-- Beide liefern nur die Adresse, per http ohne Umleitung (uclient-fetch kann
+-- ohne TLS keiner https-Umleitung folgen - Cloudflares 1.1.1.1/cdn-cgi/trace
+-- leitet inzwischen um). DNS-Tricks (myip.opendns.com) scheitern, wenn der
+-- Router davor Port 53 abfaengt. Ein Waechter beendet beide nach 4 s (busybox
+-- hat kein timeout-Applet). Ohne IPv4 am WAN wird gar nicht gefragt.
+-- Rueckgabe: die beiden Antworten (nil, wenn keine gueltige IPv4) und das
+-- Interface der IPv4-Default-Route.
+local function public_v4()
+	local out = sh('d=$(mktemp -d) || exit 0; ' ..
+		'wget -4 -q -T 3 -O "$d/a" http://ipv4.icanhazip.com </dev/null >/dev/null 2>&1 & p1=$!; ' ..
+		'wget -4 -q -T 3 -O "$d/b" http://checkip.amazonaws.com </dev/null >/dev/null 2>&1 & p2=$!; ' ..
+		'( sleep 4; kill $p1 $p2 ) >/dev/null 2>&1 </dev/null & w=$!; ' ..
+		'wait $p1 $p2 2>/dev/null; kill $w 2>/dev/null; ' ..
+		'echo "a $(head -n 1 "$d/a" 2>/dev/null)"; echo "b $(head -n 1 "$d/b" 2>/dev/null)"; ' ..
+		'ip -4 route get 1.1.1.1 2>/dev/null | sed -n "s/.* dev \\([^ ]*\\).*/dev \\1/p"; ' ..
+		'rm -rf "$d"')
+	local function v4(a)
+		local o = { (a or ''):match('^(%d+)%.(%d+)%.(%d+)%.(%d+)$') }
+		if #o ~= 4 then return nil end
+		for _, x in ipairs(o) do if tonumber(x) > 255 then return nil end end
+		return a
+	end
+	return v4(out:match('a (%S+)')), v4(out:match('b (%S+)')), out:match('dev (%S+)')
+end
+
+local function is_private_v4(a)
+	local o1, o2 = (a or ''):match('^(%d+)%.(%d+)%.')
+	o1, o2 = tonumber(o1), tonumber(o2)
+	if not o1 then return false end
+	return o1 == 10 or (o1 == 172 and o2 >= 16 and o2 <= 31) or (o1 == 192 and o2 == 168)
+end
+
+local function public_v4_rows()
+	if not wan_v4 then
+		row('', '', c('dim', 'oeff. v4 -'), c('dim', 'kein IPv4 am WAN'))
+		return
+	end
+	local a, b, dev = public_v4()
+	local pub = a or b
+	if not pub then
+		row('', '', c('yellow', 'oeff. v4 ?'), c('dim', 'nicht ermittelbar'))
+		return
+	end
+	local note
+	if pub == wan_v4 then
+		note = 'direkt'
+	elseif wan_v4:match('^100%.') and tonumber(wan_v4:match('^100%.(%d+)')) >= 64 and tonumber(wan_v4:match('^100%.(%d+)')) <= 127 then
+		note = 'hinter CGNAT'
+	elseif is_private_v4(wan_v4) then
+		note = 'hinter NAT'
+	else
+		note = 'anders als WAN'
+	end
+	if a and b and a ~= b then note = note .. ', Dienste uneins: ' .. b end
+	if dev and dev ~= 'br-wan' then note = note .. ', Weg ueber ' .. dev end
+	row('', '', 'oeff. v4 ' .. pub, note)
+
+	-- rDNS verraet oft den Anschlussanbieter (dip0.t-ipconnect.de = Telekom),
+	-- aber nicht bei einem eigenen PTR (Business-Anschluesse). Deshalb dazu
+	-- die ASN per DNS bei Team Cymru: <d.c.b.a>.origin.asn.cymru.com TXT
+	-- "3320 | 217.80.0.0/12 | DE | ripencc | ...", dann AS3320.asn.cymru.com
+	-- TXT "3320 | DE | ripencc | ... | DTAG - Deutsche Telekom AG, DE".
+	-- rDNS und ASN laufen parallel, der Name danach; je Stufe ein Waechter von
+	-- 2 s. Ueber den Resolver des Knotens, also den DNS aus dem Mesh - nicht
+	-- den des Routers am WAN, der DNS unter Umstaenden abfaengt. pub ist eine
+	-- gepruefte IPv4, die ASN reine Ziffern, beide duerfen in die Shell-Zeile.
+	-- Ohne Antwort keine Zeile.
+	local o1, o2, o3, o4 = pub:match('^(%d+)%.(%d+)%.(%d+)%.(%d+)$')
+	local out = sh('d=$(mktemp -d) || exit 0; ' ..
+		'nslookup ' .. pub .. ' > "$d/r" 2>/dev/null </dev/null & p1=$!; ' ..
+		'nslookup -type=txt ' .. o4 .. '.' .. o3 .. '.' .. o2 .. '.' .. o1 .. '.origin.asn.cymru.com > "$d/o" 2>/dev/null </dev/null & p2=$!; ' ..
+		'( sleep 2; kill $p1 $p2 ) >/dev/null 2>&1 </dev/null & w=$!; ' ..
+		'wait $p1 $p2 2>/dev/null; kill $w 2>/dev/null; ' ..
+		'cat "$d/r" "$d/o" 2>/dev/null; rm -rf "$d"')
+	local rdns = out:match('name = (%S+)')
+	local asn = out:match('text = "(%d+)')
+	if rdns then
+		row('', '', 'rDNS ' .. rdns:gsub('%.$', ''), '')
+	end
+	if asn then
+		local n = sh('d=$(mktemp -d) || exit 0; ' ..
+			'nslookup -type=txt AS' .. asn .. '.asn.cymru.com > "$d/n" 2>/dev/null </dev/null & p=$!; ' ..
+			'( sleep 2; kill $p ) >/dev/null 2>&1 </dev/null & w=$!; ' ..
+			'wait $p 2>/dev/null; kill $w 2>/dev/null; ' ..
+			'cat "$d/n" 2>/dev/null; rm -rf "$d"'):match('text = "[^"]*|%s*([^|"]-)%s*"')
+		-- "DTAG - Deutsche Telekom AG, DE": das Land steht schon in der ASN-Zeile
+		-- der Registry, hier genuegt der Name.
+		n = n and n:gsub(',%s*%u%u$', '')
+		row('', '', 'AS' .. asn .. ((n and n ~= '') and (' ' .. cut(n, 44)) or ''), '')
+	end
+end
+
+-- Rolle in Spalte A, die Ports ab Spalte B, bei vielen Ports auf Folgezeilen
+local function port_rows(label, role, cells, extra)
+	local lines, cur = {}, ''
+	for _, cell in ipairs(cells or {}) do
+		if cur ~= '' and vlen(cur) + 1 + vlen(cell) > (extra and (COLS[4] - COLS[3] - 1) or (80 - COLS[3])) then
+			table.insert(lines, cur)
+			cur = cell
+		else
+			cur = cur == '' and cell or (cur .. ' ' .. cell)
+		end
+	end
+	if cur ~= '' or #lines == 0 then table.insert(lines, cur) end
+	for i, l in ipairs(lines) do
+		if i == 1 then row(label, role or '', l, extra or '') else row('', '', l, '') end
+	end
+end
+
+local wc = (not single_role) and port_cells('wan') or nil
+for _, cell in ipairs(wc or {}) do
+	local plain = cell:gsub('\27%[[%d;]*m', '')
+	if not plain:match(':%?$') then wan_link_known = true end
+	if not plain:match(':%-$') and not plain:match(':%?$') then wan_link = true end
+end
+
+-- Mit WLAN kompakt in zwei Zeilen; ohne WLAN steht an Stelle der Radio-Tabelle
+-- die ausfuehrlichere Port-Tabelle (port_table, weiter unten).
+-- Die Adressen des Uplinks (br-wan) gehoeren zu der Gruppe mit der Rolle
+-- uplink - das ist meist WAN, kann aber auch LAN oder der einzige Port sein.
+-- Das Gateway steht in Klammern hinter der Rolle, die eigene v4 in Spalte C,
+-- die v6 (bis 39 Zeichen) auf einer Folgezeile ab Spalte B.
+local uplink_shown = false
+local function is_uplink(role)
+	if uplink_shown or not role or not role:find('uplink') then return false end
+	uplink_shown = true
+	return true
+end
+local function roletxt_gw(role)
+	return role .. (wan_gw and (' (' .. wan_gw .. ')') or '')
+end
+
+if has_wifi then
+	local groups = single_role and { { 'Port', single_role, port_cells('lan') } }
+		or { { 'WAN', wan_role, wc }, { 'LAN', lan_role, port_cells('lan') } }
+	for _, g in ipairs(extra_groups) do
+		table.insert(groups, { extra_label(g), g.role, dev_cells(g.devs) })
+	end
+	for _, g in ipairs(groups) do
+		local label, role, cells = g[1], g[2], g[3]
+		if cells and #cells > 0 then
+			if is_uplink(role) then
+				port_rows(label, roletxt_gw(role), cells, wan_v4 and ('v4 ' .. wan_v4) or '')
+				if wan_v6 then row('', '', 'v6 ' .. wan_v6, '') end
+				if MODE == 'details' then public_v4_rows() end
+			else
+				port_rows(label, role, cells)
+			end
+		end
+	end
+end
+
+local wan_mesh = wan_role and wan_role:find('mesh')
+
+-- Mehrere Rollen auf einem Interface (etwa uplink+mesh) sind moeglich, aber
+-- selten gewollt.
+uci:foreach('gluon', 'interface', function(s)
+	local r = aslist(s.role)
+	if #r > 1 then
+		warn('yellow', 'Interface ' .. (s.name or s['.name']) .. ' hat mehrere Rollen: ' .. join(r, '+'))
+	end
+end)
+
+
+-- Port-Tabelle fuer Geraete ohne WLAN: je Port Link, Traffic seit Boot und
+-- Fehler, je Rollengruppe Mesh und Nachbarn. Nachbarn gibt es nur je Gruppe:
+-- mehrere Mesh-Ports fasst Gluon zu einer Bridge zusammen, batman sieht nur
+-- die Bridge und weiss nicht, an welchem Port ein Nachbar haengt. Eigene
+-- Mesh-Ports (siehe extra_groups) sind je eine Gruppe, dort also je Port.
+local function human(n)
+	n = tonumber(n)
+	if not n then return '-' end
+	local units = { 'B', 'K', 'M', 'G', 'T' }
+	local i = 1
+	while n >= 1024 and i < #units do n = n / 1024 i = i + 1 end
+	if i == 1 then return tostring(math.floor(n)) end
+	return (n < 10 and string.format('%.1f', n) or tostring(math.floor(n + 0.5))) .. units[i]
+end
+
+local function port_table(wiredmesh, detail)
+	local TCOLS = { 0, 8, 18, 27, 33, 38, 50, 63 }
+	local groups = {}
+	local function add_group(label, role, boardkey)
+		local net = board.network and board.network[boardkey]
+		if not net then return end
+		local devs = group_devs(net)
+		if #devs == 0 then return end
+		table.insert(groups, { label = label, role = role or '', devs = devs, bat = {} })
+	end
+	if single_role then
+		add_group('Port', single_role, 'lan')
+	else
+		add_group('WAN', wan_role, 'wan')
+		add_group('LAN', lan_role, 'lan')
+	end
+	for _, g in ipairs(extra_groups) do
+		table.insert(groups, { label = extra_label(g), role = g.role or '', devs = g.devs, bat = {} })
+	end
+	if #groups == 0 then return false end
+
+	-- batman-Interfaces den Gruppen zuordnen: direkt, ueber Bridge-Mitglieder,
+	-- Mesh-on-WAN (vxlan) zur WAN-Gruppe
+	local rest = {}
+	for _, name in ipairs(wiredmesh) do
+		local members = {}
+		for m in sh('ls /sys/class/net/' .. name .. '/brif'):gmatch('%S+') do members[m] = true end
+		local found
+		for _, g in ipairs(groups) do
+			for _, d in ipairs(g.devs) do
+				if d == name or members[d] then found = g break end
+			end
+			if found then break end
+		end
+		if not found and name:match('^vx') then
+			for _, g in ipairs(groups) do if g.label == 'WAN' then found = g end end
+		end
+		if found then table.insert(found.bat, name) else table.insert(rest, name) end
+	end
+
+	local function roletxt(r)
+		if vlen(r) <= 8 then return r end
+		return (r:gsub('uplink', 'upl'):gsub('client', 'cli'))
+	end
+
+	place(TCOLS, { c('bold', 'Ports'), c('dim', 'Device'), c('dim', 'Rolle'), c('dim', 'Link'), c('dim', 'Mesh'),
+		c('dim', 'Nachbarn'), c('dim', 'RX/TX'), c('dim', 'Fehler') })
+
+	for _, g in ipairs(groups) do
+		local meshcell, nbcell = c('dim', '-'), ''
+		if g.role:find('mesh') then
+			if #g.bat > 0 then
+				meshcell = c('green', 'an')
+				local n, lo, hi, unknown = 0, nil, nil, false
+				for _, b in ipairs(g.bat) do
+					local k, l, h = neighbours_of(b)
+					if k == nil then unknown = true k = 0 end
+					n = n + k
+					if l then lo = lo and math.min(lo, l) or l end
+					if h then hi = hi and math.max(hi, h) or h end
+				end
+				nbcell = (n == 0 and unknown and c('dim', '?')) or (n == 0 and c('dim', '0')) or (lo == hi and string.format('%d TQ%d', n, lo) or string.format('%d TQ%d-%d', n, lo, hi))
+			else
+				meshcell = c('dim', 'aus')
+			end
+		end
+		-- swconfig: das Device ist ein VLAN auf dem Switch (eth0.1). Sein Link
+		-- ist der des CPU-Ports und sagt nichts - der kommt je Switch-Port aus
+		-- swconfig, Traffic und Fehler gibt es nur fuer das VLAN.
+		local swp = (#g.devs == 1 and g.devs[1]:find('%.') and exists('/sbin/swconfig'))
+			and switch_ports(g.label == 'WAN' and 'wan' or 'lan')
+		if swp and #swp == 0 then swp = nil end
+		for i, d in ipairs(g.devs) do
+			local st = devstate(d)
+			local base = '/sys/class/net/' .. d .. '/statistics/'
+			local link = st == nil and c('dim', '?') or (st and c('green', st) or c('dim', '-'))
+			if swp then link = '' end
+			local rxtx, errs = '', ''
+			if exists(base .. 'rx_bytes') then
+				rxtx = human(readline(base .. 'rx_bytes')) .. '/' .. human(readline(base .. 'tx_bytes'))
+				local e = (tonumber(readline(base .. 'rx_errors')) or 0) + (tonumber(readline(base .. 'tx_errors')) or 0)
+				errs = e > 0 and c('yellow', tostring(e)) or c('dim', '0')
+			end
+			place(TCOLS, { i == 1 and c('bold', g.label) or '', cut(d, 9), i == 1 and roletxt(g.role) or '',
+				link, i == 1 and meshcell or '', i == 1 and nbcell or '', rxtx, errs })
+			if detail then
+				-- MAC, MTU, Bridge, Link-Wechsel seit Boot (Wackelkontakt!), Drops
+				local nb = '/sys/class/net/' .. d .. '/'
+				local master = sh('readlink ' .. nb .. 'master'):match('([^/%s]+)%s*$')
+				local changes = tonumber(readline(nb .. 'carrier_changes'))
+				local drops = (tonumber(readline(base .. 'rx_dropped')) or 0) + (tonumber(readline(base .. 'tx_dropped')) or 0)
+				local parts = {}
+				local mac = readline(nb .. 'address')
+				if mac then table.insert(parts, mac) end
+				local mtu = readline(nb .. 'mtu')
+				if mtu then table.insert(parts, 'MTU ' .. mtu) end
+				if master then table.insert(parts, master) end
+				if changes then
+					table.insert(parts, (changes > 10 and c('yellow', 'Wechsel ' .. changes)) or ('Wechsel ' .. changes))
+				end
+				if exists(base .. 'rx_dropped') then table.insert(parts, 'Drops ' .. drops) end
+				if #parts > 0 then place(TCOLS, { '', c('dim', table.concat(parts, '  ')) }) end
+			end
+		end
+		for _, p in ipairs(swp or {}) do
+			local st = swport_state(p.num)
+			local name = (#swp > 1 and ('Port ' .. (p.index or p.num))) or (g.label == 'WAN' and 'Port wan' or 'Port')
+			local extra = ''
+			if detail and st and st ~= '?' then
+				-- Duplex, Flusskontrolle, Autonegotiation aus swconfig
+				local l = sh('swconfig dev switch0 port ' .. p.num .. ' get link')
+				local f = {}
+				for _, w in ipairs({ 'full%-duplex', 'half%-duplex', 'txflow', 'rxflow', 'auto' }) do
+					local m = l:match(w)
+					if m then table.insert(f, (m:gsub('%-duplex', ''))) end
+				end
+				extra = c('dim', table.concat(f, ' '))
+			end
+			place(TCOLS, { '', ' ' .. name, '', (st == '?' and c('dim', '?')) or (st and c('green', st)) or c('dim', '-'), extra })
+		end
+		if is_uplink(g.role) then
+			if wan_gw or wan_v4 or wan_v6 then
+				row('', wan_gw and ('gw ' .. wan_gw) or '', wan_v4 and ('v4 ' .. wan_v4) or '', '')
+				if wan_v6 then row('', '', 'v6 ' .. wan_v6, '') end
+			end
+			if MODE == 'ports' or MODE == 'details' then public_v4_rows() end
+		end
+	end
+	for _, name in ipairs(rest) do
+		local k, l, h = neighbours_of(name)
+		place(TCOLS, { c('bold', 'Mesh'), cut(name, 9), '', '', c('green', 'an'),
+			(k == nil and c('dim', '?')) or (k == 0 and c('dim', '0')) or (l == h and string.format('%d TQ%d', k, l) or string.format('%d TQ%d-%d', k, l, h)), '', '' })
+	end
+	return true
+end
+
+
+if MODE == 'ports' then
+	local wm = {}
+	for name, st in pairs(batif) do
+		if st == 'active' and not name:match('^mesh%d') and name ~= 'mesh-vpn' and name ~= 'primary0' then
+			table.insert(wm, name)
+		end
+	end
+	table.sort(wm)
+	out_on = true
+	uplink_shown = false
+	if not port_table(wm, VERBOSE) then print('Keine Ports in /etc/board.json.') end
+	return
+end
+
+
+-- --- VPN, Gateway ------------------------------------------------------------
+
+local vpn_known = uci:get('gluon', 'mesh_vpn', 'enabled') ~= nil
+local vpn_enabled = uci:get('gluon', 'mesh_vpn', 'enabled') == '1'
+local vpn_up = batif['mesh-vpn'] == 'active'
+local provider = nodeinfo.network and nodeinfo.network.mesh_vpn and nodeinfo.network.mesh_vpn.provider or ''
+local limit = uci:get('gluon', 'mesh_vpn', 'limit_enabled') == '1'
+local limittxt = limit and string.format('%g/%gMbit',
+	(tonumber(uci:get('gluon', 'mesh_vpn', 'limit_ingress')) or 0) / 1000,
+	(tonumber(uci:get('gluon', 'mesh_vpn', 'limit_egress')) or 0) / 1000) or 'ohne Limit'
+
+-- Gegenstelle des Tunnels und Name des Supernodes (tunneldigger).
+--
+-- Nicht aus netstat: tunneldigger haelt zu JEDEM Broker einen UDP-Socket
+-- offen, die erste Zeile ist nicht die verbundene. Aus conntrack: die Proben
+-- zu den uebrigen Brokern sind still und laufen dort aus, der aktive Tunnel hat
+-- staendig Traffic und steht als [ASSURED] mit der hoechsten Restzeit da.
+-- Der Name: die Broker-Hostnamen aus uci per DNS aufloesen und mit der
+-- Gegenstelle vergleichen, davon der erste Teil ("kallisto").
+--
+-- Fehlerfaelle: ein Name ohne Eintrag liefert nichts, ein nicht erreichbarer
+-- Resolver haengt nslookup 5 s je Name - bei sechs Brokern eine halbe Minute
+-- Login. Deshalb alle Namen parallel, und ein Waechter beendet sie nach 2 s
+-- (ein timeout-Applet hat busybox hier nicht, sleep keine Bruchteile). Im
+-- Normalfall kommt die Antwort aus dem Cache von dnsmasq in Millisekunden. Was
+-- nicht rechtzeitig kommt, zaehlt nicht - dann bleibt es bei "verbunden".
+local function resolve_all(hosts)
+	local list = {}
+	for _, h in ipairs(hosts) do
+		-- kommt aus uci, landet in einer Shell-Zeile: nur Hostnamen-Zeichen
+		if h:match('^[%w%.%-]+$') then table.insert(list, h) end
+	end
+	local result = {}
+	if #list == 0 then return result end
+	local hs = table.concat(list, ' ')
+	local out = sh('d=$(mktemp -d) || exit 0; p=""; ' ..
+		'for h in ' .. hs .. '; do nslookup "$h" > "$d/$h" 2>/dev/null </dev/null & p="$p $!"; done; ' ..
+		'( sleep 2; kill $p ) >/dev/null 2>&1 </dev/null & w=$!; ' ..
+		'wait $p 2>/dev/null; kill $w 2>/dev/null; ' ..
+		'for h in ' .. hs .. '; do awk -v h="$h" \'/^Name:/{n=1} n && /^Address/{print h" "$NF}\' "$d/$h"; done; ' ..
+		'rm -rf "$d"')
+	for h, a in out:gmatch('(%S+) (%S+)') do
+		result[h] = result[h] or {}
+		result[h][a] = true
+	end
+	return result
+end
+
+local peer, supernode = '', nil
+if vpn_up and provider == 'tunneldigger' then
+	local brokers, ports = {}, {}
+	for _, b in ipairs(aslist(uci:get('tunneldigger', 'mesh_vpn', 'address'))) do
+		local host, port = b:match('^%[?(.-)%]?:(%d+)$')
+		if host then
+			table.insert(brokers, { host = host, port = port })
+			ports[port] = true
+		end
+	end
+
+	local best, peer_ip, peer_port = -1, nil, nil
+	for l in (readfile('/proc/net/nf_conntrack') or ''):gmatch('[^\n]+') do
+		if l:find(' udp ', 1, true) and l:find('[ASSURED]', 1, true) then
+			local timeout = tonumber(l:match('^%S+%s+%d+%s+%S+%s+%d+%s+(%d+)')) or 0
+			local dst, dport = l:match('dst=(%S+) sport=%d+ dport=(%d+)')
+			if dst and ports[dport] and timeout > best then
+				best, peer_ip, peer_port = timeout, dst, dport
+			end
+		end
+	end
+
+	if peer_ip then
+		peer = (peer_ip:find(':') and ('[' .. peer_ip .. ']') or peer_ip) .. ':' .. peer_port
+		-- nur Broker mit passendem Port; als IP eingetragene ohne DNS
+		local ask = {}
+		for _, b in ipairs(brokers) do
+			if b.port == peer_port then
+				if b.host == peer_ip then ask = nil supernode = b.host break end
+				table.insert(ask, b.host)
+			end
+		end
+		if ask then
+			local addrs = resolve_all(ask)
+			for _, h in ipairs(ask) do
+				if addrs[h] and addrs[h][peer_ip] then supernode = h:match('^[^.]+') break end
+			end
+		end
+	end
+end
+
+local vpnstate
+if not batctl_ok then
+	vpnstate = c('dim', '?')
+elseif not vpn_known and not vpn_up then
+	vpnstate = c('dim', '?')
+elseif not vpn_enabled and not vpn_up then
+	vpnstate = c('dim', 'aus')
+elseif vpn_up then
+	local since = ''
+	pcall(function()
+		local conn = require('ubus').connect(nil, UBUS_TIMEOUT)
+		local st = conn and conn:call('network.interface.mesh_vpn', 'status', {})
+		if st and st.uptime then since = ' seit ' .. duration(st.uptime) end
+		if conn then conn:close() end
+	end)
+	-- statt "verbunden" der Supernode, wenn er sich bestimmen laesst
+	vpnstate = c('green', (supernode or 'verbunden') .. since)
+elseif uptime and uptime < 300 then
+	vpnstate = c('yellow', 'baut auf')
+else
+	vpnstate = c('red', 'NICHT verbunden')
+	local why = ''
+	if board.network and board.network.wan and wan_link_known and not wan_link then
+		why = ' - WAN ohne Link'
+	elseif not wan_v4 and not wan_v6 then
+		why = ' - WAN hat keine Adresse'
+	end
+	warn('red', 'VPN aktiviert, aber nicht verbunden' .. why)
+end
+
+
+row('VPN', vpnstate, trim((provider or '') .. ' ' .. (vpn_enabled and limittxt or '')),
+	vlen(peer) <= 80 - COLS[4] and peer or '')
+if vlen(peer) > 80 - COLS[4] then row('', 'Gegenstelle ' .. peer, '', '') end
+
+if vpn_enabled and wan_mesh then
+	warn('yellow', 'Mesh-on-WAN und VPN gleichzeitig aktiv')
+end
+
+-- Gateway aus batctl gwl: "* MAC (TQ) NEXTHOP [ IF]: bandwidth"
+local gw_mac, gw_tq, gw_nh, gw_if = sh('batctl gwl'):match('\n%*%s+(%S+)%s+%(%s*(%d+)%)%s+(%S+)%s+%[%s*([^%]]+)%]')
+local originators = 0
+for _ in sh('batctl o'):gmatch('\n%s*%*') do originators = originators + 1 end
+local hp = trim(sh('batctl hp'))
+if not hp or hp == '' then hp = '?' end
+local origtxt = batctl_ok and (originators .. ' Orig.  HP ' .. hp) or '? Orig.  HP ?'
+
+if gw_mac then
+	local tq = tonumber(gw_tq)
+	local tqtxt = 'TQ' .. gw_tq
+	if tq < 100 then tqtxt = c('yellow', tqtxt) end
+	row('Gateway', gw_mac .. ' ' .. tqtxt, 'via ' .. gw_if, origtxt)
+	if tq < 100 then warn('yellow', 'Gateway nur mit TQ ' .. gw_tq .. ' erreichbar') end
+elseif not batctl_ok then
+	row('Gateway', c('dim', '?'), '', origtxt)
+	warn('yellow', 'batctl liefert nichts - Mesh-Angaben unbekannt')
+else
+	row('Gateway', c('red', 'keiner'), '', origtxt)
+	warn('red', 'kein Gateway gewaehlt')
+end
+
+-- Hop-Penalty je Interface (Gluon 2025.1, #3454): gluon.iface_<name>.
+-- batadv_hop_penalty bzw. gluon.band_<band>.batadv_hop_penalty, wirksam als
+-- "batctl hardif <if> hop_penalty" (Vorgabe 0). Nur zeigen, was nicht 0 ist;
+-- auf aelteren Staenden gibt es die Einstellung nicht, dann bleibt es still.
+if batctl_ok then
+	local hps = {}
+	local names = {}
+	for name in pairs(batif) do table.insert(names, name) end
+	table.sort(names)
+	for _, name in ipairs(names) do
+		if name ~= 'primary0' then
+			local v = tonumber(trim(sh('batctl hardif ' .. name .. ' hop_penalty')))
+			if v and v ~= 0 then table.insert(hps, name .. ' ' .. v) end
+		end
+	end
+	if #hps > 0 then
+		row('', '', 'HP je Interface: ' .. table.concat(hps, ', '), '')
+	end
+end
+
+
+-- --- Clients, SSID -------------------------------------------------------------
+
+local cl = stats.clients or {}
+local wired = (cl.total and cl.wifi) and (cl.total - cl.wifi) or nil
+local meshclients = 0
+for l in sh('batctl tg'):gmatch('[^\n]+') do
+	if l:match('^%s*%*') and l:match('%[[^%]]*W[^%]]*%]') then meshclients = meshclients + 1 end
+end
+
+row('Clients', 'lokal ' .. (cl.total or '?') .. ((has_wifi and wired) and ('  Kabel ' .. wired) or ''),
+	has_wifi and ('WLAN 2G ' .. (cl.wifi24 or '?') .. '  5G ' .. (cl.wifi5 or '?')) or '',
+	'im Mesh ' .. (batctl_ok and meshclients or '?'))
+
+-- Offline-SSID (neanderfunk-ssid-changer): jetzt / Wechsel seit Boot / Gateway-Verluste
+local sc_now = readline('/tmp/ssid-changer-offline')
+local essid = sh('iwinfo client0 info'):match('ESSID: "([^"]*)"') or sh('iwinfo client1 info'):match('ESSID: "([^"]*)"')
+-- Wird die Offline-SSID wirklich gesendet? Das beantwortet iwinfo, nicht
+-- /tmp/ssid-changer-offline: diese Datei ist laut ssid-changer.lua reine
+-- Diagnose ("galt der Knoten am letzten Fensterwechsel als offline") und steht
+-- schon auf 1, bevor ueberhaupt geschaltet wird - dazwischen liegen bis zu
+-- switch_timeframe Minuten. Am 16.09.2026 meldete diese Zeile deshalb rot
+-- "Offline-SSID ist aktiv" an einem Knoten, der ganz normal die Freifunk-SSID
+-- sendete; offline galt er nur wegen der TQ-Grenze (tq_limit_min), und
+-- geschaltet wurde nie, weil der TQ vorher wieder ueber tq_limit_max stieg.
+local sc_prefix = uci:get('ssid-changer', 'settings', 'prefix') or 'FF_Offline_'
+local sc_sending = (essid and essid:sub(1, #sc_prefix) == sc_prefix) or false
+-- preserve_channels: "fest" = Kanal, Kanalliste und Breite bleiben bei Updates
+-- stehen, "aus Site" = Gluon setzt sie bei jedem Update auf die Site-Werte.
+-- Dazu je Band preserve_channels_2g/_5g (neanderfunk-preserve-wifichannel,
+-- gesetzt von "channel"), zusaetzlich zum globalen Schalter.
+local function band_kept(band)
+	return preserve_global()
+		or is_true(uci:get('gluon', 'wireless', 'preserve_channels_' .. band))
+end
+local pc = uci:get('gluon', 'wireless', 'preserve_channels')
+local pctxt = ''
+if preserve_global() then
+	pctxt = 'Kanal fest'
+else
+	local kept = {}
+	for _, band in ipairs({ '2g', '5g' }) do
+		if is_true(uci:get('gluon', 'wireless', 'preserve_channels_' .. band)) then
+			table.insert(kept, band:upper())
+		end
+	end
+	if #kept > 0 then
+		pctxt = 'Kanal fest ' .. table.concat(kept, '+')
+	elseif pc then
+		pctxt = 'Kanal aus Site'
+	end
+end
+
+if has_wifi then
+	row('SSID', essid or '', pctxt)
+
+	-- Wortlaut wie auf der Statusseite (Firmware 26fb6f3): ein Zustandswort,
+	-- dahinter die Zaehler jetzt offline (0/1) / Offline-SSID geschaltet seit
+	-- Start / Gateway verloren seit Start. "aus" ohne Zaehler, wenn der
+	-- ssid-changer abgeschaltet ist; ohne ssid-changer keine Zeile.
+	if uci:get('ssid-changer', 'settings') then
+		if is_false(uci:get('ssid-changer', 'settings', 'enabled')) then
+			row('', 'Offline-SSID aus')
+		else
+			-- Rot nur, wenn die Offline-SSID wirklich gesendet wird; gilt der
+			-- Knoten erst als offline, ist das Wort gelb. Gleiche Laenge wie
+			-- vorher, damit die Spalten stehen bleiben.
+			local word = sc_now == '1' and c(sc_sending and 'red' or 'yellow', 'offline')
+				or sc_now == '0' and (sc_sending and c('red', 'online') or 'online') or '-'
+			row('', 'Offline-SSID ' .. word,
+				string.format('%s/%s/%s', sc_now or '-',
+					readline('/tmp/ssid-changer-offline-switches') or '-',
+					readline('/tmp/ssid-changer-gateway-losses') or '-'))
+		end
+	end
+	if sc_sending then
+		warn('red', 'Offline-SSID ist aktiv')
+	elseif sc_now == '1' then
+		warn('yellow', 'Knoten gilt als offline, Offline-SSID aber noch nicht geschaltet')
+	end
+
+	-- Die Offline-SSID gehoert nur in den uci-Delta. Steht sie in
+	-- /etc/config/wireless, hat ein "uci commit" waehrend der Offline-Phase
+	-- sie mitgeschrieben; sie bleibt dann nach jedem Neustart stehen, bis
+	-- gluon-reconfigure client_radio* aus der Site neu anlegt.
+	if uci:get('ssid-changer', 'settings') then
+		local stored = false
+		for s in (readfile('/etc/config/wireless') or ''):gmatch("option ssid '([^']*)'") do
+			if s:sub(1, #sc_prefix) == sc_prefix then stored = true end
+		end
+		if stored then
+			warn('red', 'Offline-SSID steht fest in /etc/config/wireless (uci commit waehrend offline?) - reconf behebt es')
+		elseif sc_sending and sc_now ~= '1' then
+			warn('red', 'Offline-SSID wird gesendet, obwohl der ssid-changer online meldet')
+		end
+	end
+end
+
+
+-- --- Radios ------------------------------------------------------------------
+
+--               Band Kanal Breite Mode TX/max AP  Mesh Clients Nachbarn
+local RCOLS = { 0, 8,   13,   22,    29,  36,    44, 49,  55,     63 }
+local any_uci_tx = false
+
+-- Die Regdomain steht links in der Kopfzeile: sie bestimmt die Grenzen der
+-- ganzen Tabelle (Kanaele, TX/max).
+local regdom
+for _, r in ipairs(radios) do regdom = regdom or uci:get('wireless', r, 'country') end
+if has_wifi then
+	place(RCOLS, { c('bold', regdom or '??'), c('dim', 'Band'), c('dim', 'Kanal'), c('dim', 'Breite'), c('dim', 'Mode'),
+		c('dim', 'TX/max'), c('dim', 'AP'), c('dim', 'Mesh'), c('dim', 'Clients'), c('dim', 'Nachbarn') })
+end
+
+local country
+local outdoor = uci:get('gluon', 'wireless', 'outdoor') == '1'
+
+for _, radio in ipairs(has_wifi and radios or {}) do
+	local band = radio_band(radio)
+	if not band then
+		local hw = uci:get('wireless', radio, 'hwmode')
+		if hw then band = hw:find('a') and '5g' or '2g' end
+	end
+	country = country or uci:get('wireless', radio, 'country')
+	local rdisabled = is_true(uci:get('wireless', radio, 'disabled'))
+	local uci_ch = uci:get('wireless', radio, 'channel')
+	local uci_tx = uci:get('wireless', radio, 'txpower')
+
+	-- Interfaces dieses Radios nach Rolle
+	local ap, mesh, owe
+	uci:foreach('wireless', 'wifi-iface', function(s)
+		if s.device ~= radio then return end
+		local entry = { name = s.ifname, disabled = s.disabled == '1' }
+		if s.mode == 'mesh' then mesh = entry
+		elseif s.network == 'client' or (s['.name'] or ''):match('^client_') then ap = ap or entry
+		elseif (s['.name'] or ''):match('^owe_') then owe = entry end
+	end)
+
+	-- channel=auto heisst: kein Mesh auf diesem Radio, so vorgesehen. uci laesst
+	-- das Mesh-Interface dabei eingeschaltet, netifd scheitert beim Join ohne
+	-- Frequenz ("Channel is disabled") - das ist kein Fehler, nur Rauschen.
+	local mesh_by_auto = uci_ch == 'auto'
+
+	local function state(entry, is_mesh)
+		if not entry then return c('dim', '-') end
+		if entry.disabled or rdisabled then return c('dim', 'aus') end
+		local up = operup(entry.name)
+		if is_mesh and mesh_by_auto and not up then return c('dim', 'aus') end
+		if up == nil then return c('dim', '?') end
+		if up then return c('green', 'an') end
+		return c('red', 'DOWN')
+	end
+
+	-- Ist-Werte vom ersten laufenden Interface des Radios
+	local live
+	for _, e in ipairs({ ap or {}, mesh or {}, owe or {} }) do
+		if operup(e.name) then live = e.name break end
+	end
+
+	local chtxt, widthtxt, modetxt, txtxt = c('dim', '-'), '', '', ''
+	if live then
+		-- Alles aus iwinfo: das kommt mit wpad auf jedes WLAN-Geraet, iw nicht.
+		local iwi = sh('iwinfo ' .. live .. ' info')
+		local ch = iwi:match('Channel: (%d+)')
+		if not band then
+			local ghz = tonumber(iwi:match('Channel: %d+ %(([%d.]+) GHz%)'))
+			if ghz then band = ghz < 3 and '2g' or (ghz < 5.9 and '5g' or '6g') end
+		end
+		-- Sackgasse 2021.1: iwinfo 2019 nennt keinen HT-Modus; Gluon 2021.1
+		-- setzt ihn fest (kein ACS), also der aus uci
+		local mode = iwi:match('HT Mode: (%S+)') or uci:get('wireless', radio, 'htmode')
+		local width = mode and mode:match('(%d+)$')
+		local tx = iwi:match('Tx%-Power: (%d+) dBm')
+		local maxtx = sh('iwinfo ' .. live .. ' txpowerlist'):match('(%d+) dBm[^\n]*\n?$')
+		chtxt = ch or '?'
+		if uci_ch and ch and uci_ch ~= ch then
+			chtxt = chtxt .. ' ' .. c('dim', uci_ch == 'auto' and 'auto' or ('uci' .. uci_ch))
+		end
+		widthtxt = width and (width .. 'MHz') or ''
+		modetxt = mode or ''
+		if tx then
+			txtxt = string.format('%d/%s', math.floor(tonumber(tx) + 0.5), maxtx or '?')
+			if uci_tx then txtxt = txtxt .. c('dim', '*') any_uci_tx = true end
+		end
+	end
+
+	band = band and band:upper() or '?'
+
+	-- Clients je Band aus respondd (dieselben Zahlen wie auf der Karte)
+	local cls = stats.clients or {}
+	local key = ({ ['2G'] = '24', ['5G'] = '5' })[band]
+	local clients = key and ((tonumber(cls['wifi' .. key]) or 0) + (tonumber(cls['owe' .. key]) or 0)) or '?'
+
+	local label = 'Radio' .. radio:match('%d+$')
+	if rdisabled then
+		place(RCOLS, { c('bold', label), band, c('yellow', 'Radio abgeschaltet') })
+		warn('yellow', label .. ' (' .. band .. ') ist abgeschaltet')
+	else
+		place(RCOLS, { c('bold', label), band, chtxt, widthtxt, modetxt, txtxt,
+			state(ap), state(mesh, true), tostring(clients), mesh and operup(mesh.name) and neighbour_cell(mesh.name) or '' })
+		-- nur bei belegtem "nicht oben" (operup == false), nicht bei unbekannt
+		if mesh and not mesh.disabled and not mesh_by_auto and operup(mesh.name) == false then
+			warn('red', label .. ' (' .. band .. '): Mesh konfiguriert, aber ' .. (mesh.name or 'Mesh-Interface') .. ' ist nicht aktiv')
+		end
+		if ap and not ap.disabled and operup(ap.name) == false then
+			warn('red', label .. ' (' .. band .. '): Client-AP konfiguriert, aber ' .. (ap.name or 'AP') .. ' ist nicht aktiv')
+		end
+	end
+end
+
+-- Kanaele gegen die Firmware: Gluons 200-wireless setzt bei jedem
+-- gluon-reconfigure - also bei jedem Update - channel und channels aus
+-- site.conf/Domain (/lib/gluon/site.json, /lib/gluon/domains/), 5 GHz im
+-- Outdoor-Modus auf auto mit outdoor_chanlist. Ausser preserve_channels ist
+-- gesetzt, dann bleibt alles stehen. Ohne preserve_channels ist also jede
+-- Abweichung beim naechsten Update weg - auch ein von Hand gesetztes auto.
+-- Baender mit eigenem preserve_channels_<band> bleiben ebenfalls stehen.
+if has_wifi and not preserve_global() then
+	local ok, site = pcall(require, 'gluon.site')
+	local outdoor_on = uci:get_bool('gluon', 'wireless', 'outdoor')
+	local diffs = {}
+	for _, radio in ipairs(ok and radios or {}) do
+		local band = radio_band(radio)
+		local cfg = (band == '2g' and site.wifi24) or (band == '5g' and site.wifi5) or nil
+		if cfg and not band_kept(band) then
+			local want_ch, want_list
+			if band == '5g' and outdoor_on then
+				want_ch, want_list = 'auto', cfg.outdoor_chanlist()
+			else
+				want_ch = cfg.channel()
+			end
+			local have_ch = uci:get('wireless', radio, 'channel')
+			local have_list = uci:get('wireless', radio, 'channels')
+			if type(have_list) == 'table' then have_list = join(have_list) end
+			if want_ch ~= nil and (tostring(want_ch) ~= tostring(have_ch)
+					or tostring(want_list or '') ~= tostring(have_list or '')) then
+				local function txt(ch, list)
+					return tostring(ch or '?') .. ((list and list ~= '') and (' [' .. list .. ']') or '')
+				end
+				table.insert(diffs, (band == '2g' and '2G ' or '5G ') .. txt(have_ch, have_list)
+					.. ' statt ' .. txt(want_ch, want_list))
+			end
+		end
+	end
+	if #diffs > 0 then
+		warn('yellow', 'WLAN-Kanal anders als in der Firmware (' .. join(diffs, ', ')
+			.. '), Update setzt zurueck. Behalten: uci set gluon-core.@wireless[0].preserve_channels=1;'
+			.. ' uci commit gluon-core')
+	end
+end
+
+-- Mesh ueber Kabel: alle aktiven batman-Interfaces ausser WLAN, VPN, primary
+local wiredmesh = {}
+for name, st in pairs(batif) do
+	if st == 'active' and not name:match('^mesh%d') and name ~= 'mesh-vpn' and name ~= 'primary0' then
+		table.insert(wiredmesh, name)
+	end
+end
+table.sort(wiredmesh)
+if not has_wifi then
+	if not port_table(wiredmesh) and #wiredmesh > 0 then
+		row('Mesh', 'Kabel ' .. join(wiredmesh, ','), '', '')
+	end
+elseif #wiredmesh > 0 then
+	local n, lo, hi, unknown = 0, nil, nil, false
+	for _, w in ipairs(wiredmesh) do
+		local k, l, h = neighbours_of(w)
+		if k == nil then unknown = true k = 0 end
+		n = n + k
+		if l then lo = lo and math.min(lo, l) or l end
+		if h then hi = hi and math.max(hi, h) or h end
+	end
+	local nb = (n == 0 and unknown and c('dim', '?')) or (n == 0 and c('dim', '0')) or (lo == hi and string.format('%d TQ%d', n, lo) or string.format('%d TQ%d-%d', n, lo, hi))
+	place(RCOLS, { c('bold', 'Kabel'), join(wiredmesh, ','), '', '', '', '', '', c('green', 'an'), '', nb })
+end
+
+if outdoor or any_uci_tx then
+	row('', c('dim', ((outdoor and 'outdoor-Modus an  ' or '') .. (any_uci_tx and '* Sendeleistung per uci gesetzt' or '')):gsub('%s+$', '')), '', '')
+end
+
+-- Insel: kein Mesh-Nachbar und kein VPN
+local anyneigh, neigh_unknown = false, false
+for name, st in pairs(batif) do
+	if st == 'active' and name ~= 'primary0' and name ~= 'mesh-vpn' then
+		local k = neighbours_of(name)
+		if k == nil then neigh_unknown = true elseif k > 0 then anyneigh = true end
+	end
+end
+if batctl_ok and not neigh_unknown and not anyneigh and not vpn_up then
+	warn('red', 'Insel: keine Mesh-Nachbarn und kein VPN')
+end
+
+
+-- --- Details (nodeinfo) -------------------------------------------------------
+
+if MODE == 'details' then
+	local DCOLS = { 0, 8, 18, 37, 44, 52, 60 }
+
+	-- Nachbarn einzeln: je eigenem batman-Interface, mit TQ, Signal (WLAN) und
+	-- wann zuletzt gehoert
+	local nrows = {}
+	for name, st in pairs(batif) do
+		local mac = st == 'active' and name ~= 'primary0' and ifaddr(name)
+		local bat = mac and neigh.batadv and neigh.batadv[mac]
+		for nbmac, v in pairs(bat and bat.neighbours or {}) do
+			local wifi = neigh.wifi and neigh.wifi[mac] and neigh.wifi[mac].neighbours
+			local sig = wifi and wifi[nbmac] and wifi[nbmac].signal
+			table.insert(nrows, { name, nbmac, tonumber(v.tq) or 0, sig, tonumber(v.lastseen) })
+		end
+	end
+	table.sort(nrows, function(a, b) if a[1] ~= b[1] then return a[1] < b[1] end return a[3] > b[3] end)
+	place(DCOLS, { c('bold', 'Nachb.'), c('dim', 'Interface'), c('dim', 'MAC'), c('dim', 'TQ'), c('dim', 'Signal'), c('dim', 'zuletzt') })
+	if #nrows == 0 then row('', c('dim', neigh.batadv and 'keine' or '? (respondd liefert nichts)'), '', '') end
+	for _, r in ipairs(nrows) do
+		local tq = r[3] == 0 and c('dim', 'TQ0') or (r[3] < 100 and c('yellow', 'TQ' .. r[3]) or ('TQ' .. r[3]))
+		-- Signal ab 0 dBm ist physikalisch unmoeglich; ath9k meldet das bei
+		-- manchen Mesh-Nachbarn (WDR3600: +22..+26). Roh, aber als fraglich.
+		local sig = r[4] and ((r[4] >= 0 and c('dim', '+' .. r[4] .. '?')) or (r[4] .. 'dBm')) or ''
+		place(DCOLS, { '', r[1], r[2], tq, sig, r[5] and string.format('%.1fs', r[5]) or '' })
+	end
+
+	-- alle Gateways, der gewaehlte mit *
+	local GCOLS = { 0, 8, 10, 29, 35, 54, 66 }
+	local gws = {}
+	for l in sh('batctl gwl'):gmatch('[^\n]+') do
+		local sel, mac, tq, nh, ifn, bw = l:match('^(%*?)%s*(%x%x:%x%x:%x%x:%x%x:%x%x:%x%x)%s+%(%s*(%d+)%)%s+(%S+)%s+%[%s*([^%]]+)%]:%s*(%S+)')
+		if mac then table.insert(gws, { sel, mac, tq, nh, ifn, bw }) end
+	end
+	place(GCOLS, { c('bold', 'Gatew.'), '', c('dim', 'MAC'), c('dim', 'TQ'), c('dim', 'Next Hop'), c('dim', 'via'), c('dim', 'MBit') })
+	if #gws == 0 then row('', c('dim', batctl_ok and 'keine' or '?'), '', '') end
+	for _, g in ipairs(gws) do
+		place(GCOLS, { '', g[1] == '*' and c('green', '*') or '', g[2], 'TQ' .. g[3], g[4], cut(g[5], 11), g[6] })
+	end
+
+	-- VPN-Broker (tunneldigger): alle konfigurierten, der verbundene mit *
+	if provider == 'tunneldigger' then
+		local BCOLS = { 0, 8, 10, 22, 30 }
+		local hosts, list = {}, {}
+		for _, b in ipairs(aslist(uci:get('tunneldigger', 'mesh_vpn', 'address'))) do
+			local host, port = b:match('^%[?(.-)%]?:(%d+)$')
+			if host then table.insert(list, { host = host, port = port }) table.insert(hosts, host) end
+		end
+		local addrs = resolve_all(hosts)
+		local active_ip = peer:match('^%[?([^%]]+)%]?:%d+$')
+		place(BCOLS, { c('bold', 'Broker'), '', c('dim', 'Name'), c('dim', 'Port'), c('dim', 'Adresse(n)') })
+		for _, b in ipairs(list) do
+			local ips = {}
+			for a in pairs(addrs[b.host] or {}) do table.insert(ips, a) end
+			table.sort(ips)
+			local act = active_ip and ((addrs[b.host] or {})[active_ip] or b.host == active_ip)
+			place(BCOLS, { '', act and c('green', '*') or '', b.host:match('^[^.]+'), b.port,
+				#ips > 0 and table.concat(ips, ' ') or c('dim', '? (DNS)') })
+		end
+	end
+
+	-- Adressen des Knotens (global), je Interface
+	local ACOLS = { 0, 8, 20 }
+	place(ACOLS, { c('bold', 'Adress.'), c('dim', 'Interface'), c('dim', 'Adresse') })
+	for _, ifn in ipairs({ 'br-client', 'local-node', 'br-wan' }) do
+		for fam, a in sh('ip -o addr show dev ' .. ifn):gmatch('(inet6?) (%S+)') do
+			if not a:match('^fe80') then place(ACOLS, { '', ifn, a }) end
+		end
+	end
+end
+
+
+-- --- Warnungen -----------------------------------------------------------------
+
+for _, w in ipairs(warnings) do
+	print(c(w[1], '! ' .. w[2]))
+end
+
+end
+
+local ok, err = pcall(main)
+if not ok then
+	io.stdout:flush()
+	io.stderr:write('nodestatus: abgebrochen: ' .. tostring(err) .. '\n')
+	os.exit(1)
+end

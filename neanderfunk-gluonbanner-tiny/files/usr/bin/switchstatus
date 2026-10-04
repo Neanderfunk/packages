@@ -1,3 +1,0 @@
-#!/bin/sh
-echo switchstatus eth:
-swconfig dev switch0 show 

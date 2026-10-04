@@ -29,12 +29,11 @@ looking for
 moving upgradebranch from experimental to stable systematically
 and removing l2tp from branches
 
-### neanderfunk-gluonbanner-tiny
+### neanderfunk-banner
 
-gluon-banner, slimmed for 4/32 devices (Sackgasse 2021.1): the status block
-exists once, in `nodeinfo`; the login profile calls `nodeinfo login`,
-`switch0` calls `nodeinfo switch`. Same login text and `nodeinfo` output as
-before (compared line by line on a TL-WR841N v9). CONFLICTS gluon-banner.
+Core of neanderfunk-banner from v2025.1.x for 19.07/swconfig: nodestatus
+overview at login, nodeinfo, switch0/switchstatus, reconf, v4up, vpn,
+routername, kontakt, help. See neanderfunk-banner/README.md.
 
 ### gluon-linkcheck
 

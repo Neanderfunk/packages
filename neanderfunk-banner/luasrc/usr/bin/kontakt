@@ -1,0 +1,74 @@
+#!/usr/bin/lua
+-- kontakt [adresse ...] - Kontaktadresse des Betreibers zeigen oder dauerhaft
+-- setzen (Alias: contact).
+--
+--     kontakt                    zeigt die Kontaktadresse
+--     kontakt name@example.org   setzt sie (mehrere Woerter ohne Anfuehrungszeichen)
+--     kontakt --delete           entfernt sie
+--
+-- Wie das Setup ("Kontakt"): gluon-node-info.@owner[0].contact, danach uci
+-- commit gluon-node-info - ein manueller Eingriff, der ins Flash soll. Ist
+-- die Adresse schon so, wird nichts geschrieben. respondd liest den Wert bei
+-- jeder Abfrage, die Karte zeigt ihn also, sobald sie die nodeinfo des
+-- Knotens wieder abfragt. Die Angabe ist oeffentlich sichtbar.
+
+local uci = require('simple-uci').cursor()
+
+local function usage()
+	io.stderr:write('Aufruf: kontakt [adresse ...]   (ohne Adresse: anzeigen; --delete: entfernen)\n')
+	os.exit(1)
+end
+
+local function owner()
+	local sec = uci:get_first('gluon-node-info', 'owner')
+	if not sec then
+		sec = uci:add('gluon-node-info', 'owner')
+	end
+	return sec
+end
+
+local function current()
+	local sec = uci:get_first('gluon-node-info', 'owner')
+	local c = sec and uci:get('gluon-node-info', sec, 'contact')
+	if c == '' then c = nil end
+	return c
+end
+
+local function show(prefix)
+	print((prefix or '') .. (current() or '(keine Kontaktadresse eingetragen)'))
+end
+
+if #arg == 0 then
+	show()
+	os.exit(0)
+end
+
+local new
+if arg[1] == '-h' or arg[1] == '--help' then
+	usage()
+elseif arg[1] == '--delete' or arg[1] == '--none' then
+	if #arg > 1 then usage() end
+	new = nil
+else
+	if arg[1]:sub(1, 1) == '-' then usage() end
+	new = table.concat(arg, ' '):gsub('^%s+', ''):gsub('%s+$', '')
+	if new == '' then usage() end
+end
+
+if new == current() then
+	show('Unveraendert, nichts geschrieben: ')
+	os.exit(0)
+end
+
+local sec = owner()
+if new then
+	uci:set('gluon-node-info', sec, 'contact', new)
+else
+	uci:delete('gluon-node-info', sec, 'contact')
+end
+uci:commit('gluon-node-info')
+if new then
+	show('Neue Kontaktadresse (oeffentlich sichtbar): ')
+else
+	print('Kontaktadresse entfernt')
+end
