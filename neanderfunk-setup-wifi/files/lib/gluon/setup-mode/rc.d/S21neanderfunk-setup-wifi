@@ -27,7 +27,7 @@ boot() {
 		return 0
 	}
 	sw_conf
-	[ "$SW_START" = boot ] && date +%s > "$SW_ACTIVE"
+	[ "$SW_START" = boot ] && cut -d. -f1 /proc/uptime > "$SW_ACTIVE"
 	start "$@"
 }
 

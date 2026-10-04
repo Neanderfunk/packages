@@ -54,8 +54,23 @@ local function writefile(file, content)
 	f:close()
 end
 
+local function uptime()
+	local f = io.open('/proc/uptime')
+	if not f then return 0 end
+	local line = f:read('*l')
+	f:close()
+	return tonumber((line or ''):match('^(%d+)')) or 0
+end
+
+-- Alle Zeitmarken dieses Skripts sind Sekunden seit dem Boot (/proc/uptime),
+-- nicht die Uhrzeit. Die Uhr steht nach dem Boot auf einem alten Datum
+-- (sysfixtime: juengste Datei unter /etc, nach einem Update das Datum der
+-- Quellen) und springt erst mit NTP. Eine vorher geschriebene Marke sah danach
+-- Tage alt aus: Schulstr7 am 04.10.2026, 20 min nach dem Update "171 min ohne
+-- Station" und WLAN-Neustart, 281 min spaeter der Reboot-Wunsch. Die Marken
+-- liegen in /tmp und verschwinden mit dem Boot, Sekunden seit dem Boot reichen.
 local function time2file(file)
-	writefile(file, string.format('%i', os.time()))
+	writefile(file, string.format('%i', uptime()))
 end
 
 -- One marker file per strike, as in the shell checks: a single counter file is
@@ -65,7 +80,7 @@ local function strike(prefix)
 	while util.readfile(prefix .. '.' .. n) do
 		n = n + 1
 	end
-	writefile(prefix .. '.' .. n, tostring(os.time()))
+	writefile(prefix .. '.' .. n, tostring(uptime()))
 	return n
 end
 
@@ -111,14 +126,6 @@ local function site_setting(name, default)
 		v = site.ath9kblackout[name]()
 	end
 	return tonumber(v) or default
-end
-
-local function uptime()
-	local f = io.open('/proc/uptime')
-	if not f then return 0 end
-	local line = f:read('*l')
-	f:close()
-	return tonumber((line or ''):match('^(%d+)')) or 0
 end
 
 -- Is this interface actually serving, so that a lack of stations on it means
@@ -241,11 +248,23 @@ end
 local blackout_wait_secs = site_setting('blackoutwait', 171) * 60
 local reset_wait_secs = site_setting('resetwait', 281) * 60
 
-if os.difftime(os.time(), tonumber((util.readfile(fileReset)))) <= reset_wait_secs then
+-- Alter einer Marke in Sekunden. Ein Wert groesser als die Uptime kann nur
+-- von einer frueheren Fassung stammen (Uhrzeit statt Uptime) oder von vor dem
+-- Boot: dann gilt die Marke als gerade gesetzt.
+local function age(file)
+	local v = tonumber((util.readfile(file)))
+	if not v or v > up then
+		time2file(file)
+		return 0
+	end
+	return up - v
+end
+
+if age(fileReset) <= reset_wait_secs then
 	os.exit(0)
 end
 
-if os.difftime(os.time(), tonumber((util.readfile(fileOk)))) <= blackout_wait_secs then
+if age(fileOk) <= blackout_wait_secs then
 	os.exit(0)
 end
 

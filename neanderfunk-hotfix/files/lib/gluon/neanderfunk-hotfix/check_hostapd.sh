@@ -35,7 +35,7 @@ RESTART_MARKER='/tmp/hotfix.hostapd.last-restart'
 # Rueckgabe 0 nur bei tatsaechlichem Neustart - der Aufrufer raeumt danach
 # Strikes weg, und das darf nicht behaupten, es sei etwas geschehen.
 restart_wifi() {
-	local age cooldown
+	local age cooldown last
 
 	# Abklingzeit. Ohne sie wuerde ein dauerhaft fehlendes Radio - eine Sektion
 	# in der Config, deren phy nicht hochkommt - alle drei Laeufe einen
@@ -48,8 +48,14 @@ restart_wifi() {
 	case "$cooldown" in
 		''|*[!0-9]*) cooldown=30 ;;
 	esac
+	# Der Marker enthaelt die Sekunden seit dem Boot, nicht die Uhrzeit: Nach
+	# dem Boot steht die Uhr auf einem alten Datum und springt mit NTP, eine
+	# Zeitrechnung ueber das Dateidatum waere dann um Tage daneben (siehe
+	# neanderfunk-wifi-blackout, 04.10.2026). Leer oder alt = keine Abklingzeit.
 	if [ -f "$RESTART_MARKER" ] ; then
-		age=$(( ( $(date +%s) - $(date -r "$RESTART_MARKER" +%s) ) / 60 ))
+		last="$(cat "$RESTART_MARKER" 2>/dev/null)"
+		case "$last" in ''|*[!0-9]*) last=0 ;; esac
+		age=$(( ( $(cut -d. -f1 /proc/uptime) - last ) / 60 ))
 		if [ "$age" -lt "$cooldown" ] ; then
 			logger -t "$HOTFIX_TAG" -p 5 "wifi restart skipped, last one was ${age}min ago (hotfix.settings.hostapd_cooldown_min=${cooldown})"
 			return 1
@@ -61,7 +67,7 @@ restart_wifi() {
 		logger -t "$HOTFIX_TAG" -p 5 "wifi restart skipped, another check is already restarting wifi"
 		return 1
 	fi
-	touch "$RESTART_MARKER"
+	cut -d. -f1 /proc/uptime > "$RESTART_MARKER"
 	logger -t "$HOTFIX_TAG" -p 5 "wifi hard restart"
 	wifi down
 	killall hostapd 2>/dev/null

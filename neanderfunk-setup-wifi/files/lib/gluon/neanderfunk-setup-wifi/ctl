@@ -22,7 +22,9 @@ case "$1" in
 		sw_legacy_patch && exit 0
 		sw_conf
 		[ "$SW_START" = off ] && exit 0
-		date +%s > "$SW_ACTIVE"
+		# Sekunden seit dem Boot, nicht die Uhrzeit (die im Setup-Mode ohne NTP
+		# ohnehin nicht stimmt)
+		cut -d. -f1 /proc/uptime > "$SW_ACTIVE"
 		sw_log "setup WLAN on ($1), off again after $SW_TIMEOUT s"
 		/lib/gluon/setup-mode/rc.d/S21neanderfunk-setup-wifi start
 		;;
@@ -41,7 +43,7 @@ case "$1" in
 		sw_names
 		echo "start=$SW_START security=$SW_SECURITY timeout=${SW_TIMEOUT}s ssid=$SW_SSID"
 		if [ -f "$SW_ACTIVE" ]; then
-			echo "an seit $(( $(date +%s) - $(cat "$SW_ACTIVE") )) s"
+			echo "an seit $(( $(cut -d. -f1 /proc/uptime) - $(cat "$SW_ACTIVE") )) s"
 		else
 			echo 'aus'
 		fi

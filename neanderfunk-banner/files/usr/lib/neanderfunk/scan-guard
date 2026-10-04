@@ -68,14 +68,16 @@ for radio in "$@" ; do
 		need="$need $radio"
 		continue
 	fi
-	start=$(date +%s)
+	# Sekunden seit dem Boot statt Uhrzeit: springt die Uhr per NTP, wird die
+	# Wartezeit sonst falsch (siehe neanderfunk-wifi-blackout, 04.10.2026).
+	start=$(cut -d. -f1 /proc/uptime)
 	ok=0
 	while : ; do
 		unicast_ok "$dev" && { ok=1 ; break ; }
-		[ $(( $(date +%s) - start )) -ge "$GUARD_WAIT" ] && break
+		[ $(( $(cut -d. -f1 /proc/uptime) - start )) -ge "$GUARD_WAIT" ] && break
 		sleep 5
 	done
-	waited=$(( $(date +%s) - start ))
+	waited=$(( $(cut -d. -f1 /proc/uptime) - start ))
 	if [ $ok = 1 ] ; then
 		after=''
 		[ "$waited" -ge 5 ] && after=" (nach ${waited}s)"

@@ -26,11 +26,16 @@ echo "$gw" | grep -qE '^([0-9a-f]{2}:){5}[0-9a-f]{2}$' || exit 0
 
 dir=/tmp/neanderfunk-gateway-name
 cache="$dir/$(echo "$gw" | tr -d ':')"
+# Cache: erste Zeile Sekunden seit dem Boot (nicht die Uhrzeit, die nach dem
+# Boot mit NTP springt), zweite Zeile der Name, leer = keiner gefunden.
+now=$(cut -d. -f1 /proc/uptime)
 if [ -f "$cache" ]; then
-	if [ -s "$cache" ]; then
-		[ -n "$(find "$cache" -mmin -60)" ] && { cat "$cache"; exit 0; }
+	{ read -r t; read -r cached; } < "$cache"
+	case "$t" in ''|*[!0-9]*) t=0 ;; esac
+	if [ -n "$cached" ]; then
+		[ $((now - t)) -lt 3600 ] && { printf '%s' "$cached"; exit 0; }
 	else
-		[ -n "$(find "$cache" -mmin -5)" ] && exit 0
+		[ $((now - t)) -lt 300 ] && exit 0
 	fi
 fi
 mkdir -p "$dir"
@@ -46,5 +51,5 @@ for mac in $(batctl tg -H 2>/dev/null | awk -v o=" $gw " 'index($0, o) { print (
 	[ -n "$name" ] && break
 done
 
-printf '%s' "$name" > "$cache"
+printf '%s\n%s\n' "$now" "$name" > "$cache"
 printf '%s' "$name"
