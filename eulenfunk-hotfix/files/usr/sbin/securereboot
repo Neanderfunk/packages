@@ -1,4 +1,5 @@
 #!/bin/sh
-upgrade_started='/tmp/autoupdate.lock'
-[ -f $upgrade_started ] && exit
+# reboot, but never into a running autoupdater (it holds the flock through
+# the sysupgrade)
+flock -n /var/lock/autoupdater.lock true || exit 0
 reboot -f

@@ -1,5 +1,12 @@
 #!/bin/sh
-# check_hostapd for matching pids
+# Called per hostapd process with its ps line as arguments
+# ("<pid> <user> <vsz> <stat> /usr/sbin/hostapd -s -P ... -B /var/run/hostapd-phyN.conf").
+# Restarts wifi if the AP interface of that phy is in master mode but has no
+# channel, three runs in a row.
+# Removed 2026-10 (Sackgasse 2021.1), both never had an effect:
+# - pid file vs. ps pid: busybox ps pads the pid, the comparison failed for
+#   pids below 10000; above, it restarted only when a second look matched
+# - "up: false" in wifi status: never matched the ubus JSON
 restart_wifi() {
   logger -s -t "eulenfunk-checkhostapd" "wifi hard restart"
   wifi down
@@ -11,68 +18,25 @@ restart_wifi() {
   sleep 60
 }
 
-pspid="$1"
-phy=$(echo $@|sed 's/.*-B\ //g'|cut -d" " -f1|sed 's/.*hostapd-//g'|cut -d"." -f1)
-if [ ${phy:0:3} = "phy" ] ; then
-  pidfile=$(echo $@|sed 's/.*-P\ //g'|cut -d" " -f1)
-  pid=$(cat $pidfile 2>/dev/null)
-  sema="/tmp/hostapdpid"
-  if [ "$pid" = "${pspid%% *}" ] ; then
-    rm -f $sema.fail.$phy 2>/dev/null
-    touch $sema.ok.$phy
-  else
-    touch $sema.fail.$phy
-    rm -f $sema.ok.$phy 2>/dev/null
-    pspid=$(ps|grep hostapd|grep $phy)
-    pid=$(cat $pidfile 2>/dev/null)
-    if [ "$pid" = "${pspid%% *}" ] ; then
-      logger -s -t "eulenfunk-healthcheck" "hostapd restart due to nonmatchings pids on $phy"
+phy=$(echo "$@" | sed 's/.*-B\ //g' | cut -d" " -f1 | sed 's/.*hostapd-//g' | cut -d"." -f1)
+case "$phy" in phy[0-9]*) ;; *) exit 0 ;; esac
+client="client${phy#phy}"
+sema="/tmp/channelunknown"
+iwstat=$(iwinfo $client info)
+if echo "$iwstat" | grep -qi "Mode: Master" ; then
+  if echo "$iwstat" | grep -qi "Channel: unknown" ; then
+    if [ -f $sema.fail.$client.2 ] ; then
+      logger -s -t "eulenfunk-healthcheck" "channel $client unknown"
       restart_wifi
-      rm -f $sema.fail.$phy 2>/dev/null
-      sleep 10
-    fi
-  fi
-  wifistatus=$(wifi status)
-  radio="radio"${phy:3:1}
-  sema="/tmp/wifipending"
-  if [ $(echo $wifistatus|grep -A 6 $radio|cut -d":" -f1-10|grep -c "up: false") -eq 1 ] ; then
-    if [ $(echo $wifistatus|grep -A 6 $radio|cut -d":" -f1-10|grep -c "pending: true") -eq 1 ] ; then
-      if [ -f $sema.fail.$radio.2 ] ; then
-        logger -s -t "eulenfunk-healthcheck" "hostapd down and pending on $radio"
-        restart_wifi
-        rm -f $sema.fail.$radio.* 2>/dev/null
-        rm -f $sema.ok.$radio.* 2>/dev/null
-      elif [ -f $sema.fail.$radio.1 ] ; then
-        touch $sema.fail.$radio.2
-      else
-        touch $sema.fail.$radio.1
-        rm -f $sema.ok.$radio.* 2>/dev/null
-      fi
+      rm -f $sema.fail.$client.* $sema.ok.$client.* 2>/dev/null
+    elif [ -f $sema.fail.$client.1 ] ; then
+      touch $sema.fail.$client.2
     else
-      rm -f $sema.fail.$radio.* 2>/dev/null
-      touch $sema.ok.$radio
+      touch $sema.fail.$client.1
+      rm -f $sema.ok.$client.* 2>/dev/null
     fi
-  fi
-  client="client"${phy:3:1}
-  sema="/tmp/channelunknown"
-  iwstat=$(iwinfo $client info)
-  if [ $(echo $iwstat|grep -i "Mode: Master"|wc -l) -eq 1 ] ; then
-    if [ $(echo $iwstat|grep -i "Channel: unknown"|wc -l) -eq 1 ] ; then
-      if [ -f $sema.fail.$client.2 ] ; then
-        logger -s -t "eulenfunk-healthcheck" "channel $client unknown"
-        restart_wifi
-        rm -f $sema.fail.$client.* 2>/dev/null
-        rm -f $sema.ok.$client.* 2>/dev/null
-      elif [ -f $sema.fail.$client.1 ] ; then
-        touch $sema.fail.$client.2
-      else
-        touch $sema.fail.$client.1
-        rm -f $sema.ok.$client.* 2>/dev/null
-      fi
-    else
-      rm -f $sema.fail.$client.* 2>/dev/null
-      touch $sema.ok.$client
-    fi
+  else
+    rm -f $sema.fail.$client.* 2>/dev/null
+    touch $sema.ok.$client
   fi
 fi
-

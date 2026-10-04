@@ -1,7 +1,5 @@
 #!/bin/sh
-upgrade_started='/tmp/autoupdate.lock'
-
-[ -f $upgrade_started ] && exit
+flock -n /var/lock/autoupdater.lock true || exit 0
 
 cliifs=$(/usr/sbin/brctl show | sed -n -e '/^br-client[[:space:]]/,/^\S/ { /^\(br-client[[:space:]]\|\t\)/s/^.*\t//p }' | grep -v "bat0" | grep -v "local-port"| tr '\n' ' ')
 
@@ -21,13 +19,12 @@ for r in 0 1 2; do
 [ "$APoff" -eq "1" ] && exit 0
 C_MACS=""
 for if in $cliifs; do
-  C_MACS=${C_MACs}$(iw dev $if station dump | grep ^Station | cut -d ' ' -f 2)
+  C_MACS=${C_MACS}$(iw dev $if station dump | grep ^Station | cut -d ' ' -f 2)
  done
 
 if [ -z "$C_MACS" ] ; then
   if [ -f /tmp/WifiClients ] ; then
     if [ -f /tmp/NoWiCli.3 ] ; then
-      [ -f $upgrade_started ] && exit
       logger -s -t "hotfix-IfNoWificlient" -p 5 "wireless stations disappeared for long, restarting Wifi"
       rm -f /tmp/WifiClients 2>/dev/null
       rm -f /tmp/NoWiCli.* 2>/dev/null
