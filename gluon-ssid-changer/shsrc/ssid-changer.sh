@@ -27,11 +27,11 @@ FIRST="$(uci -q get ssid-changer.settings.first)"
 PREFIX="$(uci -q get ssid-changer.settings.prefix)"
 : ${PREFIX:='FF_Offline_'}
 
-if [ "$(uci -q get ssid-changer.settings.enabled)" = '0' ]; then 
-	DISABLED='1'
-else
-	DISABLED='0'
-fi
+# every OpenWrt spelling of false/true (backport of v2025.1.x 45f6829)
+case "$(uci -q get ssid-changer.settings.enabled)" in
+	0|false|no|off|disabled) DISABLED='1' ;;
+	*) DISABLED='0' ;;
+esac
 
 # generate the ssid with either 'nodename', 'mac' or to use only the prefix set to 'none'
 SETTINGS_SUFFIX="$(uci -q get ssid-changer.settings.suffix)"
@@ -66,8 +66,13 @@ ONLINE_SSIDs="$(uci show wireless | grep wireless.client_radio[0-9]\. | grep ssi
 TMP=/tmp/ssid-changer-count
 if [ ! -f $TMP ]; then echo "0">$TMP; fi
 OFF_COUNT=$(cat $TMP)
+# an empty or broken counter file (killed while writing) counts as 0
+case "$OFF_COUNT" in ''|*[!0-9]*) OFF_COUNT=0 ;; esac
 
-TQ_LIMIT_ENABLED="$(uci -q get ssid-changer.settings.tq_limit_enabled)"
+case "$(uci -q get ssid-changer.settings.tq_limit_enabled)" in
+	1|true|yes|on|enabled) TQ_LIMIT_ENABLED=1 ;;
+	*) TQ_LIMIT_ENABLED=0 ;;
+esac
 # if true, the offline ssid will only be set if there is no gateway reacheable
 # upper and lower limit to turn the offline_ssid on and off
 # in-between these two values the SSID will never be changed to preven it from toggeling every Minute.
@@ -82,6 +87,7 @@ if [ $TQ_LIMIT_ENABLED = 1 ]; then
 	: ${TQ_LIMIT_MIN:='35'}
 	# grep the connection quality of the currently used gateway
 	GATEWAY_TQ=$(batctl gwl | grep -e "^=>" -e "^\*" | awk -F '[('')]' '{print $2}' | tr -d " ")
+	case "$GATEWAY_TQ" in ''|*[!0-9]*) GATEWAY_TQ='' ;; esac
 	if [ ! $GATEWAY_TQ ]; then
 		# there is no gateway
 		GATEWAY_TQ=0
