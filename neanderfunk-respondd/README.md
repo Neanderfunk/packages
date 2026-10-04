@@ -7,7 +7,12 @@ module (wish adorfer, 2026-10-04). Differences: json-c 0.12 has no
 2019-10-16 has no `htmode` operation (the configured htmode is read from
 `/etc/config/wireless`; Gluon 2021.1 has no ACS, so that is what runs), and
 `preserve_channels` is read from `gluon-core` the way Gluon 2021.1 does (any
-value set counts). Built with the OpenWrt 19.07.10 SDK (mips_24kc, musl
+value set counts). SSIDs (`ssid`, `owe_ssid`) come from the kernel via
+nl80211 `GET_INTERFACE` (libnl-tiny): iwinfo of that age reads an AP's SSID
+from the hostapd config file, which the ssid-changer rewrites before its HUP
+even when hostapd ignores the HUP. Checked on the WR841N v9 by editing the
+config file without HUP: iwinfo showed the edited SSID, the module the one
+on air. Built with the OpenWrt 19.07.10 SDK (mips_24kc, musl
 1.1.24): 24 KB stripped, ~8.7 KB xz; tested on a TL-WR841N v9 (24111111sta)
 with a second respondd on port 1101, RSS 920 kB.
 

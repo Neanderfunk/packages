@@ -8,7 +8,7 @@
  *
  * Billig bleiben: die Statusseite fragt statistics alle 3 s ab, dazu Karte und
  * Yanic. Nur sysfs, /proc, ein ioctl je Ethernet-Port und nl80211 ueber
- * libiwinfo - kein Prozessstart, kein ubus.
+ * libiwinfo und libnl-tiny - kein Prozessstart, kein ubus.
  *
  * Nicht hier hinein: Adressen aus dem Uplink-/WAN-Netz des Aufstellers.
  * respondd ist meshweit abfragbar und landet auf oeffentlichen Karten.
@@ -60,6 +60,11 @@
 
 #include <iwinfo.h>
 #include <json-c/json.h>
+#include <linux/nl80211.h>
+#include <netlink/attr.h>
+#include <netlink/genl/ctrl.h>
+#include <netlink/genl/genl.h>
+#include <netlink/msg.h>
 #include <json-c/json_c_version.h>
 
 /*
@@ -496,8 +501,84 @@ static bool netdev_up(const char *ifname) {
  */
 #define WIRELESS_TTL 10
 
+/*
+ * Sackgasse 2021.1: iwinfo 2019-10-16 liest die SSID eines AP aus der
+ * hostapd-Konfigdatei. Die schreibt der ssid-changer vor dem HUP um, auch wenn
+ * hostapd den HUP ignoriert; iwinfo zeigt dann die neue SSID, gefunkt wird die
+ * alte. Live steht sie nur im Kernel: NL80211_CMD_GET_INTERFACE, Attribut
+ * NL80211_ATTR_SSID (das liest auch "iw dev X info"). Leer, wenn das
+ * Interface fehlt oder nicht funkt.
+ */
+struct nl_ssid {
+	char *buf;
+	size_t len;
+	int done;
+};
+
+static int nl_ssid_valid(struct nl_msg *msg, void *arg) {
+	struct nl_ssid *r = arg;
+	struct genlmsghdr *gh = nlmsg_data(nlmsg_hdr(msg));
+	struct nlattr *tb[NL80211_ATTR_MAX + 1];
+
+	nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gh, 0), genlmsg_attrlen(gh, 0), NULL);
+	if (tb[NL80211_ATTR_SSID]) {
+		size_t n = nla_len(tb[NL80211_ATTR_SSID]);
+		if (n >= r->len)
+			n = r->len - 1;
+		memcpy(r->buf, nla_data(tb[NL80211_ATTR_SSID]), n);
+		r->buf[n] = 0;
+	}
+	return NL_SKIP;
+}
+
+static int nl_ssid_stop(struct nl_msg *msg, void *arg) {
+	(void)msg;
+	((struct nl_ssid *)arg)->done = 1;
+	return NL_STOP;
+}
+
+static int nl_ssid_error(struct sockaddr_nl *nla, struct nlmsgerr *err, void *arg) {
+	(void)nla; (void)err;
+	((struct nl_ssid *)arg)->done = 1;
+	return NL_STOP;
+}
+
+static void live_ssid(struct nl_sock *sk, int family, const char *ifname, char *buf, size_t len) {
+	struct nl_ssid r = { buf, len, 0 };
+	struct nl_msg *msg;
+	struct nl_cb *cb;
+	unsigned int idx = if_nametoindex(ifname);
+
+	buf[0] = 0;
+	if (!sk || family < 0 || !idx)
+		return;
+	msg = nlmsg_alloc();
+	cb = nl_cb_alloc(NL_CB_DEFAULT);
+	if (msg && cb &&
+	    genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, 0, NL80211_CMD_GET_INTERFACE, 0) &&
+	    !nla_put_u32(msg, NL80211_ATTR_IFINDEX, idx) &&
+	    nl_send_auto_complete(sk, msg) >= 0) {
+		nl_cb_set(cb, NL_CB_VALID, NL_CB_CUSTOM, nl_ssid_valid, &r);
+		nl_cb_set(cb, NL_CB_ACK, NL_CB_CUSTOM, nl_ssid_stop, &r);
+		nl_cb_set(cb, NL_CB_FINISH, NL_CB_CUSTOM, nl_ssid_stop, &r);
+		nl_cb_err(cb, NL_CB_CUSTOM, nl_ssid_error, &r);
+		while (!r.done)
+			if (nl_recvmsgs(sk, cb) < 0)
+				break;
+	}
+	if (cb)
+		nl_cb_put(cb);
+	if (msg)
+		nlmsg_free(msg);
+}
+
 static struct json_object * collect_wireless(void) {
 	struct json_object *ret = json_object_new_object();
+	struct nl_sock *sk = nl_socket_alloc();
+	int family = -1;
+
+	if (sk && !genl_connect(sk))
+		family = genl_ctrl_resolve(sk, "nl80211");
 
 	for (int i = 0; i < 4; i++) {
 		char client[IFNAMSIZ], mesh[IFNAMSIZ], radio[16], owe[IFNAMSIZ], wan[IFNAMSIZ];
@@ -533,9 +614,9 @@ static struct json_object * collect_wireless(void) {
 			if (iw->country(dev, country))
 				country[0] = 0;
 			country[2] = 0;
-			if (has_client && iw->ssid(client, ssid))
-				ssid[0] = 0;
 		}
+		if (has_client)
+			live_ssid(sk, family, client, ssid, sizeof(ssid));
 
 		/*
 		 * SSID des OWE-BSS (oweN), per nl80211 vom laufenden Interface; leer,
@@ -550,11 +631,8 @@ static struct json_object * collect_wireless(void) {
 		 * Speicher.
 		 */
 		char owe_ssid[IWINFO_ESSID_MAX_SIZE + 1] = "";
-		if (has_owe) {
-			const struct iwinfo_ops *iwo = iwinfo_backend(owe);
-			if (!iwo || iwo->ssid(owe, owe_ssid))
-				owe_ssid[0] = 0;
-		}
+		if (has_owe)
+			live_ssid(sk, family, owe, owe_ssid, sizeof(owe_ssid));
 
 		struct json_object *r = json_object_new_object();
 		json_object_object_add(r, "channel", json_object_new_int(channel));
@@ -570,6 +648,8 @@ static struct json_object * collect_wireless(void) {
 	}
 
 	iwinfo_finish();
+	if (sk)
+		nl_socket_free(sk);
 	return ret;
 }
 
