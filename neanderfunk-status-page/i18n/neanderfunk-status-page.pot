@@ -51,3 +51,15 @@ msgstr ""
 
 msgid "on"
 msgstr ""
+
+msgid "Client"
+msgstr ""
+
+msgid "Mesh"
+msgstr ""
+
+msgid "Uplink/VPN"
+msgstr ""
+
+msgid "all ports"
+msgstr ""
