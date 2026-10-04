@@ -1,0 +1,23 @@
+#!/usr/bin/lua
+
+local site = require 'gluon.site'
+
+-- wifi_blackout is the current site.conf spelling, ath9kblackout the one this
+-- package had before it was renamed; both are accepted, with a default so a
+-- site that sets neither still gets a working cron entry.
+local step_size = site.wifi_blackout.stepsize()
+if step_size == nil then
+	step_size = site.ath9kblackout.stepsize()
+end
+step_size = tonumber(step_size) or 10
+if step_size < 1 or step_size > 59 then
+	step_size = 10
+end
+
+-- the file the old package installed, so an upgrade does not leave a second
+-- cron entry behind pointing at a binary that no longer exists
+os.remove('/usr/lib/micron.d/ath9kblackout')
+
+local f = io.open('/usr/lib/micron.d/neanderfunk-wifi-blackout', 'w')
+f:write(string.format('*/%i * * * * /usr/sbin/wifi-blackout\n', step_size))
+f:close()

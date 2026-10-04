@@ -1,0 +1,341 @@
+#!/usr/bin/lua
+-- Wifi blackout: the radios are up, but not a single station is associated
+-- anywhere on this node - no client, no mesh peer - and none has been for
+-- hours. From the driver's side everything looks fine, so nothing recovers by
+-- itself. Restart the wifi, and if that does not help, reboot.
+--
+-- WHY THIS EXISTS NEXT TO THE OTHER CHECKS
+--
+-- Every other check in this feed arms only once it has seen the healthy state
+-- at least once since boot: no_wifi_clients after the first client,
+-- mesh_neighbours and bsses after two neighbours or networks. That "no island"
+-- rule is deliberate and keeps a legitimately lonely node from escalating - but
+-- it makes all of them blind to a radio that is broken from the moment it comes
+-- up, because the healthy state never happens and they never arm.
+--
+-- That case is real: adorfer reports nodes that had no clients at all since
+-- booting, inexplicably, where only a reboot helped. One of them was an Aruba
+-- AP-303 (ipq40xx), so this is not an ath9k matter and the check is not gated
+-- on any driver - the previous version was called ath9kblackout and restricted
+-- itself to ath9k, which would have missed exactly that node.
+--
+-- Deliberately NO arming rule here, therefore. The price is that a node which
+-- genuinely has no users and no neighbours is restarted every few hours; the
+-- long blackoutwait from the site.conf is what keeps that tolerable.
+--
+-- The node is judged as a whole, not per radio: any interface with a station
+-- makes the node healthy. Per radio, a 5 GHz radio without clients - entirely
+-- normal, plenty of clients are 2.4 GHz only - would be a permanent false
+-- positive.
+--
+-- Forked from FreifunkHochstift's ffho-ath9k-blackout-workaround, see README.
+
+local site = require 'gluon.site'
+local util = require 'gluon.util'
+local uci = require('simple-uci').cursor()
+
+-- uci booleans like OpenWrt's shell get_bool / netifd: 1/true/yes/on/enabled.
+-- simple-uci's get_bool knows only "1".
+local function uci_true(...)
+	local v = uci:get(...)
+	return v == '1' or v == 'true' or v == 'yes' or v == 'on' or v == 'enabled'
+end
+local iwinfo = require 'iwinfo'
+
+local fileOk = '/tmp/wifi-blackout.ok'
+local fileReset = '/tmp/wifi-blackout.reset'
+local fileStrike = '/tmp/wifi-blackout.acted'
+local fileWificonfig = '/etc/config/wireless'
+
+local function writefile(file, content)
+	local f = io.open(file, 'w')
+	if not f then return end
+	f:write(content)
+	f:close()
+end
+
+local function uptime()
+	local f = io.open('/proc/uptime')
+	if not f then return 0 end
+	local line = f:read('*l')
+	f:close()
+	return tonumber((line or ''):match('^(%d+)')) or 0
+end
+
+-- Alle Zeitmarken dieses Skripts sind Sekunden seit dem Boot (/proc/uptime),
+-- nicht die Uhrzeit. Die Uhr steht nach dem Boot auf einem alten Datum
+-- (sysfixtime: juengste Datei unter /etc, nach einem Update das Datum der
+-- Quellen) und springt erst mit NTP. Eine vorher geschriebene Marke sah danach
+-- Tage alt aus: Schulstr7 am 04.10.2026, 20 min nach dem Update "171 min ohne
+-- Station" und WLAN-Neustart, 281 min spaeter der Reboot-Wunsch. Die Marken
+-- liegen in /tmp und verschwinden mit dem Boot, Sekunden seit dem Boot reichen.
+local function time2file(file)
+	writefile(file, string.format('%i', uptime()))
+end
+
+-- One marker file per strike, as in the shell checks: a single counter file is
+-- truncated on every write, and being killed in that window resets the count.
+local function strike(prefix)
+	local n = 1
+	while util.readfile(prefix .. '.' .. n) do
+		n = n + 1
+	end
+	writefile(prefix .. '.' .. n, tostring(uptime()))
+	return n
+end
+
+-- Wie viele Strikes stehen an, ohne einen zu setzen. Gebraucht, damit die
+-- Entscheidung "Neustart oder Reboot" getroffen werden kann, BEVOR gezaehlt
+-- wird - ein Neustart, der wegen der gemeinsamen Sperre ausfaellt, darf den
+-- Zaehler nicht Richtung Reboot treiben.
+local function peek_strikes(prefix)
+	local n = 0
+	while util.readfile(prefix .. '.' .. (n + 1)) do
+		n = n + 1
+	end
+	return n
+end
+
+local function unstrike(prefix)
+	local n = 1
+	while util.readfile(prefix .. '.' .. n) do
+		os.remove(prefix .. '.' .. n)
+		n = n + 1
+	end
+end
+
+-- NB the extra parentheses. simple-uci's get() returns TWO values when the key
+-- is missing (nil plus an error string) and one when it is set, and an
+-- unparenthesised call expands to all of them - so tonumber() got the error
+-- string as its base argument and raised "bad argument #2 to 'tonumber'".
+-- It therefore worked whenever a value was configured and crashed in exactly
+-- the default case. Caught by a dry run on a real node; the test harness stubs
+-- simple-uci with a single-return function and could never reproduce it.
+local function setting(name, default)
+	local v = tonumber((uci:get('wifi_blackout', 'settings', name)))
+	return v or default
+end
+
+-- site.conf: wifi_blackout is the current spelling, ath9kblackout the one this
+-- package used to have. Both are accepted so a site.conf does not have to be
+-- changed in the same step as the firmware. gluon.site yields nil for a missing
+-- key rather than raising, verified on a node, so this needs no guarding.
+local function site_setting(name, default)
+	local v = site.wifi_blackout[name]()
+	if v == nil then
+		v = site.ath9kblackout[name]()
+	end
+	return tonumber(v) or default
+end
+
+-- Is this interface actually serving, so that a lack of stations on it means
+-- something? Three conditions, and the uci flags alone are not enough:
+--
+--   * uci must not have the interface or its radio disabled. Gluon has separate
+--     switches for client and mesh per radio, and a node with both off would
+--     never see an association - restarting its wifi every few hours forever.
+--   * the netdev must exist and be operationally up. Measured on a COVR-X1860:
+--     mesh_radio1 has disabled='0' and its netdev exists, but operstate is
+--     "down" because radio1 is on channel "auto" and a mesh interface needs a
+--     fixed channel. uci calls it enabled; it never comes up.
+--
+-- A blackout is by definition a radio that is UP and deaf, so requiring
+-- operstate up does not hide the case this check is for. A radio whose netdev
+-- is down or gone is a different fault and belongs to bsses / mesh_neighbours /
+-- the hostapd checks.
+local function is_candidate(iface)
+	local radio = uci:get('wireless', iface, 'device')
+	if not radio then
+		return false
+	end
+	if uci_true('wireless', iface, 'disabled') or uci_true('wireless', radio, 'disabled') then
+		return false
+	end
+
+	local ifname = uci:get('wireless', iface, 'ifname')
+	if not ifname then
+		return false
+	end
+	local oper = util.readfile('/sys/class/net/' .. ifname .. '/operstate')
+	if not oper then
+		return false
+	end
+	return oper:match('^%s*(%S+)') == 'up'
+end
+
+-- true when a station is associated on this interface. A radio that cannot be
+-- queried at all certainly has none, so that counts as "no station" rather
+-- than as "not applicable".
+local function has_station(iface)
+	local radio = uci:get('wireless', iface, 'device')
+	local ifname = uci:get('wireless', iface, 'ifname')
+	-- Sackgasse 2021.1: Typ ueber den netdev-Namen, den kennt jedes iwinfo
+	local wifitype = iwinfo.type(ifname) or iwinfo.type(radio)
+	if not wifitype then
+		return false
+	end
+	local ok, assoclist = pcall(iwinfo[wifitype].assoclist, ifname)
+	if not ok or not assoclist then
+		return false
+	end
+	return next(assoclist) ~= nil
+end
+
+-- how many interfaces the node is supposed to serve on, and whether any of
+-- them has a station
+local function check_wifi()
+	local candidates = 0
+	local ok = false
+	uci:foreach('wireless', 'wifi-iface',
+		function(s)
+			if is_candidate(s['.name']) then
+				candidates = candidates + 1
+				ok = ok or has_station(s['.name'])
+			end
+		end
+	)
+	return candidates, ok
+end
+
+local function log(msg)
+	os.execute('logger -s -t neanderfunk-wifi-blackout -p local0.info "[wifi_blackout] ' .. msg .. '"')
+end
+
+-- Eine Zeile ins gemeinsame Reboot-Log, das den Neustart ueberlebt - der
+-- Ringpuffer tut es nicht, und ohne diese Zeile war hinterher nicht mehr
+-- feststellbar, dass der Knoten wegen des Blackouts neu gestartet ist.
+-- Deckel und Abschaltung: siehe /lib/gluon/neanderfunk/reboot.sh.
+-- Sackgasse 2021.1: kein neanderfunk-common (nf-reboot-log), der Grund
+-- steht nur im syslog
+local function reboot_log(msg)
+end
+
+if uci_true('wifi_blackout', 'settings', 'disabled') then
+	os.exit(0)
+end
+
+-- Below check_uptime_min nothing runs; the radios are still coming up and
+-- having no stations yet says nothing. The action threshold is not applied
+-- separately: blackoutwait is far longer than it anyway.
+local up = uptime()
+if up <= setting('check_uptime_min', 5) * 60 then
+	os.exit(0)
+end
+
+local candidates, wifi_ok = check_wifi()
+if candidates == 0 then
+	-- No interface that is up and serving: an x86 node without radios, a node
+	-- with client and mesh switched off, or one whose wifi is down altogether.
+	-- Nothing here can be judged as a blackout.
+	os.exit(0)
+end
+
+if not util.readfile(fileReset) then
+	-- normally written by the ifup hotplug handler; this is the fallback for a
+	-- node where no ifup has happened since the package was installed
+	if not util.readfile(fileWificonfig) then
+		os.exit(0)
+	end
+	time2file(fileReset)
+end
+
+if wifi_ok or not util.readfile(fileOk) then
+	time2file(fileOk)
+	unstrike(fileStrike)
+	os.exit(0)
+end
+
+local blackout_wait_secs = site_setting('blackoutwait', 171) * 60
+local reset_wait_secs = site_setting('resetwait', 281) * 60
+
+-- Alter einer Marke in Sekunden. Ein Wert groesser als die Uptime kann nur
+-- von einer frueheren Fassung stammen (Uhrzeit statt Uptime) oder von vor dem
+-- Boot: dann gilt die Marke als gerade gesetzt.
+local function age(file)
+	local v = tonumber((util.readfile(file)))
+	if not v or v > up then
+		time2file(file)
+		return 0
+	end
+	return up - v
+end
+
+if age(fileReset) <= reset_wait_secs then
+	os.exit(0)
+end
+
+if age(fileOk) <= blackout_wait_secs then
+	os.exit(0)
+end
+
+-- Escalate. A wifi restart is the cheap remedy and fixes some cases; where it
+-- does not, only a reboot has helped in the field, so the second time round
+-- this reboots rather than restarting the wifi again for hours on end.
+local n = peek_strikes(fileStrike) + 1
+
+if n <= setting('restarts_before_reboot', 1) then
+	log(string.format('no associated station on any radio for %i min (attempt %i) - restarting wifi',
+		blackout_wait_secs / 60, n))
+	-- Gemeinsame Sperre, dieselbe Datei wie in neanderfunk-hotfix, -linkcheck,
+	-- und -ssid-changer. Die ganze Sequenz laeuft unter EINER
+	-- flock-Instanz, die Sperre wird also durchgehend gehalten und nicht
+	-- zwischen den Einzelkommandos freigegeben.
+	--
+	-- Gezaehlt und der reset-Marker gesetzt wird erst danach und nur bei
+	-- Erfolg: faellt der Neustart wegen der Sperre aus, waere sonst ein
+	-- Versuch verbucht, den es nie gab - und beim naechsten Mal ginge es
+	-- gleich zum Reboot.
+	-- Kein "wifi config" zwischen down und up: das erkennt unter OpenWrt 23.05
+	-- neue Radios und macht dabei "uci commit wireless" - samt offener
+	-- Laufzeit-Aenderungen (Offline-SSID, ap-timer). Fuer den Neustart unnoetig.
+	-- Das "killall hostapd" ist Absicht, auch wenn procd hostapd (wpad) sonst
+	-- selbst verwaltet: im Feld hingen hostapds, die auf wifi down/up nicht
+	-- mehr reagierten (adorfer). procd startet ihn neu, netifd wartet per
+	-- "ubus wait_for hostapd". Bitte nicht als Aufraeumarbeit entfernen.
+	local rc = os.execute("flock -n /var/lock/neanderfunk-wifi.lock -c '" ..
+		"wifi down; killall hostapd >/dev/null 2>&1; " ..
+		"rm -f /var/run/wifi-*.pid >/dev/null 2>&1; wifi up'")
+	if type(rc) == 'number' and rc ~= 0 then
+		log('wifi restart skipped, another check is already restarting wifi - retrying next run')
+		os.exit(0)
+	end
+	time2file(fileReset)
+	strike(fileStrike)
+	os.exit(0)
+end
+
+-- Ab hier geht es zum Reboot. Der Zaehler wird jetzt fortgeschrieben, damit
+-- der Zustand stimmt, falls der Reboot unterbleibt (Autoupdater laeuft).
+time2file(fileReset)
+strike(fileStrike)
+
+-- Bis hierher wurde allein /tmp/autoupdate.lock geprueft - die Datei, die
+-- niemand anlegt (kein Gluon-Paket, kein Patch unseres Firmware-Trees), der
+-- Schutz war also wirkungslos. Das faellt gerade hier ins Gewicht:
+-- ffac-autoupdater-wifi-fallback holt einen gestrandeten Knoten zurueck, indem
+-- es sich als Client in ein fremdes Freifunk-Netz haengt und darueber eine
+-- ganze Firmware laedt. Ein Reboot mittendrin macht die Rettung zunichte.
+-- Dieselbe Erkennung wie in neanderfunk-weeklyreboot und -linkcheck: die
+-- Sperrdatei, die der Autoupdater tatsaechlich haelt, plus die Prozessnamen.
+local function autoupdater_running()
+	if os.execute('flock -n /var/lock/autoupdater.lock true 2>/dev/null') ~= 0 then
+		return true
+	end
+	if os.execute('pgrep autoupdater >/dev/null') == 0 then return true end
+	if os.execute('pgrep sysupgrade >/dev/null') == 0 then return true end
+	return false
+end
+
+if autoupdater_running() then
+	log('reboot wanted, but an autoupdate is in flight')
+	os.exit(0)
+end
+
+local reason = string.format('no associated station on any radio for %i min and the wifi restart did not help',
+	blackout_wait_secs / 60)
+log(reason .. ' - rebooting')
+reboot_log(reason)
+-- Flash-Sync ohne Haengenbleiben, reboot -f, und sysrq als Nachschlag, falls
+-- das Geraet danach noch laeuft (wie nf-reboot aus neanderfunk-common, das es
+-- in der Sackgasse 2021.1 nicht gibt).
+os.execute('(sync &); sleep 5; reboot -f; sleep 30; echo b > /proc/sysrq-trigger')
