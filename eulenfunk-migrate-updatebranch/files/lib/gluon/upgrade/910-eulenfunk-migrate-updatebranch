@@ -1,7 +1,6 @@
 #!/bin/sh
 
 UPDATE_BRANCH=$(uci get autoupdater.settings.branch)
-GLUON_SITECODE=$(lua /lib/gluon/eulenfunk-migrate-updatebranch/sitecode.lua)
 
 # shifting remaining gluon2021.x (32MB RAM/4MB Flash devices) from stable/beta/experimental/broken back to sackgasse systematically
 
@@ -15,4 +14,4 @@ uci -q delete autoupdater.stablel2tp || true
 uci -q delete autoupdater.experimentall2tp || true
 uci -q delete autoupdater.beta || true
 
-uci commit
+# kein uci commit: 998-commit committet ohnehin

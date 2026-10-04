@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=eulenfunk-migrate-updatebranch
 PKG_VERSION:=v2018.1
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 
 include $(TOPDIR)/../package/gluon.mk
 
