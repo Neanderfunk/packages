@@ -53,7 +53,9 @@ fremdes Gateway ist besser als keins (A).
   (`02:ca:ff:ee:<NN>:<SS>`, Abschnitt 4). Das ist ein Hinweis, kein Urteil.
   Er zählt nur dort, wo ausdrücklich erlaubt.
 - **Familie**: Das RA-Präfix des fremden Netzes liegt in unseren Filtern
-  (`2a03:2260::/32`). IPv4 ist ohnehin `10.0.0.0/8`. Erkennbar nur am RA,
+  (`extra_prefixes6` der site.conf: `2a03:2260::/29` FFRL und
+  `2a13:fcc0::/29` FNSH, seit 04.10.2026; vorher `2a03:2260::/32`). IPv4 ist
+  ohnehin `10.0.0.0/8`. Erkennbar nur am RA,
   denn ein Gluon-Knoten hat auf br-client keine eigene IPv4-Lease. (R2-17)
 
 ## 3. Grundsätze
@@ -200,7 +202,7 @@ Rohes batman braucht keinen Beitritt, das ist Fall B (Abschnitt 6.5).
 
 | Was | Familie | außerhalb der Familie |
 |---|---|---|
-| `LOCAL_FORWARD` (Quellfilter) | nichts, 10/8 und 2a03:2260::/32 decken alles (R1-6) | fremde Präfixe aus dem RA zusätzlich erlauben, nicht Filter ganz auf |
+| `LOCAL_FORWARD` (Quellfilter) | nichts, 10/8 und `extra_prefixes6` (2a03:2260::/29, 2a13:fcc0::/29) decken alles (R1-6) | fremde Präfixe aus dem RA zusätzlich erlauben, nicht Filter ganz auf |
 | uradvd (gluon-radvd) | läuft weiter: ULA bleibt lokal, Gateway-RA bringt kein ULA und kein RDNSS (gemessen WDR3600) | läuft weiter |
 | DNS | Gateways nennen ihre eigene Adresse (Gateway-Ansible, nicht gemessen); dnsmasq fällt auf die öffentlichen `dns.servers` zurück | dito |
 | filter-ra-dhcp, next-node | bleiben | bleiben |
@@ -351,8 +353,10 @@ Erlaubnisliste (A) und kein Ausblenden von Knotendaten.
 
 - `mesh.vxlan = false`: Jedes fremde Netz mit ebenfalls rohem batman am
   selben Kabel verschmilzt schon heute mit unserem.
-- `roguenets_filter` steht in templates/common/site.conf, wird aber von
-  keinem Paket gelesen.
+- `roguenets_filter` stand in templates/common/site.conf und wurde von
+  keinem Paket gelesen. Erledigt 04.10.2026 (Entscheidung adorfer): aus allen
+  drei site.conf entfernt (FirmwareConfigs v2021.x 86dbf5e, v2023.2.x
+  f3abd49, v2025.1.x 011b548).
 - Unsere Knoten melden keinen `domain_code` (Single-Domain-Firmware je
   Template), nur `site_code`. Das `domain` der Karte setzt yanic zusammen
   (R1-1). Auf der Karte gibt es dazu viele Schreibweisen: mit und ohne
