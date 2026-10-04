@@ -29,3 +29,11 @@ Then add `neanderfunk-migrate-updatebranch` to your `site.mk` or `image-customiz
 `<commit>` with a commit of the `v2023.2.x` branch. If your site already uses
 other feeds, append `neanderfunk` to the existing `GLUON_SITE_FEEDS` instead
 of replacing it. See also [Using this feed](../README.md#using-this-feed).
+
+**Safety net (2026-10-04):** `autoupdater.settings.branch` names the branch
+*section* (the site key), not its `name`. If no such section exists, the
+autoupdater aborts ("unable to load branch configuration") and the node never
+updates again. Seen on the test node: the site has `stable = { name =
+'sackgasse' }` while the old field images had the key `sackgasse`, and
+`settings.branch='sackgasse'` survived the update. The script then picks the
+section whose `name` matches, else the site default.

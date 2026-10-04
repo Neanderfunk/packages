@@ -3,18 +3,37 @@
 # branch - v2025.1.x maps old branches to 'stable', here everything goes to
 # 'sackgasse' (the 4/32 devices have no newer release).
 
-UPDATE_BRANCH=$(uci get autoupdater.settings.branch)
+UPDATE_BRANCH=$(uci -q get autoupdater.settings.branch)
 
 # shifting remaining gluon2021.x (32MB RAM/4MB Flash devices) from stable/beta/experimental/broken back to sackgasse systematically
 
 if [ "$UPDATE_BRANCH" = "experimental" ] || [ "$UPDATE_BRANCH" = "broken" ] || [ "$UPDATE_BRANCH" = "experimentall2tp" ] || [ "$UPDATE_BRANCH" = "stablel2tp" ] || [ "$UPDATE_BRANCH" = "beta" ] || [ "$UPDATE_BRANCH" = "stable" ]; then
-  uci set autoupdater.settings.branch='sackgasse'
- fi
+  UPDATE_BRANCH=sackgasse
+  uci set autoupdater.settings.branch="$UPDATE_BRANCH"
+fi
 
 # drop outdated update branches
 uci -q delete autoupdater.experimental || true
 uci -q delete autoupdater.stablel2tp || true
 uci -q delete autoupdater.experimentall2tp || true
 uci -q delete autoupdater.beta || true
+
+# settings.branch nennt die SEKTION (Site-Schluessel), nicht deren name. Gibt
+# es sie nicht, bricht der Autoupdater ab ("unable to load branch
+# configuration") und der Knoten bekommt nie wieder ein Update. Passiert, wenn
+# der Site-Schluessel anders heisst als der Manifest-Name (stable = {name =
+# 'sackgasse'}, am Testknoten 04.10.2026 gesehen). Dann die Sektion mit
+# passendem name nehmen, sonst den Site-Default.
+if [ -n "$UPDATE_BRANCH" ] && [ "$(uci -q get autoupdater."$UPDATE_BRANCH")" != branch ]; then
+  FIX=
+  for s in $(uci -q show autoupdater | sed -n "s/^autoupdater\.\([^.=]*\)=branch\$/\1/p"); do
+    [ "$(uci -q get autoupdater."$s".name)" = "$UPDATE_BRANCH" ] && { FIX=$s; break; }
+  done
+  [ -n "$FIX" ] || FIX=$(lua -e 'print(require("gluon.site").autoupdater.branch(""))' 2>/dev/null)
+  if [ -n "$FIX" ] && [ "$(uci -q get autoupdater."$FIX")" = branch ]; then
+    uci set autoupdater.settings.branch="$FIX"
+    logger -t migrate-updatebranch "branch '$UPDATE_BRANCH' has no section, now '$FIX'"
+  fi
+fi
 
 # kein uci commit: 998-commit committet ohnehin
