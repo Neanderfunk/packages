@@ -186,7 +186,7 @@ Rohes batman braucht keinen Beitritt, das ist Fall B (Abschnitt 6.5).
 - Mesh-ID im Scan (`MESH ID`), jede außer der eigenen und außer `deny`.
   Kein Muster wie `.*-mesh`: Die bgl-Domains heißen `mesh-bgl`, `mesh-lln`
   usw.
-- Scan nur über scan-guard. Auf MT7915 legt jeder Scan das Radio lahm,
+- Scan nur über scan-guard (Stand 29.09.; scan-guard ist in v2025.1.x seit 04.10.2026 entfallen, unter 2025.1 trat der Scan-Fehler nicht mehr auf). Auf MT7915 legte unter 2023.2 jeder Scan das Radio lahm,
   dort keine WLAN-Suche auf diesem Radio.
 - Nicht, solange autoupdater-wifi-fallback aktiv ist (R1-15).
 - Beitritt: wifi-iface `mode mesh` mit fremder `mesh_id` als uci-Delta, Netz

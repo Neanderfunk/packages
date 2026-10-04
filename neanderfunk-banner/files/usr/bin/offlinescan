@@ -60,21 +60,11 @@ for _, r in ipairs(radios) do io.write(' ' .. r.name) end
 print(' ...')
 io.stdout:flush()
 
--- Gescannte Radios; scan-guard prueft sie vor dem Ende (siehe dort: am MR90X
--- unter Gluon 2023.2 legte jeder Scan das Radio fuer Unicast lahm).
-local scanned = {}
-local function scan_guard()
-	if #scanned == 0 then return end
-	io.stdout:flush()
-	os.execute('/usr/lib/neanderfunk/scan-guard ' .. table.concat(scanned, ' '))
-end
-
 local found, seen = {}, {}
 for _, r in ipairs(radios) do
 	if r.disabled then
 		print('offlinescan: ' .. r.name .. ' ist abgeschaltet, nicht gescannt')
 	else
-		table.insert(scanned, r.name)
 		local cells = iwinfo.nl80211.scanlist(r.name) or {}
 		if #cells == 0 then
 			print('offlinescan: ' .. r.name .. ': Scan ohne Ergebnis (Treiber scannt nicht, solange das Radio sendet?)')
@@ -100,7 +90,6 @@ end
 
 if #found == 0 then
 	print('offlinescan: keine Knoten in der Offline-SSID zu hoeren')
-	scan_guard()
 	os.exit(0)
 end
 
@@ -114,4 +103,3 @@ for _, f in ipairs(found) do
 end
 print('Anbinden per WLAN-Mesh: diesen Knoten mit "channel <kanal> -" (2.4 GHz) bzw.'
 	.. ' "channel - <kanal>" (5 GHz) auf den Kanal holen, gleiche Mesh-ID vorausgesetzt.')
-scan_guard()
