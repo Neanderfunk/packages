@@ -1,0 +1,55 @@
+#!/bin/sh
+# Seeds the linkcheck UCI defaults from the site.conf. Runs on every
+# gluon-reconfigure, but never overwrites what an operator set on the node.
+#
+# site.conf:
+#   linkcheck = {
+#     check_uptime_min  = 5,
+#     reboot_uptime_min = 60,                  -- optional, minutes
+#     disabled_checks = { 'bsses' },           -- optional
+#   },
+
+# Alle Checks, die dieses Paket kennt - hier und nur hier, siehe die
+# ausfuehrliche Begruendung in /lib/gluon/upgrade/500-neanderfunk-hotfix:
+# /etc/config/linkcheck ist ein conffile und ueberlebt den sysupgrade, eine
+# dort neu aufgenommene Sektion erreicht einen bestehenden Knoten nie.
+CHECKS='batadv_neighbours bsses batinterfaces batman_originators bridges
+	bridge_ports mesh_neighbours mesh_unicast no_gateway ipv6_anycast public_prefix'
+
+OBSOLETE_CHECKS=''
+
+sitefile=/lib/gluon/site.json
+
+uci -q get linkcheck.settings >/dev/null || uci -q set linkcheck.settings=settings
+
+# Fehlende Sektionen anlegen - aendert kein Verhalten, macht den Check nur
+# wieder abschaltbar und in `uci show linkcheck` sichtbar.
+for c in $CHECKS ; do
+	if ! uci -q get linkcheck."$c" >/dev/null ; then
+		uci -q set linkcheck."$c"=check
+	fi
+done
+
+for c in $OBSOLETE_CHECKS ; do
+	if uci -q get linkcheck."$c" >/dev/null ; then
+		uci -q delete linkcheck."$c"
+	fi
+done
+
+if [ -z "$(uci -q get linkcheck.settings.check_uptime_min)" ] ; then
+	v="$(jsonfilter -i "$sitefile" -e '@.linkcheck.check_uptime_min' 2>/dev/null)"
+	[ -n "$v" ] && uci -q set linkcheck.settings.check_uptime_min="$v"
+fi
+
+if [ -z "$(uci -q get linkcheck.settings.reboot_uptime_min)" ] ; then
+	v="$(jsonfilter -i "$sitefile" -e '@.linkcheck.reboot_uptime_min' 2>/dev/null)"
+	[ -n "$v" ] && uci -q set linkcheck.settings.reboot_uptime_min="$v"
+fi
+
+for c in $(jsonfilter -i "$sitefile" -e '@.linkcheck.disabled_checks[*]' 2>/dev/null) ; do
+	uci -q get linkcheck."$c" >/dev/null || uci -q set linkcheck."$c"=check
+	[ -z "$(uci -q get linkcheck."$c".disabled)" ] && uci -q set linkcheck."$c".disabled=1
+done
+
+uci -q commit linkcheck
+exit 0
