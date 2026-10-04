@@ -18,7 +18,11 @@ restart_wifi() {
   sleep 60
 }
 
-phy=$(echo "$@" | sed 's/.*-B\ //g' | cut -d" " -f1 | sed 's/.*hostapd-//g' | cut -d"." -f1)
+# The phy comes from the pid file name (-P /var/run/wifi-phyN.pid): without a
+# terminal busybox ps cuts lines at 80 columns, and the -B argument the old
+# code parsed ("-B /var/run/hostapd-phyN.conf") was cut to "-B /v", so this
+# check never ran in the field (found 2026-10-04 on a WR841N v9).
+phy=$(echo "$@" | grep -o 'wifi-phy[0-9]*' | head -n1 | sed 's/^wifi-//')
 case "$phy" in phy[0-9]*) ;; *) exit 0 ;; esac
 client="client${phy#phy}"
 sema="/tmp/channelunknown"
