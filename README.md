@@ -6,10 +6,6 @@ Branch `v2021.1.x` (Neanderfunk, since 2026-10-04): based on `v2020.1.x`
 `cd24c70` (what the 2021.1 "sackgasse" build pins), plus
 `neanderfunk-legacy-migrate` for pulling 2015.1/2016.x nodes onto 2021.1.
 
-### eulenfunk-ath9kblackout ###
-
-looks for dying ath9-wifichips and reintializes wifi (in a reliable way even for DFS-aware gluon)
-
 ### eulenfunk-ch13to9 ###
 
 moves radios from ch13 to 9 during firmwareupdate, even if "keep-wifichannels" is set. 
