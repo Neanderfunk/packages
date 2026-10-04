@@ -1,6 +1,13 @@
 neanderfunk-wifi-blackout
 =========================
 
+**Branch v2021.1.x (Sackgasse):** port of the v2025.1.x package (decision
+adorfer, 2026-10-04), replacing the dead `eulenfunk-ath9kblackout`. Without
+`neanderfunk-common`: the reboot is done inline (sync in the background,
+`reboot -f`, sysrq as fallback), the reboot reason goes to syslog only, and
+`pgrep` replaces `nf-pgrep`. The interface type is looked up via the netdev
+name. Everything else is unchanged.
+
 Forked from <https://git.ffho.net/FreifunkHochstift/ffho-packages> →
 `ffho-ath9k-blackout-workaround` (GPL, Karsten Böddeker), which came to us via
 `eulenfunk-ath9kblackout`. Renamed because the name was wrong: the failure is
