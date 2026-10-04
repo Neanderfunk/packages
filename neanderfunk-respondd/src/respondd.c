@@ -1,0 +1,1173 @@
+/* SPDX-FileCopyrightText: 2026, adorfer/Neanderfunk */
+/* SPDX-License-Identifier: BSD-3-Clause */
+
+/*
+ * respondd-Modul fuer Werte, die die Neanderfunk-Statusseite und nodestatus
+ * zusaetzlich zu Gluons eigenem respondd zeigen. Alles unter dem Schluessel
+ * "neanderfunk", Datenvertrag in der README.
+ *
+ * Billig bleiben: die Statusseite fragt statistics alle 3 s ab, dazu Karte und
+ * Yanic. Nur sysfs, /proc, ein ioctl je Ethernet-Port und nl80211 ueber
+ * libiwinfo - kein Prozessstart, kein ubus.
+ *
+ * Nicht hier hinein: Adressen aus dem Uplink-/WAN-Netz des Aufstellers.
+ * respondd ist meshweit abfragbar und landet auf oeffentlichen Karten.
+ *
+ * Klassen, nach wie schnell sich ein Wert aendert (Tabelle in der README):
+ *
+ *   statisch nach dem Boot  CPU-Modell, BIOS, Flash-Groesse, swconfig-CPU-Ports.
+ *                           Einmal gelesen und im Modul gehalten - der
+ *                           respondd-Prozess lebt so lange wie der Boot.
+ *                           Steht in nodeinfo.
+ *   mittel                  je Radio Kanal, HT-Modus, SSID, TX-Leistung, Land,
+ *                           Mesh. Aendert sich durch ACS, ssid-changer,
+ *                           Eingriffe. WIRELESS_TTL Sekunden gecacht.
+ *                           Steht in statistics.
+ *                           Temperaturen (SoC, WLAN-Chips): TEMP_TTL Sekunden,
+ *                           weil mt76 dafuer die WLAN-Firmware fragt.
+ *   langsam                 Speicherdruck (MemAvailable, Refaults, Forks,
+ *                           zram): Zaehler fuer Raten ueber Minuten.
+ *                           SYSTEM_TTL Sekunden gecacht. Steht in statistics.
+ *   schnell                 Ethernet je Port (Link, Speed, Duplex) und die
+ *                           ssid-changer-Buchfuehrung. Bei jeder Abfrage aus
+ *                           sysfs bzw. /tmp; das ioctl fuer "possible" nur,
+ *                           wenn sich die Geschwindigkeit eines Ports geaendert
+ *                           hat. Steht in statistics.
+ *
+ * preserve_channels ist Konfiguration: nodeinfo, bei jeder nodeinfo-Abfrage
+ * gelesen (die kommt selten).
+ */
+
+#include <respondd.h>
+
+#include <dirent.h>
+#include <limits.h>
+#include <errno.h>
+#include <net/if.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/klog.h>
+#include <sys/socket.h>
+#include <time.h>
+#include <unistd.h>
+
+#include <linux/ethtool.h>
+#include <linux/sockios.h>
+
+#include <iwinfo.h>
+#include <json-c/json.h>
+#include <json-c/json_c_version.h>
+
+/*
+ * Sackgasse 2021.1 (OpenWrt 19.07): json-c 0.12 has no
+ * json_object_deep_copy; copy via a plain serialisation instead. The caches
+ * are a few hundred bytes, so the round trip costs nothing worth measuring.
+ */
+#if JSON_C_MAJOR_VERSION == 0 && JSON_C_MINOR_VERSION < 13
+static int nf_deep_copy(struct json_object *src, struct json_object **dst, void *unused) {
+	(void)unused;
+	*dst = json_tokener_parse(json_object_to_json_string_ext(src, JSON_C_TO_STRING_PLAIN));
+	return *dst ? 0 : -1;
+}
+#define json_object_deep_copy nf_deep_copy
+#endif
+
+
+/* --- Helfer ---------------------------------------------------------------- */
+
+/* Erste Zeile einer Datei ohne Zeilenende und ohne Rand-Leerzeichen. */
+static bool read_line(const char *path, char *buf, size_t len) {
+	FILE *f = fopen(path, "r");
+	if (!f)
+		return false;
+	bool ok = fgets(buf, len, f) != NULL;
+	fclose(f);
+	if (!ok)
+		return false;
+
+	char *start = buf;
+	while (*start == ' ' || *start == '\t')
+		start++;
+	size_t l = strlen(start);
+	while (l && (start[l-1] == '\n' || start[l-1] == '\r' || start[l-1] == ' ' || start[l-1] == '\t'))
+		start[--l] = 0;
+	if (start != buf)
+		memmove(buf, start, l + 1);
+	return true;
+}
+
+static bool read_ll(const char *path, long long *val) {
+	char buf[64];
+	if (!read_line(path, buf, sizeof(buf)))
+		return false;
+	char *end;
+	errno = 0;
+	long long v = strtoll(buf, &end, 10);
+	if (errno || end == buf)
+		return false;
+	*val = v;
+	return true;
+}
+
+/*
+ * Zahl hinter "<key>" in einer Datei mit Zeilen "<key> <zahl>" (/proc/vmstat,
+ * /proc/stat) oder "<key>: <zahl> kB" (/proc/meminfo). Der Schluessel muss
+ * ganz passen: "workingset_refault" trifft nicht "workingset_refault_file".
+ */
+static bool read_field(const char *path, const char *key, long long *val) {
+	char line[256];
+	size_t klen = strlen(key);
+	bool found = false;
+	FILE *f = fopen(path, "r");
+	if (!f)
+		return false;
+	while (fgets(line, sizeof(line), f)) {
+		if (strncmp(line, key, klen) || (line[klen] != ' ' && line[klen] != ':'))
+			continue;
+		char *p = line + klen;
+		while (*p == ':' || *p == ' ' || *p == '\t')
+			p++;
+		char *end;
+		errno = 0;
+		long long v = strtoll(p, &end, 10);
+		if (!errno && end != p) {
+			*val = v;
+			found = true;
+		}
+		break;
+	}
+	fclose(f);
+	return found;
+}
+
+static bool exists(const char *path) {
+	return access(path, F_OK) == 0;
+}
+
+static time_t now_monotonic(void) {
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec;
+}
+
+static bool netdev_has(const char *ifname, const char *entry) {
+	char path[128];
+	snprintf(path, sizeof(path), "/sys/class/net/%s/%s", ifname, entry);
+	return exists(path);
+}
+
+
+/* --- nodeinfo: feste Hardware-Werte -------------------------------------- */
+
+/*
+ * CPU-Modell aus /proc/cpuinfo: "model name" (x86, manche ARM), sonst
+ * "cpu model" (MIPS, etwa "MIPS 1004Kc V2.15"). Die aarch64-Targets haben
+ * keines von beiden, dann "".
+ */
+static struct json_object * get_cpu_model(void) {
+	char line[256], model_name[256] = "", cpu_model[256] = "";
+	FILE *f = fopen("/proc/cpuinfo", "r");
+	if (f) {
+		while (fgets(line, sizeof(line), f)) {
+			char *colon = strchr(line, ':');
+			if (!colon)
+				continue;
+			char *val = colon + 1;
+			while (*val == ' ' || *val == '\t')
+				val++;
+			val[strcspn(val, "\n")] = 0;
+			if (!model_name[0] && !strncmp(line, "model name", 10))
+				snprintf(model_name, sizeof(model_name), "%s", val);
+			else if (!cpu_model[0] && !strncmp(line, "cpu model", 9))
+				snprintf(cpu_model, sizeof(cpu_model), "%s", val);
+		}
+		fclose(f);
+	}
+	return json_object_new_string(model_name[0] ? model_name : cpu_model);
+}
+
+/* BIOS aus DMI - nur auf x86, sonst leere Strings. */
+static struct json_object * get_bios(void) {
+	char vendor[128] = "", version[128] = "";
+	if (!read_line("/sys/class/dmi/id/bios_vendor", vendor, sizeof(vendor)))
+		vendor[0] = 0;
+	if (!read_line("/sys/class/dmi/id/bios_version", version, sizeof(version)))
+		version[0] = 0;
+
+	struct json_object *ret = json_object_new_object();
+	json_object_object_add(ret, "vendor", json_object_new_string(vendor));
+	json_object_object_add(ret, "version", json_object_new_string(version));
+	return ret;
+}
+
+/*
+ * Groesse des Datentraegers, von dem gebootet wurde: das Blockgeraet hinter
+ * /rom (squashfs), bei einer Partition deren Platte. Bytes, 0 wenn unbekannt.
+ * Das ist die Groesse der Platte bzw. virtuellen Disk, nicht die des Images:
+ * eine 1-GiB-Disk mit 126-MB-Image ergibt 1 GiB.
+ */
+static long long get_boot_disk_bytes(void) {
+	char line[512], devno[32] = "";
+	FILE *f = fopen("/proc/self/mountinfo", "r");
+	if (!f)
+		return 0;
+	while (fgets(line, sizeof(line), f)) {
+		char mnt[64], dev[32];
+		/* <id> <parent> <major:minor> <root> <mountpoint> ... */
+		if (sscanf(line, "%*s %*s %31s %*s %63s", dev, mnt) == 2 && !strcmp(mnt, "/rom")) {
+			snprintf(devno, sizeof(devno), "%s", dev);
+			break;
+		}
+	}
+	fclose(f);
+	if (!devno[0] || !strncmp(devno, "0:", 2))
+		return 0;
+
+	char link[64], path[PATH_MAX], sizefile[PATH_MAX + 16];
+	snprintf(link, sizeof(link), "/sys/dev/block/%s", devno);
+	if (!realpath(link, path))
+		return 0;
+
+	/* Partition: die Platte ist das Verzeichnis darueber */
+	snprintf(sizefile, sizeof(sizefile), "%s/partition", path);
+	if (exists(sizefile)) {
+		char *slash = strrchr(path, '/');
+		if (!slash)
+			return 0;
+		*slash = 0;
+	}
+
+	long long sectors;
+	snprintf(sizefile, sizeof(sizefile), "%s/size", path);
+	if (!read_ll(sizefile, &sectors) || sectors <= 0)
+		return 0;
+	return sectors * 512;
+}
+
+/*
+ * Groesse der Flash-Chips laut Kernel beim Proben, in Bytes; 0 wenn nicht
+ * gefunden. Die Chipgroesse steht nirgends in sysfs, und die MTD-Partitionen
+ * decken den Chip nicht immer ab: der Cudy WR3000S hat 128 MiB SPI-NAND,
+ * OpenWrt legt aber nur Partitionen bis knapp 70 MiB an. Erkannt werden
+ *   spi-nor spi0.0: w25q128 (16384 Kbytes)
+ *   spi-nand spi0.0: 128 MiB, block size: ...
+ *   nand: 128 MiB, SLC, erase size: ...
+ * Bei mehreren Chips zaehlt der groesste.
+ */
+static long long read_flash_chip_from_klog(void) {
+	int len = klogctl(10, NULL, 0);		/* SYSLOG_ACTION_SIZE_BUFFER */
+	if (len <= 0)
+		return 0;
+	char *buf = malloc(len + 1);
+	if (!buf)
+		return 0;
+	len = klogctl(3, buf, len);		/* SYSLOG_ACTION_READ_ALL */
+	if (len <= 0) {
+		free(buf);
+		return 0;
+	}
+	buf[len] = 0;
+
+	long long best = 0;
+	for (char *line = strtok(buf, "\n"); line; line = strtok(NULL, "\n")) {
+		long long v = 0;
+		char *p;
+		if ((strstr(line, "spi-nor") || strstr(line, "m25p80")) && (p = strstr(line, " Kbytes)"))) {
+			while (p > line && p[-1] >= '0' && p[-1] <= '9')
+				p--;
+			v = atoll(p) * 1024;
+		} else if ((p = strstr(line, "spi-nand")) || (p = strstr(line, "nand: "))) {
+			char *mib = strstr(p, " MiB,");
+			if (mib) {
+				while (mib > p && mib[-1] >= '0' && mib[-1] <= '9')
+					mib--;
+				v = atoll(mib) * 1024 * 1024;
+			}
+		}
+		if (v > best)
+			best = v;
+	}
+	free(buf);
+	return best;
+}
+
+/*
+ * Die Probe-Meldung steht nur kurz nach dem Boot sicher im Kernel-Puffer.
+ * Startet respondd spaeter neu (Absturz, Paketupdate), kann sie verschwunden
+ * sein, und der Wert fiele still auf das Partitionsende zurueck (Cudy: 128 ->
+ * 70 MiB). Deshalb wird der gefundene Wert in /tmp (RAM, bis zum Reboot)
+ * abgelegt und beim naechsten Laden zuerst dort nachgesehen. Vorschlag der
+ * Firmware-Session.
+ */
+#define FLASH_CHIP_CACHE "/tmp/neanderfunk-respondd-flash"
+
+static long long get_flash_chip_bytes(void) {
+	long long v;
+	if (read_ll(FLASH_CHIP_CACHE, &v) && v > 0)
+		return v;
+
+	v = read_flash_chip_from_klog();
+	if (v > 0) {
+		FILE *f = fopen(FLASH_CHIP_CACHE ".new", "w");
+		if (f) {
+			bool ok = fprintf(f, "%lld\n", v) > 0;
+			ok = !fclose(f) && ok;
+			if (!ok || rename(FLASH_CHIP_CACHE ".new", FLASH_CHIP_CACHE))
+				unlink(FLASH_CHIP_CACHE ".new");
+		}
+	}
+	return v;
+}
+
+/*
+ * Groesse des Dauerspeichers in Bytes - der Hardware im Geraet, nicht was
+ * das OS davon nutzt (Entscheidungsgrundlage, wie "capable" ein Geraet ist):
+ *  - die Flash-Chips laut Kernel (siehe oben),
+ *  - sonst MTD: das groesste Partitionsende (offset + size),
+ *    wie statuspage-hwdetails.patch - nicht die Summe, weil Verkettungen wie
+ *    "ubi" auf der COVR-X1860 bereits gezaehlte Bereiche noch einmal enthalten.
+ *  - sonst (x86, virtio, SATA, eMMC): der Boot-Datentraeger, siehe oben. Das
+ *    groesste Blockgeraet, wie im Patch, koennte eine zweite Platte oder ein
+ *    USB-Stick sein; es bleibt nur der Rueckfall.
+ *  - unbekannt: 0.
+ */
+static long long get_flash_bytes(void) {
+	long long total = get_flash_chip_bytes();
+	char path[64];
+
+	if (total > 0)
+		return total;
+
+	for (int i = 0; ; i++) {
+		long long size, offset = 0;
+		snprintf(path, sizeof(path), "/sys/class/mtd/mtd%d/size", i);
+		if (!read_ll(path, &size))
+			break;
+		snprintf(path, sizeof(path), "/sys/class/mtd/mtd%d/offset", i);
+		if (!read_ll(path, &offset))
+			offset = 0;
+		if (offset + size > total)
+			total = offset + size;
+	}
+	if (total > 0)
+		return total;
+
+	total = get_boot_disk_bytes();
+	if (total > 0)
+		return total;
+
+	FILE *f = fopen("/proc/partitions", "r");
+	if (!f)
+		return 0;
+	char line[256];
+	while (fgets(line, sizeof(line), f)) {
+		unsigned long long blocks;
+		char name[64];
+		if (sscanf(line, " %*u %*u %llu %63s", &blocks, name) != 2)
+			continue;
+		if (!strncmp(name, "loop", 4) || !strncmp(name, "ram", 3))
+			continue;
+		if ((long long)(blocks * 1024) > total)
+			total = blocks * 1024;
+	}
+	fclose(f);
+	return total;
+}
+
+/*
+ * Nicht ueber libuci: uci_load() laedt immer das ganze Paket, und in
+ * /etc/config/gluon steht seit Gluon 2025.1 auch gluon.wireless.private_key,
+ * der Schluessel des privaten WLANs. Der soll nie im Speicher dieses Daemons
+ * landen, der im Mesh auf Anfragen antwortet (adorfer, 01.10.2026). "uci get"
+ * in einem eigenen Prozess liefert nur den einen Wert zurueck. Kostet einen
+ * fork, aber nur je nodeinfo-Abfrage, und die cacht respondd 5 Minuten.
+ */
+static bool get_preserve_channels(void) {
+	char v[8] = "";
+	/* Sackgasse 2021.1: the switch lives in gluon-core (moved to
+	 * gluon.wireless only later), and Gluon 2021.1 reads it with
+	 * uci:get_first() and tests for nil - any value set counts as true
+	 * (gluon.wireless.preserve_channels(), 200-wireless). */
+	FILE *f = popen("uci -q get gluon-core.@wireless[0].preserve_channels", "r");
+	if (!f)
+		return false;
+	if (!fgets(v, sizeof(v), f))
+		v[0] = 0;
+	pclose(f);
+	v[strcspn(v, "\n")] = 0;
+	return v[0] != 0;
+}
+
+/*
+ * Statisch nach dem Boot: einmal ermitteln, danach nur noch kopieren. Schon
+ * beim Laden des Moduls, also kurz nach dem Boot - dann steht die
+ * Probe-Meldung des Flash-Chips sicher noch im Kernel-Puffer.
+ */
+static struct json_object *hardware_cache;
+
+static void build_hardware_cache(void) {
+	if (hardware_cache)
+		return;
+	hardware_cache = json_object_new_object();
+	json_object_object_add(hardware_cache, "cpu_model", get_cpu_model());
+	json_object_object_add(hardware_cache, "flash", json_object_new_int64(get_flash_bytes()));
+	json_object_object_add(hardware_cache, "bios", get_bios());
+}
+
+__attribute__((constructor)) static void module_init(void) {
+	build_hardware_cache();
+}
+
+static struct json_object * respondd_provider_nodeinfo(void) {
+	build_hardware_cache();
+	struct json_object *hardware = NULL;
+	if (json_object_deep_copy(hardware_cache, &hardware, NULL))
+		hardware = json_object_new_object();
+
+	struct json_object *wireless = json_object_new_object();
+	json_object_object_add(wireless, "preserve_channels", json_object_new_boolean(get_preserve_channels()));
+
+	struct json_object *nf = json_object_new_object();
+	json_object_object_add(nf, "hardware", hardware);
+	json_object_object_add(nf, "wireless", wireless);
+
+	struct json_object *ret = json_object_new_object();
+	json_object_object_add(ret, "neanderfunk", nf);
+	return ret;
+}
+
+
+/* --- statistics: Radios ---------------------------------------------------- */
+
+/*
+ * Sackgasse 2021.1: iwinfo 2019-10-16 (OpenWrt 19.07) has no htmode
+ * operation for the running mode. Gluon 2021.1 sets a fixed htmode per radio
+ * (no ACS), so the configured one from /etc/config/wireless is what runs:
+ * "config wifi-device 'radioN'" ... "option htmode 'HT20'".
+ */
+static void uci_htmode(const char *radio, char *out, size_t len) {
+	char line[256], want[64];
+	bool in = false;
+	FILE *f = fopen("/etc/config/wireless", "r");
+	out[0] = 0;
+	if (!f)
+		return;
+	snprintf(want, sizeof(want), "'%s'", radio);
+	while (fgets(line, sizeof(line), f)) {
+		char *p = line;
+		while (*p == ' ' || *p == '\t')
+			p++;
+		if (!strncmp(p, "config ", 7)) {
+			in = !strncmp(p, "config wifi-device ", 19) && strstr(p, want);
+			continue;
+		}
+		if (in && !strncmp(p, "option htmode ", 14)) {
+			char *q = p + 14;
+			while (*q == ' ' || *q == '\'' || *q == '"')
+				q++;
+			size_t l = strcspn(q, "'\" \t\r\n");
+			if (l >= len)
+				l = len - 1;
+			memcpy(out, q, l);
+			out[l] = 0;
+			break;
+		}
+	}
+	fclose(f);
+}
+
+static bool netdev_up(const char *ifname) {
+	char path[128], buf[32];
+	snprintf(path, sizeof(path), "/sys/class/net/%s/operstate", ifname);
+	return read_line(path, buf, sizeof(buf)) && !strcmp(buf, "up");
+}
+
+/*
+ * Je Radio, was tatsaechlich laeuft, nicht was konfiguriert ist: Kanal und
+ * HT-Modus aendern sich zur Laufzeit (ACS bei channel=auto), die SSID schaltet
+ * der ssid-changer auf die Offline-SSID. Gluon benennt die Interfaces nach dem
+ * Radio: client<N>, mesh<N>, owe<N> und wl-wan<N> gehoeren zu radio<N>. Ein
+ * Radio erscheint, sobald eines davon existiert; Kanal, HT-Modus, Leistung und
+ * Land kommen vom Client-AP, sonst vom Mesh-, OWE- oder privaten Interface.
+ */
+#define WIRELESS_TTL 10
+
+static struct json_object * collect_wireless(void) {
+	struct json_object *ret = json_object_new_object();
+
+	for (int i = 0; i < 4; i++) {
+		char client[IFNAMSIZ], mesh[IFNAMSIZ], radio[16], owe[IFNAMSIZ], wan[IFNAMSIZ];
+		snprintf(client, sizeof(client), "client%d", i);
+		snprintf(mesh, sizeof(mesh), "mesh%d", i);
+		snprintf(radio, sizeof(radio), "radio%d", i);
+		snprintf(owe, sizeof(owe), "owe%d", i);
+		snprintf(wan, sizeof(wan), "wl-wan%d", i);
+
+		bool has_client = netdev_has(client, "");
+		bool has_mesh = netdev_has(mesh, "");
+		bool has_owe = netdev_has(owe, "") && netdev_up(owe);
+		bool has_wan = netdev_has(wan, "") && netdev_up(wan);
+		/* auch ein Radio nur mit privatem WLAN (Rolle "private" ohne
+		 * "client") erscheint, sonst bliebe seine Zeile auf der
+		 * Statusseite leer */
+		if (!has_client && !has_mesh && !has_owe && !has_wan)
+			continue;
+
+		const char *dev = has_client ? client : has_mesh ? mesh : has_owe ? owe : wan;
+		const struct iwinfo_ops *iw = iwinfo_backend(dev);
+
+		int channel = 0, txpower = 0;
+		char htmode[16];
+		char ssid[IWINFO_ESSID_MAX_SIZE + 1] = "";
+		char country[8] = "";
+
+		if (iw) {
+			if (iw->channel(dev, &channel))
+				channel = 0;
+			if (iw->txpower(dev, &txpower))
+				txpower = 0;
+			if (iw->country(dev, country))
+				country[0] = 0;
+			country[2] = 0;
+			if (has_client && iw->ssid(client, ssid))
+				ssid[0] = 0;
+		}
+
+		/*
+		 * SSID des OWE-BSS (oweN), per nl80211 vom laufenden Interface; leer,
+		 * wenn es fehlt oder nicht laeuft (abgeschaltet, auch durch ap-timer
+		 * oder ssid-changer).
+		 *
+		 * Vom privaten WLAN (wl-wanN) nur, OB es laeuft - keine SSID: die
+		 * respondd-Daten holen Karte und Kollektoren ab, und die SSID eines
+		 * privaten WLANs verraet oft Name oder Adresse des Betreibers
+		 * (adorfer, 01.10.2026). Die Statusseite zeigt sie lokal. Die
+		 * Zugangsdaten liest dieses Modul ohnehin nie, auch nicht in den
+		 * Speicher.
+		 */
+		char owe_ssid[IWINFO_ESSID_MAX_SIZE + 1] = "";
+		if (has_owe) {
+			const struct iwinfo_ops *iwo = iwinfo_backend(owe);
+			if (!iwo || iwo->ssid(owe, owe_ssid))
+				owe_ssid[0] = 0;
+		}
+
+		struct json_object *r = json_object_new_object();
+		json_object_object_add(r, "channel", json_object_new_int(channel));
+		uci_htmode(radio, htmode, sizeof(htmode));
+		json_object_object_add(r, "htmode", json_object_new_string(htmode));
+		json_object_object_add(r, "ssid", json_object_new_string(ssid));
+		json_object_object_add(r, "owe_ssid", json_object_new_string(owe_ssid));
+		json_object_object_add(r, "private", json_object_new_boolean(has_wan));
+		json_object_object_add(r, "txpower", json_object_new_int(txpower));
+		json_object_object_add(r, "country", json_object_new_string(country));
+		json_object_object_add(r, "mesh", json_object_new_boolean(has_mesh && netdev_up(mesh)));
+		json_object_object_add(ret, radio, r);
+	}
+
+	iwinfo_finish();
+	return ret;
+}
+
+/* mittel: hoechstens alle WIRELESS_TTL Sekunden neu ueber nl80211 */
+static struct json_object * get_wireless(void) {
+	static struct json_object *cache;
+	static time_t stamp;
+	time_t now = now_monotonic();
+
+	if (!cache || now - stamp >= WIRELESS_TTL) {
+		if (cache)
+			json_object_put(cache);
+		cache = collect_wireless();
+		stamp = now;
+	}
+
+	struct json_object *ret = NULL;
+	if (json_object_deep_copy(cache, &ret, NULL))
+		ret = json_object_new_object();
+	return ret;
+}
+
+
+/* --- statistics: ssid-changer --------------------------------------------- */
+
+/*
+ * Buchfuehrung von neanderfunk-ssid-changer in /tmp. Fehlt eine Datei, ist
+ * das Paket nicht installiert oder hat seit dem Boot noch nicht gezaehlt -
+ * dann fehlt das ganze Objekt.
+ */
+static struct json_object * get_ssid_changer(void) {
+	long long offline, switches, losses;
+	if (!read_ll("/tmp/ssid-changer-offline", &offline) ||
+	    !read_ll("/tmp/ssid-changer-offline-switches", &switches) ||
+	    !read_ll("/tmp/ssid-changer-gateway-losses", &losses))
+		return NULL;
+
+	struct json_object *ret = json_object_new_object();
+	json_object_object_add(ret, "offline", json_object_new_int(offline ? 1 : 0));
+	json_object_object_add(ret, "switches", json_object_new_int64(switches));
+	json_object_object_add(ret, "gateway_losses", json_object_new_int64(losses));
+	return ret;
+}
+
+
+/* --- statistics: Speicherdruck ------------------------------------------- */
+
+/*
+ * Woran man einen Knoten erkennt, dem der Speicher ausgeht (Archer C25 mit
+ * 64 MB, 12.09.2026): Gluons memory-Werte bzw. das Verhaeltnis daraus bleiben
+ * flach, ob er thrasht oder nicht. Deutlich sind:
+ *  - refault_file: Seiten aus dem Page-Cache, die kurz nach dem Verdraengen
+ *    wieder gebraucht wurden - jeder Programmstart kommt dann aus dem Flash.
+ *    C25 gesund 36 pro Stunde, beim Thrashen tausende pro Minute.
+ *  - forks: Prozessstarts; Skript-Stuerme (modprobe-Sturm, tunneldigger-
+ *    Schleife) liegen bei ~1000 pro Minute.
+ * Beides Zaehler seit dem Boot, die Rate rechnet die Auswertung. Dazu
+ * MemAvailable absolut (das Verhaeltnis taeuscht zwischen 64 und 128 MB) und
+ * zram. Alles kB, wie Gluons memory. Nur /proc und sysfs, und hoechstens
+ * alle SYSTEM_TTL Sekunden: fuer eine Rate ueber Minuten reicht das, die
+ * Statusseite fragt dagegen alle 3 s.
+ */
+#define SYSTEM_TTL 60
+
+static struct json_object * get_zram(void) {
+	long long size = 0, data = 0, ram = 0;
+	char buf[256];
+
+	/* mm_stat: orig_data_size compr_data_size mem_used_total ... (Bytes) */
+	if (read_ll("/sys/block/zram0/disksize", &size) && size > 0 &&
+	    read_line("/sys/block/zram0/mm_stat", buf, sizeof(buf)) &&
+	    sscanf(buf, "%lld %*d %lld", &data, &ram) != 2)
+		data = ram = 0;
+
+	struct json_object *ret = json_object_new_object();
+	json_object_object_add(ret, "size", json_object_new_int64(size / 1024));
+	json_object_object_add(ret, "data", json_object_new_int64(data / 1024));
+	json_object_object_add(ret, "ram", json_object_new_int64(ram / 1024));
+	return ret;
+}
+
+static struct json_object * collect_system(void) {
+	long long avail = 0, refault = 0, forks = 0;
+
+	read_field("/proc/meminfo", "MemAvailable", &avail);
+	/* vor Linux 5.9 hiess es workingset_refault und zaehlte auch Anon-Seiten */
+	if (!read_field("/proc/vmstat", "workingset_refault_file", &refault))
+		read_field("/proc/vmstat", "workingset_refault", &refault);
+	read_field("/proc/stat", "processes", &forks);
+
+	struct json_object *ret = json_object_new_object();
+	json_object_object_add(ret, "mem_available", json_object_new_int64(avail));
+	json_object_object_add(ret, "refault_file", json_object_new_int64(refault));
+	json_object_object_add(ret, "forks", json_object_new_int64(forks));
+	json_object_object_add(ret, "zram", get_zram());
+	return ret;
+}
+
+static struct json_object * get_system(void) {
+	static struct json_object *cache;
+	static time_t stamp;
+	time_t now = now_monotonic();
+
+	if (!cache || now - stamp >= SYSTEM_TTL) {
+		if (cache)
+			json_object_put(cache);
+		cache = collect_system();
+		stamp = now;
+	}
+
+	struct json_object *ret = NULL;
+	if (json_object_deep_copy(cache, &ret, NULL))
+		ret = json_object_new_object();
+	return ret;
+}
+
+
+/* --- statistics: Temperaturen --------------------------------------------- */
+
+/*
+ * Was die Hardware an Temperaturen hergibt, in Grad Celsius mit einer
+ * Nachkommastelle, Schluessel = Sensor:
+ *
+ *  - Thermal-Zonen (/sys/class/thermal/thermal_zone*): der Name aus "type".
+ *    Die Zone des SoC (type mit "cpu" oder "soc", x86_pkg_temp) heisst
+ *    immer "soc", damit Statusseite und nodestatus einen festen Pfad haben.
+ *  - hwmon (/sys/class/hwmon/hwmon*): der Name aus "name", z. B.
+ *    mt7915_phy0. Hat ein Chip mehrere Fuehler (coretemp je Kern), zaehlt
+ *    der hoechste. coretemp/k10temp/k8temp werden zu "soc", wenn keine Zone
+ *    das schon ist. Ein hwmon, der nur eine Thermal-Zone spiegelt (MT798x:
+ *    cpu_thermal -> thermal_zone0), faellt weg.
+ *
+ * Gueltig ist -40 ... +150 C (adorfer, 14.09.2026). Aussenknoten haben im
+ * Winter Minusgrade (auch x86 in Kisten); ein laufender SoC ist zwar immer
+ * deutlich waermer als die Umgebung, -40 C ist aber die Untergrenze
+ * industrieller Bauteile und laesst Luft. In der Sonne werden SoCs heiss; ueber
+ * ~125 C schaltet die Hardware ab, bis 150 bleibt ein Knoten kurz davor noch
+ * sichtbar. Genau 0 (Milligrad) gilt als Fehlerwert: ein laufender Chip ist
+ * nie exakt 0 C warm, die MT7915 des NWA50AX Pro liefert aber zwischendurch
+ * genau 0 (und 491000) statt ihrer ~70 C. Werte ab 2^31 sind
+ * als vorzeichenbehaftete 32-Bit-Zahl gemeint (Treiber, die Minusgrade so
+ * ausgeben). Gesehen am 14.09.2026: k8temp auf einem FUTRO S550 liefert
+ * 4294918296, also -49 C (drinnen Unsinn, fliegt raus), die MT7915 eines
+ * NWA50AX Pro in der Schulstr7-Kiste 491000.
+ *
+ * mt76 fragt die Temperatur bei jedem Lesen bei der WLAN-Firmware ab (MCU-
+ * Kommando). Deshalb nur alle TEMP_TTL Sekunden und nicht bei jeder Abfrage
+ * der Statusseite. Ohne einen einzigen Sensor fehlt der Schluessel ganz.
+ */
+#define TEMP_TTL 10
+#define TEMP_MIN_MC (-40000)
+#define TEMP_MAX_MC 150000
+
+/* Milligrad lesen; ein als unsigned ausgegebener 32-Bit-Minuswert wird
+ * zurueckgerechnet (4294918296 -> -49000) */
+static bool temp_read(const char *path, long long *mc) {
+	long long v;
+	if (!read_ll(path, &v))
+		return false;
+	if (v >= 2147483648LL && v <= 4294967295LL)
+		v -= 4294967296LL;
+	*mc = v;
+	return true;
+}
+
+static bool temp_plausible(long long mc) {
+	return mc != 0 && mc >= TEMP_MIN_MC && mc <= TEMP_MAX_MC;
+}
+
+/* Milligrad -> Zahl mit einer Nachkommastelle, auch so serialisiert */
+static struct json_object * temp_value(long long mc) {
+	char buf[16];
+	/* kaufmaennisch runden, auch unter null; |mc| <= 150000 passt in int */
+	int d = (int)((mc < 0 ? mc - 50 : mc + 50) / 100);
+	int a = d < 0 ? -d : d;
+	snprintf(buf, sizeof(buf), "%s%d.%d", d < 0 ? "-" : "", a / 10, a % 10);
+	return json_object_new_double_s((double)d / 10.0, buf);
+}
+
+/* Schluessel eindeutig machen: "acpitz", "acpitz_1", ... */
+static void temp_add(struct json_object *obj, const char *name, long long mc) {
+	char key[64];
+	snprintf(key, sizeof(key), "%s", name);
+	for (int i = 1; json_object_object_get_ex(obj, key, NULL) && i < 16; i++)
+		snprintf(key, sizeof(key), "%s_%d", name, i);
+	json_object_object_add(obj, key, temp_value(mc));
+}
+
+static bool temp_is_soc_zone(const char *type) {
+	return strstr(type, "cpu") || strstr(type, "soc") || !strcmp(type, "x86_pkg_temp");
+}
+
+static bool temp_is_soc_hwmon(const char *name) {
+	return !strcmp(name, "coretemp") || !strcmp(name, "k10temp") || !strcmp(name, "k8temp");
+}
+
+static struct json_object * collect_temperature(void) {
+	struct json_object *ret = json_object_new_object();
+	bool have_soc = false;
+	char path[PATH_MAX], type[64];
+	struct dirent *de;
+	long long mc;
+	DIR *d;
+
+	if ((d = opendir("/sys/class/thermal"))) {
+		while ((de = readdir(d))) {
+			if (strncmp(de->d_name, "thermal_zone", 12))
+				continue;
+			snprintf(path, sizeof(path), "/sys/class/thermal/%s/type", de->d_name);
+			if (!read_line(path, type, sizeof(type)))
+				continue;
+			snprintf(path, sizeof(path), "/sys/class/thermal/%s/temp", de->d_name);
+			if (!temp_read(path, &mc) || !temp_plausible(mc))
+				continue;
+			if (!have_soc && temp_is_soc_zone(type)) {
+				json_object_object_add(ret, "soc", temp_value(mc));
+				have_soc = true;
+			} else {
+				temp_add(ret, type, mc);
+			}
+		}
+		closedir(d);
+	}
+
+	if ((d = opendir("/sys/class/hwmon"))) {
+		while ((de = readdir(d))) {
+			if (de->d_name[0] == '.')
+				continue;
+
+			/* Spiegel einer Thermal-Zone: device zeigt auf thermal_zoneN */
+			char link[PATH_MAX];
+			snprintf(path, sizeof(path), "/sys/class/hwmon/%s/device", de->d_name);
+			ssize_t l = readlink(path, link, sizeof(link) - 1);
+			if (l > 0) {
+				link[l] = 0;
+				const char *base = strrchr(link, '/');
+				if (!strncmp(base ? base + 1 : link, "thermal_zone", 12))
+					continue;
+			}
+
+			snprintf(path, sizeof(path), "/sys/class/hwmon/%s/name", de->d_name);
+			if (!read_line(path, type, sizeof(type)))
+				continue;
+
+			long long best = 0;
+			bool found = false;
+			for (int i = 1; i <= 32; i++) {
+				snprintf(path, sizeof(path), "/sys/class/hwmon/%s/temp%d_input", de->d_name, i);
+				if (!temp_read(path, &mc)) {
+					/* coretemp beginnt bei temp1 (Package) oder temp2 */
+					if (i > 2)
+						break;
+					continue;
+				}
+				if (temp_plausible(mc) && (!found || mc > best)) {
+					best = mc;
+					found = true;
+				}
+			}
+			if (!found)
+				continue;
+
+			if (!have_soc && temp_is_soc_hwmon(type)) {
+				json_object_object_add(ret, "soc", temp_value(best));
+				have_soc = true;
+			} else {
+				temp_add(ret, type, best);
+			}
+		}
+		closedir(d);
+	}
+
+	if (json_object_object_length(ret) == 0) {
+		json_object_put(ret);
+		return NULL;
+	}
+	return ret;
+}
+
+/* NULL, wenn es keinen Sensor gibt */
+static struct json_object * get_temperature(void) {
+	static struct json_object *cache;
+	static time_t stamp;
+	static bool valid;
+	time_t now = now_monotonic();
+
+	if (!valid || now - stamp >= TEMP_TTL) {
+		if (cache)
+			json_object_put(cache);
+		cache = collect_temperature();
+		stamp = now;
+		valid = true;
+	}
+
+	if (!cache)
+		return NULL;
+	struct json_object *ret = NULL;
+	if (json_object_deep_copy(cache, &ret, NULL))
+		return NULL;
+	return ret;
+}
+
+
+/* --- statistics: Ethernet ------------------------------------------------- */
+
+/*
+ * Aus /etc/board.json, einmal gelesen (aendert sich zur Laufzeit nicht):
+ *  - die CPU-Ports der swconfig-Switches (switch.<name>.ports[].device),
+ *  - die Ports, die das Board einer Rolle zuordnet (network.<rolle>.ports[]
+ *    bzw. .device).
+ */
+#define MAX_CPU_PORTS 8
+static char cpu_ports[MAX_CPU_PORTS][IFNAMSIZ];
+static int n_cpu_ports = -1;
+
+#define MAX_BOARD_PORTS 16
+static char board_ports[MAX_BOARD_PORTS][IFNAMSIZ];
+static int n_board_ports;
+
+static void add_board_port(const char *name) {
+	if (name && n_board_ports < MAX_BOARD_PORTS)
+		snprintf(board_ports[n_board_ports++], IFNAMSIZ, "%s", name);
+}
+
+static void load_board(void) {
+	if (n_cpu_ports >= 0)
+		return;
+	n_cpu_ports = 0;
+
+	struct json_object *board = json_object_from_file("/etc/board.json");
+	if (!board)
+		return;
+
+	struct json_object *network;
+	if (json_object_object_get_ex(board, "network", &network) && json_object_is_type(network, json_type_object)) {
+		json_object_object_foreach(network, role, net) {
+			(void)role;
+			struct json_object *v;
+			if (json_object_object_get_ex(net, "device", &v))
+				add_board_port(json_object_get_string(v));
+			if (json_object_object_get_ex(net, "ports", &v) && json_object_is_type(v, json_type_array)) {
+				size_t n = json_object_array_length(v);
+				for (size_t i = 0; i < n; i++)
+					add_board_port(json_object_get_string(json_object_array_get_idx(v, i)));
+			}
+		}
+	}
+
+	struct json_object *switches;
+	if (json_object_object_get_ex(board, "switch", &switches) && json_object_is_type(switches, json_type_object)) {
+		json_object_object_foreach(switches, name, sw) {
+			(void)name;
+			struct json_object *ports;
+			if (!json_object_object_get_ex(sw, "ports", &ports) || !json_object_is_type(ports, json_type_array))
+				continue;
+			size_t n = json_object_array_length(ports);
+			for (size_t i = 0; i < n && n_cpu_ports < MAX_CPU_PORTS; i++) {
+				struct json_object *dev;
+				if (json_object_object_get_ex(json_object_array_get_idx(ports, i), "device", &dev))
+					snprintf(cpu_ports[n_cpu_ports++], IFNAMSIZ, "%s", json_object_get_string(dev));
+			}
+		}
+	}
+	json_object_put(board);
+}
+
+static bool is_cpu_port(const char *ifname) {
+	for (int i = 0; i < n_cpu_ports; i++) {
+		if (!strcmp(cpu_ports[i], ifname))
+			return true;
+	}
+	return false;
+}
+
+static bool is_board_port(const char *ifname) {
+	for (int i = 0; i < n_board_ports; i++) {
+		if (!strcmp(board_ports[i], ifname))
+			return true;
+	}
+	return false;
+}
+
+static bool admin_up(const char *ifname) {
+	char path[64 + IFNAMSIZ], buf[32];
+	snprintf(path, sizeof(path), "/sys/class/net/%s/flags", ifname);
+	if (!read_line(path, buf, sizeof(buf)))
+		return false;
+	return strtoul(buf, NULL, 16) & IFF_UP;
+}
+
+/*
+ * Ein Port, an den man ein Kabel steckt (auf fuenf Knoten geprueft, siehe
+ * Firmware statuspage-ethlinks.patch):
+ *  - hat einen device-Link (keine VLANs, Bridges, veth local-node/-port),
+ *  - ist kein WLAN (phy80211/ bzw. wireless/),
+ *  - ist kein DSA-Conduit (dsa/ gibt es nur dort),
+ *  - ist kein swconfig-CPU-Port,
+ *  - steht in board.json unter network oder ist administrativ oben. Das
+ *    laesst eine unbenutzte GMAC ohne Buchse weg (eth1 auf der COVR-X1860),
+ *    behaelt aber jeden Board-Port, auch ohne Rolle und ohne Link.
+ */
+static bool is_port(const char *ifname) {
+	return netdev_has(ifname, "device") &&
+		!netdev_has(ifname, "phy80211") && !netdev_has(ifname, "wireless") &&
+		!netdev_has(ifname, "dsa") &&
+		!is_cpu_port(ifname) &&
+		(is_board_port(ifname) || admin_up(ifname));
+}
+
+/* Geschwindigkeit je Link-Modus, nur die Modi, die an Buchsen vorkommen. */
+static const struct { int bit; int speed; } link_modes[] = {
+	{ ETHTOOL_LINK_MODE_10baseT_Half_BIT, 10 },
+	{ ETHTOOL_LINK_MODE_10baseT_Full_BIT, 10 },
+	{ ETHTOOL_LINK_MODE_100baseT_Half_BIT, 100 },
+	{ ETHTOOL_LINK_MODE_100baseT_Full_BIT, 100 },
+	{ ETHTOOL_LINK_MODE_1000baseT_Half_BIT, 1000 },
+	{ ETHTOOL_LINK_MODE_1000baseT_Full_BIT, 1000 },
+	{ ETHTOOL_LINK_MODE_1000baseX_Full_BIT, 1000 },
+	{ ETHTOOL_LINK_MODE_2500baseT_Full_BIT, 2500 },
+	{ ETHTOOL_LINK_MODE_2500baseX_Full_BIT, 2500 },
+	{ ETHTOOL_LINK_MODE_5000baseT_Full_BIT, 5000 },
+	{ ETHTOOL_LINK_MODE_10000baseT_Full_BIT, 10000 },
+};
+
+/*
+ * Hoechste Rate, die BEIDE Seiten angeboten haben (advertising und
+ * lp_advertising aus ETHTOOL_GLINKSETTINGS). 0, wenn nicht ermittelbar.
+ */
+static int best_common_speed(int sock, const char *ifname) {
+	struct {
+		struct ethtool_link_settings req;
+		__u32 masks[3 * 127];
+	} ecmd;
+	struct ifreq ifr;
+
+	memset(&ecmd, 0, sizeof(ecmd));
+	memset(&ifr, 0, sizeof(ifr));
+	snprintf(ifr.ifr_name, IFNAMSIZ, "%s", ifname);
+	ifr.ifr_data = (void *)&ecmd;
+
+	/* Handshake: erst fragt man nach der Maskenlaenge, der Kernel antwortet
+	 * mit ihrem Negativ, dann die eigentliche Abfrage. */
+	ecmd.req.cmd = ETHTOOL_GLINKSETTINGS;
+	if (ioctl(sock, SIOCETHTOOL, &ifr) || ecmd.req.link_mode_masks_nwords >= 0)
+		return 0;
+	int nwords = -ecmd.req.link_mode_masks_nwords;
+	if (nwords > 127)
+		return 0;
+	ecmd.req.cmd = ETHTOOL_GLINKSETTINGS;
+	ecmd.req.link_mode_masks_nwords = nwords;
+	if (ioctl(sock, SIOCETHTOOL, &ifr) || ecmd.req.link_mode_masks_nwords != nwords)
+		return 0;
+
+	/* masks liegt direkt hinter req, also dort, wo link_mode_masks[] beginnt:
+	 * supported, advertising, lp_advertising, je nwords Worte. */
+	const __u32 *adv = &ecmd.masks[nwords];
+	const __u32 *lp = &ecmd.masks[2 * nwords];
+	int best = 0;
+	for (size_t i = 0; i < sizeof(link_modes) / sizeof(link_modes[0]); i++) {
+		int b = link_modes[i].bit;
+		if (b / 32 >= nwords)
+			continue;
+		__u32 m = 1u << (b % 32);
+		if ((adv[b / 32] & m) && (lp[b / 32] & m) && link_modes[i].speed > best)
+			best = link_modes[i].speed;
+	}
+	return best;
+}
+
+/*
+ * Die Aushandlung aendert sich nur mit dem Link. Gemerkt wird je Port die
+ * Geschwindigkeit, bei der zuletzt gefragt wurde; das ioctl laeuft erst
+ * wieder, wenn sie sich aendert (neu ausgehandelt, Kabel gewechselt).
+ */
+#define MAX_PORTS 16
+static struct { char ifname[IFNAMSIZ]; int speed; int best; } port_cache[MAX_PORTS];
+
+static int possible_cached(int sock, const char *ifname, int speed) {
+	int free_slot = -1;
+	for (int i = 0; i < MAX_PORTS; i++) {
+		if (!port_cache[i].ifname[0]) {
+			if (free_slot < 0)
+				free_slot = i;
+			continue;
+		}
+		if (strcmp(port_cache[i].ifname, ifname))
+			continue;
+		if (port_cache[i].speed != speed) {
+			port_cache[i].speed = speed;
+			port_cache[i].best = best_common_speed(sock, ifname);
+		}
+		return port_cache[i].best;
+	}
+
+	int best = best_common_speed(sock, ifname);
+	if (free_slot >= 0) {
+		snprintf(port_cache[free_slot].ifname, IFNAMSIZ, "%s", ifname);
+		port_cache[free_slot].speed = speed;
+		port_cache[free_slot].best = best;
+	}
+	return best;
+}
+
+static struct json_object * get_port(int sock, const char *ifname) {
+	char path[128], buf[32];
+	long long v;
+
+	snprintf(path, sizeof(path), "/sys/class/net/%s/carrier", ifname);
+	/* carrier ist bei einem abgeschalteten Interface nicht lesbar (EINVAL). */
+	bool carrier = read_ll(path, &v) && v == 1;
+
+	int speed = 0;
+	const char *duplex = "";
+	if (carrier) {
+		snprintf(path, sizeof(path), "/sys/class/net/%s/speed", ifname);
+		if (read_ll(path, &v) && v > 0)
+			speed = v;
+		snprintf(path, sizeof(path), "/sys/class/net/%s/duplex", ifname);
+		if (read_line(path, buf, sizeof(buf))) {
+			if (!strcmp(buf, "full"))
+				duplex = "full";
+			else if (!strcmp(buf, "half"))
+				duplex = "half";
+		}
+	}
+
+	/* Beide Seiten koennten mehr, der Link blieb darunter: der Fingerabdruck
+	 * eines beschaedigten Kabels. Ein echtes 100-MBit-Geraet an einem
+	 * Gigabit-Port bietet kein Gigabit an und ergibt 0. */
+	int possible = 0;
+	if (carrier && speed > 0 && sock >= 0) {
+		int best = possible_cached(sock, ifname, speed);
+		if (best > speed)
+			possible = best;
+	}
+
+	struct json_object *ret = json_object_new_object();
+	json_object_object_add(ret, "carrier", json_object_new_boolean(carrier));
+	json_object_object_add(ret, "speed", json_object_new_int(speed));
+	json_object_object_add(ret, "duplex", json_object_new_string(duplex));
+	json_object_object_add(ret, "possible", json_object_new_int(possible));
+	return ret;
+}
+
+static struct json_object * get_ethernet(void) {
+	struct json_object *ret = json_object_new_object();
+
+	load_board();
+
+	DIR *d = opendir("/sys/class/net");
+	if (!d)
+		return ret;
+
+	int sock = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+
+	struct dirent *e;
+	while ((e = readdir(d))) {
+		char name[IFNAMSIZ];
+		size_t len = strlen(e->d_name);
+		if (e->d_name[0] == '.' || len >= IFNAMSIZ)
+			continue;
+		memcpy(name, e->d_name, len + 1);
+		if (!is_port(name))
+			continue;
+		json_object_object_add(ret, name, get_port(sock, name));
+	}
+
+	if (sock >= 0)
+		close(sock);
+	closedir(d);
+	return ret;
+}
+
+
+static struct json_object * respondd_provider_statistics(void) {
+	struct json_object *nf = json_object_new_object();
+
+	json_object_object_add(nf, "wireless", get_wireless());
+
+	struct json_object *sc = get_ssid_changer();
+	if (sc)
+		json_object_object_add(nf, "ssid_changer", sc);
+
+	json_object_object_add(nf, "ethernet", get_ethernet());
+	json_object_object_add(nf, "system", get_system());
+
+	struct json_object *temp = get_temperature();
+	if (temp)
+		json_object_object_add(nf, "temperature", temp);
+
+	struct json_object *ret = json_object_new_object();
+	json_object_object_add(ret, "neanderfunk", nf);
+	return ret;
+}
+
+
+const struct respondd_provider_info respondd_providers[] = {
+	{"nodeinfo", respondd_provider_nodeinfo},
+	{"statistics", respondd_provider_statistics},
+	{},
+};
