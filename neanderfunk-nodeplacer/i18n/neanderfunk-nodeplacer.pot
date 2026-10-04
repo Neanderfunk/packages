@@ -1,0 +1,11 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8"
+
+msgid "Enabled"
+msgstr ""
+
+msgid "Nodeplacer"
+msgstr ""
+
+msgid "Nodeplacer can move this node to another domain via a signed instruction. Untick to prevent this."
+msgstr ""
