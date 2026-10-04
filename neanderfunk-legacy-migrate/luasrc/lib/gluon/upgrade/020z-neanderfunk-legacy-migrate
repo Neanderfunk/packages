@@ -1,0 +1,70 @@
+#!/usr/bin/lua
+-- SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+-- SPDX-License-Identifier: BSD-3-Clause
+--
+-- Backport des Pakets aus v2025.1.x fuer Ziel 2021.1, etwa um alte Knoten
+-- (2015.1, 2016.x) einer uebernommenen Community heranzuholen
+-- (router-werkstatt docs/gluon-migrationspfade.md). Nur, was Gluon bis 2021.1
+-- entfernt hat; Mesh auf WAN/LAN, VPN-Schalter, preserve_channels, IBSS und
+-- Koordinaten erledigt 2021.1 selbst. IBSS-Nachbarn und die batman-adv-
+-- Kompatibilitaet (2015.1: compat 14) bleiben bewusst aussen vor.
+-- Nur bei alter Herkunft, einmal (sysconfig neanderfunk_legacy_migrated).
+
+local site = require 'gluon.site'
+local sysconfig = require 'gluon.sysconfig'
+local util = require 'gluon.util'
+local uci = require('simple-uci').cursor()
+
+if sysconfig.neanderfunk_legacy_migrated then
+	return
+end
+
+-- Herkunft: gluon_version steht bis 999-version noch auf der alten Firmware
+local year = tonumber(((sysconfig.gluon_version or ''):match('^v?(20%d%d)%.')))
+local stc = util.readfile('/etc/config/gluon-simple-tc') ~= nil
+if not ((year and year < 2021) or stc or uci:get('firewall', 'client')) then
+	return
+end
+print('neanderfunk-legacy-migrate: migrating config from ' .. (sysconfig.gluon_version or '?'))
+
+-- 1. gluon-simple-tc heisst seit 2016.1 simple-tc; 500-mesh-vpn liest danach
+--    das Bandbreitenlimit (entfernt mit fc7c8cb0, v2019.1)
+if stc then
+	os.rename('/etc/config/gluon-simple-tc', '/etc/config/simple-tc')
+end
+
+-- 2. Alte Zonen und sysctl.conf (entfernt mit ab2f82ca, v2021.1)
+uci:delete('firewall', 'client')
+uci:delete('firewall', 'local_node')
+uci:save('firewall')
+uci:delete('dhcp', 'client')
+uci:save('dhcp')
+local sc = util.readfile('/etc/sysctl.conf') or ''
+if sc:match('\nnet%.ipv4%.ip_forward=1\n') or sc:match('^net%.ipv4%.ip_forward=1\n') then
+	local f = io.open('/etc/sysctl.conf', 'w')
+	f:write('# Defaults are configured in /etc/sysctl.d/* and can be customized in this file\n')
+	f:close()
+end
+
+-- 3. Fremden Autoupdater-Zweig auf unseren Default, fremde Zweige loeschen.
+--    500-autoupdater laesst settings.branch stehen, sobald settings existiert,
+--    der Knoten hinge sonst an einem Zweig ohne Sektion. Default wie dort.
+local ours = site.autoupdater.branches()
+local br = uci:get('autoupdater', 'settings', 'branch')
+if br and not ours[br] then
+	local def
+	for name in pairs(ours) do
+		if not def or name < def then def = name end
+	end
+	def = site.autoupdater.branch(def)
+	local f = io.open('/lib/gluon/autoupdater/default_branch')
+	if f then
+		def = f:read('*line')
+		f:close()
+	end
+	uci:set('autoupdater', 'settings', 'branch', def)
+end
+uci:delete_all('autoupdater', 'branch', function(s) return not ours[s['.name']] end)
+uci:save('autoupdater')
+
+sysconfig.neanderfunk_legacy_migrated = sysconfig.gluon_version or '?'

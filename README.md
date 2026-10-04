@@ -2,6 +2,10 @@
 
 This branch works for gluon 2020.1.x.
 
+Branch `v2021.1.x` (Neanderfunk, since 2026-10-04): based on `v2020.1.x`
+`cd24c70` (what the 2021.1 "sackgasse" build pins), plus
+`neanderfunk-legacy-migrate` for pulling 2015.1/2016.x nodes onto 2021.1.
+
 ### eulenfunk-ath9kblackout ###
 
 looks for dying ath9-wifichips and reintializes wifi (in a reliable way even for DFS-aware gluon)
@@ -59,3 +63,8 @@ weekly reboot sheduled on thursday morning. See [](gluon-weeklyreboot/README.md)
 
 WIFI-Neighborcheck. restarts wifi no wifi mesh neighbours are seen after
 initially there were at lease two neighbours. See [](gluon-wificheck/README.md)
+
+### neanderfunk-legacy-migrate
+
+Migrates configs of old Gluon versions (2015.1 to 2020.x) on the jump to 2021.1.
+See neanderfunk-legacy-migrate/README.md.
