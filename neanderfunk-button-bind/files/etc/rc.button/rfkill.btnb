@@ -1,0 +1,53 @@
+#!/bin/sh
+
+# Im Setup-Mode nichts tun. netifd laeuft dort mit der Konfiguration in
+# /var/gluon/setup-mode/config: "WLAN an/aus" wuerde die normale
+# /etc/config/wireless aendern und committen, "wifi" das Setup-WLAN
+# (neanderfunk-setup-wifi) umwerfen. Den Kurzdruck im Setup-Mode hat dort
+# neanderfunk-setup-wifi (reset/wps/phone), die rfkill-Taste bleibt ohne
+# Funktion. /var/gluon/setup-mode legt gluon-setup-mode nur im Setup-Mode an.
+[ -d /var/gluon/setup-mode ] && exit 0
+
+BIND=$(uci -q get button-bind.wifi.function)
+
+case "$BIND" in
+1) # no function
+;;
+
+2) # WLAN Reset 
+if [ "$ACTION" = "pressed" ]; then
+	wifi
+fi
+;;
+
+3) # LEDs on/off		
+if [ "$ACTION" = "pressed" ]; then
+	/etc/init.d/led start
+else
+	for i in /sys/class/leds/*; do
+		echo 0 > "$i"/brightness
+	done
+	/etc/init.d/led stop
+fi
+;;
+
+*) # Default, WLAN on/off - hand over to OpenWrt's own handler.
+# Guarded: 888-neanderfunk-button-bind only saves it if the target shipped one,
+# so on a target without an rfkill handler this would otherwise call a
+# non-existent file on every button press.
+#
+# OpenWrt's handler ends in "uci commit wireless", which would also write the
+# runtime-only changes other packages keep in the uci delta: the offline SSID
+# of neanderfunk-ssid-changer (client_radioN.ssid, owe_radioN.disabled) and the
+# client APs switched off by neanderfunk-ap-timer (client_radioN.disabled).
+# Stored like that they stick after every reboot. So drop exactly those before
+# handing over; if the node is still offline, the ssid-changer puts the
+# offline SSID back within a minute.
+if [ -x /etc/rc.button/rfkill.owrt ]; then
+	uci -q changes wireless | sed -n "s/^\(wireless\.\(client_radio[0-9]*\.\(ssid\|disabled\)\|owe_radio[0-9]*\.disabled\)\)=.*/\1/p" |
+		sort -u | while read -r opt; do uci -q revert "$opt"; done
+	/etc/rc.button/rfkill.owrt
+fi
+;;
+esac
+exit 0
