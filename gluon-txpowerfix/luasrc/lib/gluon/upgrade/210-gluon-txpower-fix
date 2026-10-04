@@ -1,0 +1,284 @@
+#!/usr/bin/lua
+
+-- gluon-txpowerfix, Sackgasse 2021.1: Port von neanderfunk-txpowerfix aus
+-- v2025.1.x (Entscheidung adorfer 04.10.2026: Country-Logik und htmode
+-- behalten, vorhandene txpower-Eintraege loeschen, keine neuen setzen).
+-- Unterschiede zu 2025.1: preserve_channels steht in 2021.1 in gluon-core
+-- (gluon.wireless.preserve_channels()), Radios haben hwmode statt band.
+-- Die fruehere Fassung (Init-Skript + txpowerfix.lua beim ersten Boot, wifi
+-- down/up, txpower als Zeilenindex aus txpowerlist) ist ersetzt.
+--
+-- Leitet aus den konfigurierten Kanaelen eine regulatorische Country ab
+-- (DE/JP/TW/US) und setzt je Radio den breitesten HT-Modus, den die Hardware
+-- anbietet. Eine Sendeleistung setzt das Skript nicht mehr, bestehende werden
+-- entfernt - siehe preserve_txpower weiter unten. Der Paketname ist geblieben,
+-- damit nebenan in image-customization.lua nichts nachgezogen werden muss.
+--
+-- Nur Config, kein Radio-Betrieb: kein "wifi reconf", kein iwinfo als
+-- Kommando, kein sleep. Das Skript laeuft bei jedem gluon-reconfigure mit, auch
+-- beim "Speichern & Neustarten" im Config-Mode, und dort bleibt dem ganzen Lauf
+-- keine Minute: uhttpd setzt fuer den CGI-Prozess einmal script_timeout (60 s)
+-- und verlaengert ihn nie. Laeuft er ab, wird der CGI abgeschossen, bevor
+-- wizard.lua zum Reboot kommt - der Browser zeigt "Bad Gateway", der Knoten
+-- startet nicht neu. Die fruehere Fassung brauchte allein fuer ihre festen
+-- Wartezeiten 85 s (4x 20 s um jeden iwinfo-Aufruf plus sleep 5), am
+-- 2026-09-10 auf einem Xiaomi 4A Gigabit genau so nachgestellt.
+--
+-- Die Radios neu zu starten war dabei auch nie noetig. Im Config-Mode folgt
+-- der Reboot direkt, beim ersten Boot nach einem sysupgrade laufen die Radios
+-- zu diesem Zeitpunkt noch gar nicht. Uebernommen wird die Config ohnehin beim
+-- naechsten Start.
+--
+-- Geschrieben wird nur mit uci:save(), committet wird von Gluons 998-commit am
+-- Ende des Laufs, zusammen mit allen anderen Upgrade-Skripten.
+
+local uci = require('simple-uci').cursor()
+local wireless = require 'gluon.wireless'
+local sysconfig = require 'gluon.sysconfig'
+local iwinfo = require 'iwinfo'
+
+--- Gluons Kanal-Erhalt. Mit gesetztem gluon.wireless.preserve_channels laesst
+--- 200-wireless Kanal, Kanalliste und htmode bei Updates stehen (set_channels()
+--- kehrt sofort zurueck, get_htmode() gibt den vorhandenen Wert zurueck). Dann
+--- darf auch dieses Skript die Breite nicht neu setzen, sonst waere sie nach
+--- jedem Update wieder die breiteste - Gluons Doku verspricht das Gegenteil
+--- ("the channel width will not be reset"). Die Country bleibt: sie folgt aus
+--- den Kanaelen, und die bleiben ja erhalten.
+---
+--- Gesetzt wird der Schalter bei Neuinstallationen von
+--- neanderfunk-preserve-wifichannel. Das hebt ihn nach einem Site- oder
+--- Domainwechsel auch fuer genau einen Lauf auf, damit 200-wireless die Kanaele
+--- der neuen Site eintraegt. In diesem Lauf sieht dieses Skript ihn als 0 und
+--- setzt die Breite wie nach jeder Neukonfiguration.
+local preserve_channels = wireless.preserve_channels(uci) == '1'
+
+--- log to stdout (visible during a manual gluon-reconfigure run) and syslog
+local function log(message)
+	print(message)
+	os.execute('logger -t "neanderfunk-txpowerfix" -p 5 "' .. message .. '" 2>/dev/null')
+end
+
+--- Keine Sendeleistung festschreiben, bestehende entfernen.
+---
+--- Ohne txpower in uci sendet ein Radio mit dem Maximum aus Regdomain, Kanal
+--- und Hardware. cfg80211 rechnet je Kanal
+---     max_power = min(Hardware-Limit, Limit der Regdomain)
+--- (net/wireless/reg.c), und mac80211 zieht eine Vorgabe nur ueber min() heran
+--- (__ieee80211_recalc_txpower, net/mac80211/iface.c). Ein gesetzter Wert kann
+--- die Leistung also nur senken, nie heben - und er bleibt stehen, wenn der
+--- Kanal spaeter wechselt (auto, DFS-Ausweichen) und dort mehr erlaubt waere.
+---
+--- Genau so hat die fruehere Fassung gearbeitet: sie las mit
+--- "iwinfo txpowerlist" dasselbe max_power aus und schrieb es fest. Im
+--- Config-Mode las sie dabei die falsche Regdomain - dort gilt die der Site
+--- (S20network macht "iw reg set" mit site.regdom), die hier gewaehlte Country
+--- steht nur in uci. Am 2026-09-10 auf neun Testknoten nachgesehen: 7 von 17
+--- Radios lagen 3 bis 7 dB unter dem Wert, den der Kernel ohne Vorgabe nimmt.
+---
+--- Entfernt wird EINMAL je Knoten, danach steht in sysconfig ein Vermerk, und
+--- txpower wird nie wieder angefasst. Dieses Skript setzt ja selbst keine
+--- Sendeleistung mehr - jeder spaetere Wert kommt von jemandem, der ihn bewusst
+--- gesetzt hat (Erweiterte Einstellungen), und bleibt. Bei jedem Lauf zu
+--- entfernen ginge nicht: seit 2025.1 loest schon das Speichern der
+--- Erweiterten Einstellungen einen gluon-reconfigure aus, ein Domainwechsel tut
+--- es in beiden Staenden. Der Vermerk liegt in /lib/gluon/core/sysconfig/ und
+--- uebersteht damit jedes sysupgrade; bei einer Neuinstallation gibt es nichts
+--- zu entfernen, dann wird nur vermerkt.
+---
+--- Wer vor diesem einmaligen Lauf bewusst eine Sendeleistung gesetzt hat und
+--- sie behalten will:
+---     uci set gluon.wireless.preserve_txpower='1' ; uci commit gluon
+--- Solange der Schalter steht, wird nicht aufgeraeumt und nicht vermerkt;
+--- aufgeraeumt wird im ersten Lauf ohne ihn. Er liegt absichtlich neben Gluons
+--- preserve_channels. Die Sektion legt Gluons 190-preserve-wireless-channels
+--- bei jedem Lauf an; es setzt nur preserve_channels und laesst andere Optionen
+--- der Sektion stehen.
+local TXPOWER_CLEANED = 'neanderfunk_txpowerfix_unpinned'
+if uci:get('gluon', 'wireless') and uci:get('gluon', 'wireless', 'preserve_txpower') == nil then
+	-- sichtbar machen, was gilt: "uci show gluon.wireless" zeigt den Schalter
+	-- dann neben preserve_channels
+	uci:set('gluon', 'wireless', 'preserve_txpower', false)
+	uci:save('gluon')
+end
+
+local txpower_state
+if sysconfig[TXPOWER_CLEANED] then
+	txpower_state = 'untouched'
+-- preserve_txpower is our own key: every OpenWrt spelling of "true" (simple-uci's
+-- get_bool knows only "1"). preserve_channels above is Gluon's and stays get_bool.
+elseif ({ ['1'] = true, ['true'] = true, yes = true, on = true, enabled = true })[uci:get('gluon', 'wireless', 'preserve_txpower')] then
+	txpower_state = 'preserved'
+else
+	txpower_state = 'cleaned up once'
+	local pinned = {}
+	uci:foreach('wireless', 'wifi-device', function(section)
+		if section.txpower then
+			pinned[section['.name']] = section.txpower
+		end
+	end)
+	for radio, txpower in pairs(pinned) do
+		log(radio .. ": removing pinned txpower " .. txpower .. " dBm (one-time cleanup)")
+		uci:delete('wireless', radio, 'txpower')
+	end
+	uci:save('wireless')
+	sysconfig[TXPOWER_CLEANED] = '1'
+end
+
+--- Which radio is 2.4 GHz, which is 5 GHz?
+---
+--- This used to be worked out from the channel number: below 16 means 2.4,
+--- above means 5, and "auto" was mapped to 999 - which put a 2.4 GHz radio set
+--- to "auto" into the 5 GHz slot, and from there into the country and htmode
+--- logic meant for 5 GHz. uci answers the question directly since OpenWrt
+--- 21.02 replaced hwmode with band, so ask that instead; hwmode stays as the
+--- older spelling. Measured on the test nodes: band is 2g/5g everywhere,
+--- hwmode is empty.
+---
+--- Iterating the wifi-device sections also drops the old assumption that the
+--- radios are exactly radio0 and radio1.
+local interface24 = false
+local interface50 = false
+
+local function band_of(radio)
+	local band = uci:get('wireless', radio, 'band')
+	if band then
+		return band
+	end
+	local hwmode = uci:get('wireless', radio, 'hwmode')
+	if hwmode == '11g' or hwmode == '11ng' or hwmode == '11b' then
+		return '2g'
+	elseif hwmode == '11a' or hwmode == '11na' then
+		return '5g'
+	end
+	return nil
+end
+
+uci:foreach('wireless', 'wifi-device',
+	function(section)
+		local radio = section['.name']
+		local band = band_of(radio)
+		if band == '2g' and not interface24 then
+			interface24 = radio
+		elseif band == '5g' and not interface50 then
+			interface50 = radio
+		end
+	end
+)
+
+if not interface24 and not interface50 then
+	log("no 2.4GHz/5GHz radio found, nothing to do")
+	os.exit(0)
+end
+log("detected interface24=" .. tostring(interface24) .. " interface50=" .. tostring(interface50))
+
+--- determine country according to 5G
+--- Vor den if-Bloecken deklariert, nicht darin: sonst waeren sie auf den Block
+--- beschraenkt. Sie waren bisher implizite globale Variablen - hier folgenlos,
+--- weil gluon-reconfigure jedes Skript als eigenen Prozess startet, aber es
+--- verdeckt bei einer luac-Pruefung die echten Funde.
+local channel24, channel50, country
+
+if interface24 then
+	channel24 = uci:get('wireless', interface24, 'channel')
+	if channel24 == '13' then
+		country = 'JP'
+	elseif channel24 == '12' then
+		country = 'DE'
+	else
+		country = 'TW'
+	end
+end
+
+if interface50 then
+	channel50 = uci:get('wireless', interface50, 'channel')
+	if channel50 == '32' or channel50 == '68' or channel50 == '169' or channel50 == '173' or channel50 == 'auto' or uci:get('gluon', 'wireless', 'outdoor') == '1' then
+		country = 'DE'
+	elseif channel50 == '138' or channel50 == '142' or channel50 == '144'  then
+		country = 'US'
+	else
+		country = 'TW'
+	end
+end
+
+if interface24 and interface50 then
+	if channel24 == '13' then
+		if channel50 == '32' or channel50 == '34' or channel50 == '68' or channel50 == '96' or channel50 == '138' or channel50 == '142' or channel50 == '144' or channel50 == '149' or channel50 == '151' or channel50 == '153' or channel50 == '155' or channel50 == '157' or channel50 == '159' or channel50 == '161' or channel50 == '165' or channel50 == '169' or channel50 == '173' or channel50 == 'auto' then
+			country = 'DE'
+		end
+	end
+end
+log("chosen regulatory country=" .. tostring(country))
+
+--- Den breitesten HT-Modus aus einer Vorzugsliste, den die Hardware kann.
+---
+--- Frueher lief dafuer "iwinfo <radio> htmodelist | xargs | grep | tail" als
+--- Kommando, mit 20 s fester Wartezeit drumherum, und vorher ein "wifi reconf".
+--- Die Liste ist aber ein statisches Merkmal der wiphy, beim Laden des Treibers
+--- registriert: sie haengt weder von Country noch von Kanal ab, noch davon, ob
+--- ein Interface laeuft. Gluons 200-wireless fragt im selben Lauf genauso ab,
+--- ueber das iwinfo-Binding im eigenen Prozess - kein fork, keine Pipe.
+---
+--- Die Vorzugslisten bilden das alte "tail -n1" genau nach. iwinfo zaehlt die
+--- Modi in der Reihenfolge HT20, HT40, VHT20, VHT40, VHT80, VHT80_80, VHT160,
+--- NOHT, HE20, HE40, HE80, HE80_80, HE160 (neuere Staende danach EHT) auf, und
+--- der letzte Treffer des grep gewann. EHT steht vorn fuer den Fall, dass ein
+--- neueres iwinfo es liefert; ein aelteres kennt den Schluessel nicht, dann
+--- ist er nil und wird uebersprungen.
+---
+--- Kann die Hardware nichts davon oder ist die phy nicht zu finden, bleibt der
+--- Modus stehen, den Gluons 200-wireless gesetzt hat. Die fruehere Fassung
+--- setzte fuer 2.4 GHz vorab hart HT20 und nagelte ein HE-faehiges Radio dann
+--- darauf fest, wenn die Abfrage scheiterte.
+local HTMODES_24 = { 'EHT20', 'HE20', 'VHT20', 'HT20' }
+local HTMODES_50 = { 'EHT80', 'EHT40', 'HE80', 'HE40', 'VHT80', 'VHT40', 'HT40' }
+
+local function best_htmode(radio, preferred)
+	local phy = wireless.find_phy(uci:get_all('wireless', radio))
+	if not phy then
+		return nil
+	end
+	local modes = iwinfo.nl80211.htmodelist(phy)
+	if not modes then
+		return nil
+	end
+	for _, mode in ipairs(preferred) do
+		if modes[mode] then
+			return mode
+		end
+	end
+	return nil
+end
+
+local htmode24, htmode50
+
+if interface24 then
+	uci:set('wireless', interface24, 'country', country)
+	if not preserve_channels then
+		htmode24 = best_htmode(interface24, HTMODES_24)
+		if htmode24 then
+			uci:set('wireless', interface24, 'htmode', htmode24)
+		end
+	end
+end
+
+if interface50 then
+	uci:set('wireless', interface50, 'country', country)
+	-- Bei "auto" und im Outdoor-Modus waehlt Gluon Kanal und Breite selbst
+	-- (outdoor_<radio>_htmode), dort wird nichts angefasst.
+	if not preserve_channels and channel50 ~= 'auto' and uci:get('gluon', 'wireless', 'outdoor') ~= '1' then
+		htmode50 = best_htmode(interface50, HTMODES_50)
+		if htmode50 then
+			uci:set('wireless', interface50, 'htmode', htmode50)
+		end
+	end
+end
+
+uci:save('wireless')
+
+log(string.format(
+	"applied: country=%s 2.4GHz(%s)=htmode:%s 5GHz(%s)=htmode:%s txpower:%s%s",
+	tostring(country),
+	tostring(interface24), tostring(htmode24 or uci:get('wireless', tostring(interface24), 'htmode')),
+	tostring(interface50), tostring(htmode50 or uci:get('wireless', tostring(interface50), 'htmode')),
+	txpower_state,
+	preserve_channels and ' (htmode kept, gluon.wireless.preserve_channels=1)' or ''))

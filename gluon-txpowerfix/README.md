@@ -1,35 +1,27 @@
-gluon txpowerfix
-================
+gluon-txpowerfix (Sackgasse 2021.1)
+===================================
 
-Up to OpenWRT BarrierBreaker, the wifi stack did take automatically the
-highest available txpower. 
+Port of `neanderfunk-txpowerfix` from `v2025.1.x` (decision adorfer,
+2026-10-04): keep the country logic and the htmode, remove pinned txpower
+values, never set a new one.
 
-introduction with ChaosCalmer, OpenWRT does take into account the antenna
-gain, stored as value in the ART partition of the SPI flash. 
-for numerous reasons the values are wrong calculated or just
-over-optimistic, as a result, the available "on air" is for many devices
-lower than the goal of 20dBm/100mW. 
-by consequence meshlinks tend to degrade "from green to red" when upgrading
-from gluon 2015.x to 2016.x
+Runs as `/lib/gluon/upgrade/210-gluon-txpower-fix` on every reconfigure:
 
-this script will run it's worker task at first boot after installation/sysupgrade. 
-(after execution it will be cleared from the rc.local-execution.)
+* **country** per radio from the configured channels (DE/JP/TW/US, logic
+  unchanged),
+* **htmode**: best 20 MHz mode on 2.4 GHz, widest 80/40 MHz mode on 5 GHz
+  (5 GHz only if the channel is not `auto` and outdoor mode is off), read via
+  the iwinfo Lua binding; left alone while `preserve_channels` is set
+  (`gluon-core`, 2021.1 spelling),
+* **txpower** is removed **once per node** (marker
+  `/lib/gluon/core/sysconfig/neanderfunk_txpowerfix_unpinned`), unless
+  `gluon.wireless.preserve_txpower` is set. Without a value the kernel uses
+  min(hardware, regdomain) per channel; a pinned value can only lower it.
 
-In full operation of 2.4GHz radio it will obtain the txpower-list which is
-in place "real" with the current setting of channel, hwmode, htmode etc. 
-then the highest available setting is stored in /etc/config/wireless as
-txpower value. 
+Only config is written (`uci:save()`, `998-commit` commits). The old init
+script and `txpowerfix.lua` (first boot: wifi down/up, txpower set as a row
+index of `iwinfo txpowerlist`) are gone, as is the dependency on
+wireless-tools.
 
-(pull requests wellcome)
-
-
-To use the script in your firmware:
-
-```
-GLUON_SITE_FEEDS="eulenfunk"
-PACKAGES_EULENFUNK_REPO=https://github.com/eulenfunk/packages.git
-PACKAGES_EULENFUNK_COMMIT=*/missing/*
-PACKAGES_EULENFUNK_BRANCH=v2018.1.x
-```
-
-With this done you can add the package `gluon-txpowerfix` to your `site.mk`
+Background and measurements: README of `neanderfunk-txpowerfix` in
+`v2025.1.x`.
