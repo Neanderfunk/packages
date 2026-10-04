@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=gluon-txpowerfix
-PKG_VERSION:=1
+PKG_VERSION:=2
 
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
 
@@ -10,7 +10,6 @@ include $(TOPDIR)/../package/gluon.mk
 define Package/$(PKG_NAME)
   SECTION:=admin
   CATEGORY:=Workaround
-  DEPENDS:=+wireless-tools
   TITLE:=Fixes txpower on some wifi nodes since OpenWrt chaos calmer
 endef
 

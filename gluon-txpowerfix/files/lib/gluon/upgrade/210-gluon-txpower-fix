@@ -90,7 +90,7 @@ if interface24 then
         uci:set('wireless', interface24, 'country', country)
         uci:set('wireless', interface24, 'htmode', 'HT20')
         uci:save('wireless')
-        uci:commit('wireless')
+        uci:save('wireless')
         t = cmd('/sbin/wifi down')
         t = cmd('kill -9  $(ps |grep /usr/sbin/hostapd|grep -v grep|awk \'{print $1}\')')
         t = cmd('killall hostapd >/dev/null 2>&1')
@@ -115,7 +115,7 @@ if interface24 then
 --- set values (2nd pass)
         uci:set('wireless', interface24, 'txpower', maximumTxPower)
         uci:save('wireless')
-        uci:commit('wireless')
+        uci:save('wireless')
 end
 
 --- 5G
@@ -129,7 +129,7 @@ if interface50 then
                 	end
 			--- set values (1st pass)
        	        	uci:save('wireless')
-               		uci:commit('wireless')
+               		uci:save('wireless')
                		t = cmd('/sbin/wifi down')
 			t = cmd('kill -9  $(ps |grep /usr/sbin/hostapd|grep -v grep|awk \'{print $1}\')')
 		        t = cmd('killall hostapd >/dev/null 2>&1')
@@ -157,7 +157,7 @@ if interface50 then
 	               	uci:delete('wireless', interface50, 'txpower')
 		end 
                 uci:save('wireless')
-                uci:commit('wireless')
+                uci:save('wireless')
         end
         t = cmd('/sbin/wifi down')
         t = cmd('kill -9  $(ps |grep /usr/sbin/hostapd|grep -v grep|awk \'{print $1}\')')
