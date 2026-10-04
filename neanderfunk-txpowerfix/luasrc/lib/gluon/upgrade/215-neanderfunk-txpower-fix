@@ -1,6 +1,6 @@
 #!/usr/bin/lua
 
--- gluon-txpowerfix, Sackgasse 2021.1: Port von neanderfunk-txpowerfix aus
+-- neanderfunk-txpowerfix, Sackgasse 2021.1: Port von neanderfunk-txpowerfix aus
 -- v2025.1.x (Entscheidung adorfer 04.10.2026: Country-Logik und htmode
 -- behalten, vorhandene txpower-Eintraege loeschen, keine neuen setzen).
 -- Unterschiede zu 2025.1: preserve_channels steht in 2021.1 in gluon-core

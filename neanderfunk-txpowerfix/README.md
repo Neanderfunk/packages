@@ -1,11 +1,11 @@
-gluon-txpowerfix (Sackgasse 2021.1)
-===================================
+neanderfunk-txpowerfix (Sackgasse 2021.1)
+=========================================
 
 Port of `neanderfunk-txpowerfix` from `v2025.1.x` (decision adorfer,
 2026-10-04): keep the country logic and the htmode, remove pinned txpower
 values, never set a new one.
 
-Runs as `/lib/gluon/upgrade/210-gluon-txpower-fix` on every reconfigure:
+Runs as `/lib/gluon/upgrade/215-neanderfunk-txpower-fix` on every reconfigure:
 
 * **country** per radio from the configured channels (DE/JP/TW/US, logic
   unchanged),

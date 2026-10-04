@@ -1,13 +1,14 @@
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=gluon-txpowerfix
-PKG_VERSION:=3
+PKG_NAME:=neanderfunk-txpowerfix
+PKG_VERSION:=4
 
 include $(TOPDIR)/../package/gluon.mk
 
 define Package/$(PKG_NAME)
   TITLE:=Regulatory country and htmode from the channels, no pinned txpower
   DEPENDS:=+gluon-core
+  CONFLICTS:=gluon-txpowerfix
 endef
 
 define Package/$(PKG_NAME)/description
