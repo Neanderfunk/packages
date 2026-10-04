@@ -37,3 +37,11 @@ updates again. Seen on the test node: the site has `stable = { name =
 'sackgasse' }` while the old field images had the key `sackgasse`, and
 `settings.branch='sackgasse'` survived the update. The script then picks the
 section whose `name` matches, else the site default.
+
+**Cleanup (2026-10-04, suggested by Buildsystem):** instead of a fixed list,
+every `branch` section whose key is not in `site.autoupdater.branches` is
+deleted (after the remap, before the safety net). 500-autoupdater rewrites
+only the site keys and leaves foreign sections alone; field nodes still had
+`stable` with the mirrors of the big devices. Skipped if the site keys cannot
+be read. Tested on the WR841N v9 with the field case (sections stable,
+broken, sackgasse, beta; settings.branch=sackgasse) as uci deltas, reverted.

@@ -12,11 +12,17 @@ if [ "$UPDATE_BRANCH" = "experimental" ] || [ "$UPDATE_BRANCH" = "broken" ] || [
   uci set autoupdater.settings.branch="$UPDATE_BRANCH"
 fi
 
-# drop outdated update branches
-uci -q delete autoupdater.experimental || true
-uci -q delete autoupdater.stablel2tp || true
-uci -q delete autoupdater.experimentall2tp || true
-uci -q delete autoupdater.beta || true
+# Alte Branch-Sektionen weg: jede Sektion vom Typ branch, deren Schluessel
+# nicht in site.autoupdater.branches steht. 500-autoupdater schreibt nur die
+# Site-Schluessel neu und laesst fremde stehen (im Feld z. B. stable mit den
+# Mirrors der grossen Geraete, broken mit good_signatures=1). Nur wenn die
+# Site-Schluessel lesbar sind, sonst bliebe gar keine Sektion uebrig.
+SITE_BRANCHES=$(lua -e 'for k in pairs(require("gluon.site").autoupdater.branches()) do print(k) end' 2>/dev/null)
+if [ -n "$SITE_BRANCHES" ]; then
+  for s in $(uci -q show autoupdater | sed -n "s/^autoupdater\.\([^.=]*\)=branch\$/\1/p"); do
+    echo "$SITE_BRANCHES" | grep -qxF "$s" || uci -q delete autoupdater."$s"
+  done
+fi
 
 # settings.branch nennt die SEKTION (Site-Schluessel), nicht deren name. Gibt
 # es sie nicht, bricht der Autoupdater ab ("unable to load branch
