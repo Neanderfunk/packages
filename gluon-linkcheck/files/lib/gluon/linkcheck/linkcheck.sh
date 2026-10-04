@@ -1,12 +1,47 @@
 #! /bin/sh
 # Nachbarpruefung alle 15 min (micron.d). Je Pruefung (batman-Interface,
 # WLAN-Radio) erst "in der Nachbarschaft" (mindestens 2 Nachbarn) merken.
-# Danach ohne Nachbarn: 1. Mal merken, 2. Mal WLAN neu, 3. Mal Reboot.
+# Danach ohne Nachbarn: 1. und 2. Mal melden, 3. Mal WLAN neu, 4. Mal Reboot;
+# in der ersten Stunde nach dem Boot nur melden.
+# Sackgasse 2021.1, Reparaturen aus neanderfunk-linkcheck (v2025.1.x): die
+# alte Leiter rebootete wegen eines falsch gesetzten fi schon beim 3. Mal
+# (der Netzwerk-Neustart davor wurde sofort ueberholt), der
+# Autoupdater-Waechter pruefte eine Datei, die niemand anlegt, und ein
+# haengender Scan blockierte den Lauf.
 # (Kommentare entfernt gluonShellDiet.sh beim Bau.)
 
 # Waehrend der Autoupdater laeuft (haelt das flock bis in den sysupgrade
 # hinein), weder WLAN noch Reboot anfassen.
-flock -n /var/lock/autoupdater.lock true || exit 0
+autoupdater_busy() {
+  flock -n /var/lock/autoupdater.lock true 2>/dev/null || return 0
+  pgrep sysupgrade >/dev/null
+}
+autoupdater_busy && exit 0
+# keine ueberlappenden Laeufe
+exec 200<"$0"
+flock -n 200 || exit 0
+
+uptime_ok() {
+  [ "$(cut -d. -f1 /proc/uptime)" -gt 3600 ]
+}
+
+strike() {
+  local n=1
+  while [ -e "$1.$n" ] ; do n=$((n + 1)) ; done
+  : > "$1.$n"
+  echo "$n"
+}
+unstrike() {
+  set -- "$1".*
+  [ -e "$1" ] || return 0
+  rm -f "$@"
+}
+
+# ein WLAN-Neustart zur Zeit ueber alle Checks (hotfix, wifi-blackout)
+wifi_lock() {
+  exec 201>>/var/lock/neanderfunk-wifi.lock 2>/dev/null || return 0
+  flock -n 201
+}
 
 valuecheck ()
 {
@@ -15,33 +50,44 @@ valuecheck ()
     if [ "$wert" -gt 1 ] ; then
       echo 1 >$f.inhood
     fi
-  elif [ "$wert" -lt 1 ] ; then
-    if [ ! -f $f.linkpb1 ] ; then
-      logger -t gluon-linkcheck -p 5 "lost neighbours $linkname.$check"
-      echo 1 >$f.linkpb1
-    elif [ ! -f $f.linkpb2 ] ; then
-      logger -t gluon-linkcheck -p 5 "still no neighbours $linkname.$check, wifi restart"
-      echo 1 >$f.linkpb2
-      # hoechstens ein WLAN-Neustart je Lauf, auch wenn mehrere Pruefungen
-      # gleichzeitig eskalieren
-      [ -n "$wr" ] && return
+    return
+  fi
+  if [ "$wert" -ge 1 ] ; then
+    unstrike $f.linkpb
+    return
+  fi
+  n=$(strike $f.linkpb)
+  if [ "$n" -le 2 ] ; then
+    logger -t gluon-linkcheck -p 5 "lost neighbours ${n}x: $linkname.$check"
+  elif ! uptime_ok ; then
+    logger -t gluon-linkcheck -p 5 "lost neighbours ${n}x: $linkname.$check - no action during the first hour"
+  elif [ "$n" -eq 3 ] ; then
+    if [ -n "$wr" ] ; then
+      logger -t gluon-linkcheck -p 5 "lost neighbours 3x: $linkname.$check, wifi already restarted this run"
+    elif ! wifi_lock ; then
+      logger -t gluon-linkcheck -p 5 "lost neighbours 3x: $linkname.$check, another check is already restarting wifi"
+    else
+      logger -t gluon-linkcheck -p 5 "lost neighbours 3x: $linkname.$check, wifi restart"
       wr=1
       wifi down
       killall hostapd >/dev/null 2>&1
       rm -f /var/run/wifi-*.pid
       wifi config
       wifi up
-      sleep 10
-    else
-      # Frueher stand hier noch ein network restart vor dem Reboot, der im
-      # selben Lauf sofort vom Reboot ueberholt wurde (fi an falscher Stelle).
-      logger -t gluon-linkcheck -p 5 "3rd time no neighbours $linkname.$check, rebooting!"
-      sleep 10
-      flock -n /var/lock/autoupdater.lock true || exit 0
-      reboot -f
+      exec 201>&-
+      sleep 15
     fi
   else
-    rm -f $f.linkpb1 $f.linkpb2
+    logger -t gluon-linkcheck -p 5 "lost neighbours ${n}x: $linkname.$check, rebooting!"
+    sleep 10
+    autoupdater_busy && exit 0
+    # Flash im Hintergrund syncen, reboot -f, sysrq als Nachschlag
+    sync &
+    sleep 3
+    reboot -f &
+    sleep 60
+    echo b > /proc/sysrq-trigger
+    exit 0
   fi
 }
 
@@ -62,9 +108,19 @@ for radio in radio0 radio1 radio2; do
   [ -n "$linkname" ] || continue
   iwfile=/tmp/linkcheck.iwscan.$radio
   sleep 4
-  # Scan fehlgeschlagen (Interface weg, busy): kein Befund, nicht als
-  # Nachbarverlust zaehlen
-  iw dev $linkname scan lowpri passive >$iwfile 2>/dev/null || { rm -f $iwfile; continue; }
+  # Scan im Hintergrund, nach 20 s abbrechen (ein haengender Scan hielt den
+  # ganzen Lauf auf). Fehlgeschlagen oder haengend: kein Befund, nicht als
+  # Nachbarverlust zaehlen.
+  rm -f $iwfile
+  ( iw dev $linkname scan lowpri passive >$iwfile.tmp 2>/dev/null && mv $iwfile.tmp $iwfile ) &
+  p=$!
+  n=0
+  while [ $n -lt 20 ] && kill -0 $p 2>/dev/null ; do sleep 1 ; n=$((n + 1)) ; done
+  if kill -0 $p 2>/dev/null ; then
+    kill -9 $p 2>/dev/null
+    logger -t gluon-linkcheck -p 5 "iw dev $linkname scan hangs, skipped"
+  fi
+  [ -f $iwfile ] || { rm -f $iwfile.tmp; continue; }
   sleep 4
   wert=$(grep -c "BSS .*:.*:.*:.*:.*:.*(on.*)" $iwfile)
   rm -f $iwfile
