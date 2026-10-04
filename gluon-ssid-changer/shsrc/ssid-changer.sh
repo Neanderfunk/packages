@@ -58,7 +58,7 @@ fi
 OFFLINE_SSID="$PREFIX$SUFFIX"
 
 # get all SSIDs (replace \' with TICX and back to keep a possible tic in an SSID)
-ONLINE_SSIDs="$(uci show | grep wireless.client_radio[0-9]\. | grep ssid  | awk -F '='  '{print $2}' | sed "s/\\\'/TICX/g" | tr \' \~ | sed "s/TICX/\\\'/g" ) "
+ONLINE_SSIDs="$(uci show wireless | grep wireless.client_radio[0-9]\. | grep ssid  | awk -F '='  '{print $2}' | sed "s/\\\'/TICX/g" | tr \' \~ | sed "s/TICX/\\\'/g" ) "
 # if for whatever reason ONLINE_SSIDs is NULL:
 : ${ONLINE_SSIDs:="~FREIFUNK~"}
 
@@ -117,7 +117,7 @@ if [ "$CHECK" -gt 0 ] || [ "$DISABLED" = '1' ]; then
 		CURRENT_SSID="$(grep "^ssid=$ONLINE_SSID" $HOSTAPD | cut -d"=" -f2)"
 		if [ "$CURRENT_SSID" = "$ONLINE_SSID" ]; then
 			echo "SSID $CURRENT_SSID is correct, nothing to do"
-			break
+			continue
 		fi
 		CURRENT_SSID="$(grep "^ssid=$OFFLINE_SSID" $HOSTAPD | cut -d"=" -f2)"
 		if [ "$CURRENT_SSID" = "$OFFLINE_SSID" ]; then
@@ -149,7 +149,8 @@ elif [ "$CHECK" -eq 0 ]; then
 				CURRENT_SSID="$(grep "^ssid=$OFFLINE_SSID" $HOSTAPD | cut -d"=" -f2)"
 				if [ "$CURRENT_SSID" = "$OFFLINE_SSID" ]; then
 					echo "SSID $CURRENT_SSID is correct, nothing to do"
-					break
+					# continue, not break: check the other radios too (dual band)
+					continue
 				fi
 				CURRENT_SSID="$(grep "^ssid=$ONLINE_SSID" $HOSTAPD | cut -d"=" -f2)"
 				if [ "$CURRENT_SSID" = "$ONLINE_SSID" ]; then
@@ -173,7 +174,7 @@ if [ $HUP_NEEDED = 1 ]; then
 	## check for nonmachting hotapd-pidfiles 
 	if [ -f /lib/gluon/eulenfunk-hotfix/check_hostapd.sh ] ; then 
 	   sleep 2 # settle down
-	   ps|grep hostapd|grep .pid|xargs -n 10 /lib/gluon/eulenfunk-hotfix/check_hostapd.sh
+	   ps|grep hostapd|grep .pid|xargs -r -n 10 /lib/gluon/eulenfunk-hotfix/check_hostapd.sh
 	fi
 	HUP_NEEDED=0
 	echo "HUP!"

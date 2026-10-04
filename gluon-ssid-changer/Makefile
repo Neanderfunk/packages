@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=gluon-ssid-changer
-PKG_VERSION:=5
+PKG_VERSION:=6
 
 include $(TOPDIR)/../package/gluon.mk
 
