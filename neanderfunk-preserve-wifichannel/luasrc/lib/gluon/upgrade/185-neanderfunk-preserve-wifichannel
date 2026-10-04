@@ -1,0 +1,258 @@
+#!/usr/bin/lua
+
+-- neanderfunk-preserve-wifichannel, Teil 1 von 2: laeuft vor
+-- 190-preserve-wireless-channels (legt gluon.wireless.preserve_channels mit 0
+-- an, wenn der Schluessel fehlt) und vor 200-wireless (wertet ihn aus).
+--
+-- Gluon setzt bei jedem Update Kanal, Kanalliste und Breite auf die Werte der
+-- Site zurueck, ausser gluon.wireless.preserve_channels ist gesetzt. Das ist
+-- eine reine uci-Option (Gluon 388d264f, 2016). "wifi24.preserve_channels" in
+-- der site.conf liest Gluon nirgends - dieses Paket macht ihn zum Default fuer
+-- die uci-Option. Das Zusammenspiel beider Teile steht im README.
+
+local site = require 'gluon.site'
+local sysconfig = require 'gluon.sysconfig'
+local uci = require('simple-uci').cursor()
+
+-- Sackgasse 2021.1: Gluons Schalter liegt in gluon-core.@wireless[0]
+-- (gluon.wireless.preserve_channels() = uci:get_first(...)), und Gluon wertet
+-- JEDEN gesetzten Wert als an - auch "0". Aus heisst: Option fehlt.
+local function core_section()
+	local name
+	uci:foreach('gluon-core', 'wireless', function(s)
+		name = s['.name']
+		return false
+	end)
+	return name
+end
+local function preserve_on()
+	return uci:get_first('gluon-core', 'wireless', 'preserve_channels') ~= nil
+end
+local function set_preserve(on)
+	local name = core_section() or uci:add('gluon-core', 'wireless')
+	if on then
+		uci:set('gluon-core', name, 'preserve_channels', '1')
+	else
+		uci:delete('gluon-core', name, 'preserve_channels')
+	end
+	uci:save('gluon-core')
+end
+
+-- Sackgasse 2021.1: Radios haben hwmode statt band
+local function band_of(s)
+	if s.band then return s.band end
+	if s.hwmode == '11a' or s.hwmode == '11na' then return '5g' end
+	if s.hwmode == '11g' or s.hwmode == '11ng' or s.hwmode == '11b' then return '2g' end
+	return nil
+end
+
+-- preserve_channels_<band> is our own key (neanderfunk-preserve-wifichannel):
+-- every OpenWrt spelling of "true". Gluon's global preserve_channels stays
+-- get_bool, Gluon itself only takes "1".
+local function band_key_on(band)
+	local v = uci:get('gluon', 'wireless', 'preserve_channels_' .. band)
+	return v == '1' or v == 'true' or v == 'yes' or v == 'on' or v == 'enabled'
+end
+
+local PENDING = 'neanderfunk_preserve_wifichannel_pending'
+local CONTEXT = 'neanderfunk_preserve_wifichannel_context'
+local OUTDOOR = 'neanderfunk_preserve_wifichannel_outdoor'
+local LIFTED = '/tmp/neanderfunk-preserve-wifichannel.lifted'
+local KEPT = '/tmp/neanderfunk-preserve-wifichannel.kept'
+-- Sackgasse 2021.1: "Schluessel fehlt" ist dort zugleich "aus"; ob der
+-- Site-Default schon einmal angewendet wurde, merkt sich dieser Vermerk, damit
+-- ein bewusst entfernter Schalter nicht beim naechsten Lauf wiederkommt.
+local SEEDED = 'neanderfunk_preserve_wifichannel_seeded'
+
+--- Tag "nf-" statt "neanderfunk-": logd kuerzt Syslog-Tags auf 31 Zeichen, aus
+--- neanderfunk-preserve-wifichannel (32) wuerde neanderfunk-preserve-wifichanne,
+--- und die Suche nach dem Paketnamen faende nichts. So findet
+--- "logread | grep preserve-wifichannel" die Zeilen.
+local function log(message)
+	print(message)
+	os.execute('logger -t "nf-preserve-wifichannel" -p 5 "' .. message .. '" 2>/dev/null')
+end
+
+-- Rest eines abgebrochenen Laufs. Dessen Aufhebung wurde nie committet (das
+-- tut erst 998-commit), und das uci-Delta in /tmp ist mit dem Reboot weg.
+os.remove(LIFTED)
+os.remove(KEPT)
+
+--- Default aus der Site, nil wenn sie nichts sagt - dann bleibt alles bei
+--- Gluons Verhalten. In unseren site.conf steht die Zahl 1.
+local function site_default()
+	local v = site.wifi24.preserve_channels(nil)
+	if v == nil then
+		return nil
+	end
+	return v == true or v == 1 or v == '1'
+end
+
+--- Woran die Kanaele haengen: Site und Domain. Beides wechselt der nodeplacer
+--- (gluon-switch-domain bzw. das Image einer anderen Site). Die neue Domain hat
+--- 005-set-domain in diesem Lauf schon nach gluon.core.domain geschrieben.
+local function context()
+	return site.site_code() .. '/' .. (uci:get('gluon', 'core', 'domain') or '')
+end
+
+--- Outdoor-Stand: der Schalter und die Outdoor-Breiten je Radio
+--- (gluon.wireless.outdoor, outdoor_<radio>_htmode). Beides uebergeht
+--- 200-wireless bei preserve_channels=1: der Kanal bliebe, waehrend Outdoor die
+--- Regdomain schon auf Outdoor-Kanaele filtert (country3=0x4f) und das
+--- 5-GHz-Mesh abschaltet - ein Innenkanal wie 44 unter Outdoor-Regdomain.
+--- Eigener sysconfig-Schluessel statt eines Anhangs an CONTEXT: sonst saehe der
+--- erste Lauf nach diesem Update das neue Format als Wechsel und setzte auf
+--- allen Knoten mit preserve=1 einmal grundlos die Kanaele zurueck.
+local function outdoor_state()
+	local parts = {}
+	for k, v in pairs(uci:get_all('gluon', 'wireless') or {}) do
+		if k == 'outdoor' or k:match('^outdoor_.+_htmode$') then
+			table.insert(parts, k .. '=' .. tostring(v))
+		end
+	end
+	table.sort(parts)
+	return table.concat(parts, ' ')
+end
+
+-- 1. Schluessel fehlt: Default aus der Site.
+--
+-- Nur wenn er fehlt. Steht er auf 0 oder 1, bleibt er - egal ob ihn jemand
+-- von Hand gesetzt hat oder Gluons 190 bei einem frueheren Lauf. Auf
+-- Bestandsknoten aendert sich dadurch nichts.
+--
+-- Bei einer Neuinstallation (sysconfig.gluon_version leer, das schreibt
+-- 999-version erst am Ende des ersten Laufs) wird der Wert nur vorgemerkt: im
+-- ersten Lauf muss 200-wireless die Kanaele der Site ja erst eintragen. Die
+-- Vormerkung loest Teil 2 ein, sobald kein Config-Mode-Wizard mehr aussteht -
+-- sonst bliebe dessen Outdoor-Schritt ausgeblendet und eine dort gewaehlte
+-- Domain bekaeme ihre Kanaele nicht. sysconfig statt /tmp, damit sie einen
+-- Stromzyklus zwischen Erstboot und Wizard uebersteht.
+local default = site_default()
+if default ~= nil and not sysconfig[SEEDED] then
+	if preserve_on() then
+		-- schon an (bisherige Sackgasse: ffffm-keep-radio-channel), bleibt
+		sysconfig[SEEDED] = '1'
+	elseif not sysconfig.gluon_version then
+		sysconfig[PENDING] = default and '1' or '0'
+		log("fresh install: gluon-core preserve_channels=" .. (default and '1' or '0')
+			.. " from the site, set once the first configuration is done")
+	else
+		set_preserve(default)
+		sysconfig[SEEDED] = '1'
+		log("gluon-core preserve_channels was never set, set to " .. (default and '1' or '0') .. " from the site")
+	end
+end
+
+-- 2. Site, Domain oder Outdoor-Stand gewechselt: Kanaele einmal uebernehmen.
+--
+-- Mit preserve_channels=1 liesse 200-wireless die alten Kanaele stehen. Ein
+-- Knoten, der in eine Domain mit anderen Kanaelen wechselt, funkte am WLAN-Mesh
+-- seiner neuen Nachbarn vorbei; einer, bei dem jemand Outdoor ein- oder
+-- ausschaltet, bliebe auf dem alten Kanal. Deshalb wird der Schalter fuer
+-- diesen einen Lauf aufgehoben und von Teil 2 wieder gesetzt. Unterm Strich
+-- aendert sich an ihm nichts: beides liegt nur im uci-Delta, committet wird
+-- erst von 998-commit, und dann steht er wieder auf 1.
+--
+-- Outdoor aendert sich ueber den Config-Mode-Wizard, die Erweiterten
+-- Einstellungen (Gluon 2025.1 speichert dort mit gluon-reconfigure) oder per
+-- uci plus gluon-reconfigure. Ein Lauf nur von 200-wireless, wie ihn die
+-- Erweiterten Einstellungen in 2023.2 ausloesen, erreicht dieses Paket nicht.
+--
+-- Die Markierung wird VOR dem Aufheben geschrieben. Klappt das nicht, wird
+-- nicht aufgehoben - lieber die alten Kanaele als ein verlorener Schalter.
+--
+-- Hat sich NUR der Outdoor-Stand geaendert, betrifft das nur 5 GHz. Die
+-- Aufhebung gilt aber fuer alle Radios, 200-wireless setzte also auch einen von
+-- Hand gesetzten 2,4-GHz-Kanal auf den der Site zurueck. Deshalb werden Kanal,
+-- Kanalliste und Breite der uebrigen Radios hier festgehalten und danach
+-- zurueckgeschrieben: Kanal und Kanalliste von Teil 205 gleich nach
+-- 200-wireless (vor neanderfunk-txpowerfix, dessen Country am 2,4-GHz-Kanal
+-- haengt), die Breite von Teil 225 (nach txpowerfix, der sie im aufgehobenen
+-- Lauf neu setzt). Bei einem Site- oder Domainwechsel gelten die Kanaele der
+-- neuen Site fuer alle Radios, dann wird nichts festgehalten.
+local global_on = preserve_on()
+local reasons = {}
+local site_changed = false
+local outdoor_changed = false
+local last = sysconfig[CONTEXT]
+local now = context()
+if last and last ~= now then
+	site_changed = true
+	table.insert(reasons, 'site/domain ' .. last .. ' -> ' .. now)
+end
+local last_outdoor = sysconfig[OUTDOOR]
+local now_outdoor = outdoor_state()
+if last_outdoor and last_outdoor ~= now_outdoor then
+	outdoor_changed = true
+	table.insert(reasons, 'outdoor [' .. last_outdoor .. '] -> [' .. now_outdoor .. ']')
+end
+if #reasons > 0 and global_on then
+	local keep = {}
+	if not site_changed then
+		uci:foreach('wireless', 'wifi-device', function(s)
+			if band_of(s) ~= '5g' then
+				for _, option in ipairs({ 'channel', 'channels', 'htmode' }) do
+					local v = s[option]
+					if type(v) ~= 'table' then
+						table.insert(keep, 'restore\t' .. s['.name'] .. '\t' .. option .. '\t' .. (v or ''))
+					end
+				end
+			end
+		end)
+	end
+	local f = io.open(LIFTED, 'w')
+	if f then
+		f:write(table.concat(reasons, ', '), '\n')
+		for _, line in ipairs(keep) do
+			f:write(line, '\n')
+		end
+		f:close()
+		set_preserve(false)
+		log(table.concat(reasons, ', ')
+			.. (site_changed and ": applying the site's channels once" or ": applying the 5 GHz channels once, other bands kept")
+			.. ", gluon-core preserve_channels stays 1")
+	end
+end
+
+-- 3. Kanal je Band behalten: gluon.wireless.preserve_channels_<band> (2g, 5g).
+--
+-- Gluons preserve_channels gilt fuer alle Radios. Die Schluessel je Band setzt
+-- der Befehl "channel" (neanderfunk-banner): nur das Band, dessen Kanal jemand
+-- von Hand gesetzt hat, bleibt stehen, das andere folgt weiter der Site. Gluon
+-- kennt sie nicht; 200-wireless setzt also auch diese Radios zurueck. Deshalb
+-- werden Kanal, Kanalliste und Breite hier festgehalten und wie beim
+-- Outdoor-Wechsel zurueckgeschrieben: Kanal und Kanalliste von Teil 205 (vor
+-- txpowerfix, dessen Country am 2,4-GHz-Kanal haengt), die Breite von Teil 225
+-- (nach txpowerfix, der sie ohne globalen Schalter neu setzt).
+--
+-- Nur wenn der globale Schalter nicht steht, sonst laesst 200-wireless ohnehin
+-- alles stehen. Ausnahmen wie beim globalen Schalter: nach einem Site- oder
+-- Domainwechsel gelten die Kanaele der neuen Site, nach einem Outdoor-Wechsel
+-- die 5-GHz-Kanaele - jeweils einmal, der Schluessel bleibt.
+if not global_on then
+	local keep, bands = {}, {}
+	uci:foreach('wireless', 'wifi-device', function(s)
+		local band = band_of(s)
+		if not band or not band_key_on(band) then
+			return
+		end
+		if site_changed or (band == '5g' and outdoor_changed) then
+			return
+		end
+		for _, option in ipairs({ 'channel', 'channels', 'htmode' }) do
+			local v = s[option]
+			if type(v) ~= 'table' then
+				table.insert(keep, 'restore\t' .. s['.name'] .. '\t' .. option .. '\t' .. (v or ''))
+			end
+		end
+		table.insert(bands, band .. ' (' .. s['.name'] .. ', channel ' .. tostring(s.channel) .. ')')
+	end)
+	if #keep > 0 then
+		local f = io.open(KEPT, 'w')
+		if f then
+			f:write(table.concat(keep, '\n'), '\n')
+			f:close()
+			log('keeping channel and width per band: ' .. table.concat(bands, ', '))
+		end
+	end
+end
