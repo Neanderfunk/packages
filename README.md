@@ -35,6 +35,12 @@ Core of neanderfunk-banner from v2025.1.x for 19.07/swconfig: nodestatus
 overview at login, nodeinfo, switch0/switchstatus, reconf, v4up, vpn,
 routername, kontakt, help. See neanderfunk-banner/README.md.
 
+### neanderfunk-status-page
+
+`cgi-bin/dyn/gateway-name` for the status page: the batman gateway's
+hostname, asked from the gateway via respondd. The page itself is patched in
+gluon-patches-packages v2021.1.x (`status-page/statuspage-neanderfunk`).
+
 ### gluon-linkcheck
 
 WIFI-Neighborcheck. check if interfaces with previously 2 and more neighbors have lost all neigbors for longer, see [](gluon-linkcheck/README.md)
