@@ -28,6 +28,8 @@
 
 -- Alles in main(): geht trotz aller Vorsicht etwas schief, steht beim Login
 -- eine Zeile statt eines Stacktrace, und was schon ausgegeben ist, bleibt.
+-- Sackgasse 2021.1: keine Zahlliterale der Form 0.x - luasrcdiet 1.0.0
+-- (Gluon 2021.1) macht daraus .x und bricht dann mit "malformed number" ab.
 local function main()
 
 -- Selbst die beiden festen Abhaengigkeiten von gluon-core duerfen fehlen: ohne
@@ -368,7 +370,7 @@ for k, v in (readfile('/proc/meminfo') or ''):gmatch('(%w+):%s+(%d+) kB') do mem
 local memtxt, memwarn = '', false
 if mem.MemTotal and mem.MemAvailable then
 	memtxt = string.format('RAM %d von %d MB', math.floor(mem.MemAvailable / 1024), math.floor(mem.MemTotal / 1024))
-	memwarn = mem.MemAvailable < mem.MemTotal * 0.1
+	memwarn = mem.MemAvailable * 10 < mem.MemTotal
 end
 
 local flashtxt, flashwarn = '', false
@@ -378,7 +380,7 @@ if size then
 	flashtxt = size >= 1024
 		and string.format('Flash %.1f von %.1f MB', avail / 1024, size / 1024)
 		or string.format('Flash %d von %d kB', avail, size)
-	flashwarn = avail < size * 0.1
+	flashwarn = avail * 10 < size
 end
 local overlay_ro = (readfile('/proc/mounts') or ''):find('/ overlay ro,', 1, true) ~= nil
 
@@ -973,7 +975,7 @@ local function human(n)
 	local i = 1
 	while n >= 1024 and i < #units do n = n / 1024 i = i + 1 end
 	if i == 1 then return tostring(math.floor(n)) end
-	return (n < 10 and string.format('%.1f', n) or tostring(math.floor(n + 0.5))) .. units[i]
+	return (n < 10 and string.format('%.1f', n) or tostring(math.floor(n + 1/2))) .. units[i]
 end
 
 local function port_table(wiredmesh, detail)
@@ -1479,7 +1481,7 @@ for _, radio in ipairs(has_wifi and radios or {}) do
 		widthtxt = width and (width .. 'MHz') or ''
 		modetxt = mode or ''
 		if tx then
-			txtxt = string.format('%d/%s', math.floor(tonumber(tx) + 0.5), maxtx or '?')
+			txtxt = string.format('%d/%s', math.floor(tonumber(tx) + 1/2), maxtx or '?')
 			if uci_tx then txtxt = txtxt .. c('dim', '*') any_uci_tx = true end
 		end
 	end
