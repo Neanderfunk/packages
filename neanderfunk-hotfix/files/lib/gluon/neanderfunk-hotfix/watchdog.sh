@@ -45,7 +45,8 @@ case "$interval" in ''|*[!0-9]*) interval=5 ;; esac
 # watchdog would reboot a perfectly healthy node, over and over. Read that
 # period out of the cron entry instead of trusting the two to be kept in sync
 # by hand, and never go below it.
-cron_min="$(sed -n 's#^\*/\([0-9][0-9]*\) .*watchdog\.sh.*#\1#p' /usr/lib/micron.d/hotfix 2>/dev/null | head -1)"
+# "*/5" wie "3-59/5": der Schritt hinter dem Schraegstrich ist die Periode.
+cron_min="$(sed -n 's#^[0-9*][0-9-]*/\([0-9][0-9]*\) .*watchdog\.sh.*#\1#p' /usr/lib/micron.d/hotfix 2>/dev/null | head -1)"
 case "$cron_min" in ''|*[!0-9]*) cron_min=5 ;; esac
 [ "$interval" -lt "$cron_min" ] && interval="$cron_min"
 stale="$(uci -q get hotfix.settings.autoupdater_stale_min)"

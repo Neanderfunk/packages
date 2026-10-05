@@ -269,9 +269,9 @@ now_reboot() {
 # --- gemeinsame Sperre fuer WLAN-Eingriffe ----------------------------------
 #
 # Auf einem Knoten koennen sechs Stellen das WLAN neu starten: ssid-changer
-# (jede Minute), ap-timer (jede Minute), linkcheck (*/5),
-# healthcheck samt check_hostapd (*/7), wifi-blackout (*/10), IfNoWificlient
-# (*/15) und stuendlich ffac-autoupdater-wifi-fallback. Die Einzelinstanz-Locks
+# (jede Minute), ap-timer (jede Minute), linkcheck (alle 5 min),
+# healthcheck samt check_hostapd (alle 7), wifi-blackout (alle 10), IfNoWificlient
+# (alle 15) und stuendlich ffac-autoupdater-wifi-fallback. Die Einzelinstanz-Locks
 # der einzelnen Skripte (fd 200) verhindern nur, dass ein Skript sich selbst
 # ueberholt - nicht, dass linkcheck ein "wifi down" absetzt, waehrend
 # IfNoWificlient zwischen "wifi down" und "wifi up" steht.

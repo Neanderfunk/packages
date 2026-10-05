@@ -550,7 +550,8 @@ relieved within 3x that interval concludes there is no micrond starting jobs any
 more, and reboots.
 
 The value is clamped to the period micrond actually uses, which the script reads
-out of its own cron entry in `/usr/lib/micron.d/hotfix`. Setting it *lower* than
+out of its own cron entry in `/usr/lib/micron.d/hotfix`. Both `*/5` and a
+range with a step (`3-59/5`) are understood; the step is the period. Setting it *lower* than
 that would create a deadline no relief could ever meet, and the watchdog would
 reboot a perfectly healthy node every few minutes; raising it is honoured.
 
@@ -604,3 +605,16 @@ uci set hotfix.settings.watchdog_interval_min='5'
 uci set hotfix.settings.autoupdater_stale_min='300'
 uci commit hotfix
 ```
+
+Cron schedule
+-------------
+
+The periodic jobs of this feed start at staggered minutes instead of all at
+`:00` and every fifth minute, where Gluon's own `tunneldigger-watchdog` (`*/5`)
+already runs: `healthcheck.sh` `5-59/7`, `IfNoWificlient.sh` `14-59/15`,
+`watchdog.sh` `3-59/5`, together with neanderfunk-linkcheck
+(`linkcheck.sh` `2-59/5`, `gateway.sh` `6-59/8`) and neanderfunk-wifi-blackout
+(from minute 1). No minute runs more than two of them. The point is the peaks,
+not the load average: on 32/64 MB nodes several shells or Lua interpreters at
+once push the page cache out. micrond only knows ranges with a step: `5/7`
+alone would mean minute 5 only.
