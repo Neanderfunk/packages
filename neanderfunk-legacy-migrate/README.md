@@ -71,3 +71,16 @@ Emulation (QEMU malta-be, Aufbau Buildsystem), 24100427bro WR841N v9, Sicherung
 eines 2014.4-Knotens (ffsb, LAN `eth0` in `client.ifname`, kein mesh_lan),
 05.10.2026: `mesh_lan` disabled, `client.ifname` = `eth0 bat0 local-port`;
 vorher eth0 zugleich in br-client und mesh_lan aktiv.
+
+Verwaiste Konfigurationen (`990-neanderfunk-orphan-configs`)
+-----------------------------------------------------------
+
+Läuft bei jedem Upgrade auf jedem Knoten. Löscht `/etc/config/alfred`,
+`luci`, `ucitrack`, `socat` und `keep_settings`, wenn das zugehörige Programm
+nicht im Image ist (`/usr/sbin/alfred`, luci-base, `/usr/bin/socat`;
+`keep_settings` ist ein Fremdpaket alter Communities). Solche Dateien schleppt
+ein sysupgrade aus alten Firmwares mit, oder aus einem Image, das das Paket
+noch hatte (Sackgasse: socat seit 04.10.2026 raus). Bewusst nicht:
+`/etc/config/fastd` mit dem alten Schlüssel (adorfer 05.10.2026) und
+`dhcp.local_client` (legt Gluon selbst an). Getestet in der Emulation mit einer
+2014.4-Sicherung: alfred, luci, ucitrack gelöscht, fastd bleibt.

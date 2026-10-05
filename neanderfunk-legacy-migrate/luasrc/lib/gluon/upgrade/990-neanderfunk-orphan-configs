@@ -1,0 +1,35 @@
+#!/usr/bin/lua
+-- SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+-- SPDX-License-Identifier: BSD-3-Clause
+--
+-- Konfigurationsdateien, die ein sysupgrade aus einer alten Firmware (oder
+-- aus einem Image, das das Paket noch hatte) mitschleppt, obwohl das
+-- Programm dazu fehlt: weg, bei jedem Upgrade. Auf 4/32-Geraeten zaehlt jedes
+-- KB Overlay. Geloescht wird nur, wenn das Programm nicht im Image ist.
+-- fastd bleibt bewusst (alter Schluessel, adorfer 05.10.2026), ebenso
+-- dhcp.local_client (legt Gluon selbst an).
+
+local function exists(path)
+	local f = io.open(path)
+	if f then
+		f:close()
+		return true
+	end
+	return false
+end
+
+local orphans = {
+	alfred = '/usr/sbin/alfred',
+	luci = '/usr/lib/lua/luci/dispatcher.lua',
+	ucitrack = '/usr/lib/lua/luci/dispatcher.lua',
+	socat = '/usr/bin/socat',
+	keep_settings = false, -- Fremdpaket alter Communities, in keinem unserer Images
+}
+
+for name, prog in pairs(orphans) do
+	local cfg = '/etc/config/' .. name
+	if exists(cfg) and not (prog and exists(prog)) then
+		os.remove(cfg)
+		print('neanderfunk-legacy-migrate: removed orphaned ' .. cfg)
+	end
+end
