@@ -124,9 +124,12 @@ function M.old_usage(uci)
 		end
 	end)
 	local function members(i)
-		local ret = {}
+		local ret, seen = {}, {}
 		local function add(tok)
+			if seen[tok] then return end
+			seen[tok] = true
 			if ports[tok] then
+				-- 2015.1: br-client nennt nach migrate-bridges sich selbst als Port
 				for _, p in ipairs(ports[tok]) do add(p) end
 			elseif tok:match('^eth%d+$') then
 				ret[tok] = true
