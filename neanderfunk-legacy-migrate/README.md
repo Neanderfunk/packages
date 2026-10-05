@@ -2,7 +2,8 @@ neanderfunk-legacy-migrate
 ==========================
 
 Upgrade-Skripte für große Sprünge auf Gluon 2025.1, etwa wenn wir die Knoten
-einer Community übernehmen, die noch auf 2015.1, 2016.2 oder 2017.1 steht.
+einer Community übernehmen, die noch auf 2014.4, 2015.1, 2016.2 oder 2017.1
+steht.
 Gluon hat die alten Konfigurationsmigrationen über die Jahre entfernt. Ohne
 sie kommt so ein Knoten zwar hoch, aber ohne WLAN (kein `band`), ohne Mesh auf
 WAN/LAN, mit falschem VPN-Schalter und am fremden Autoupdater.
@@ -19,18 +20,26 @@ Das Paket landet in jedem 2025.1-Image. Bei Herkunft ab 2022.1 (unsere Flotte)
 Ablauf beim Upgrade
 -------------------
 
-Die Skripte laufen zwischen Gluons eigenen Upgrade-Skripten:
+Gluon führt beim ersten Start nach einem Update (und bei jedem
+`gluon-reconfigure`) alle Dateien in `/lib/gluon/upgrade/` in alphabetischer
+Reihenfolge aus. Die Nummer vorne im Namen legt also fest, wann ein Skript
+läuft: `020z-...` kommt nach Gluons `020-interfaces` und vor
+`021-interface-roles`. So hängen sich die Skripte dieses Pakets zwischen
+Gluons eigene:
 
 | Skript | wann | was |
 |---|---|---|
-| `015-neanderfunk-legacy-version` | einmal, nur Herkunft 2014.x | `gluon_version` aus `/lib/gluon/version/core`, sonst gilt der Knoten als neu (Hostname, WAN-proto) |
 | `009-neanderfunk-legacy-primary-mac` | x86, einmal | fehlende `primary_mac` aus der alten Konfiguration, vor Gluons `010-primary-mac` |
+| `010-primary-mac` | Gluon | setzt `primary_mac` (node_id), wenn sie fehlt |
+| `015-neanderfunk-legacy-version` | einmal, nur Herkunft 2014.x | `gluon_version` aus `/lib/gluon/version/core`, sonst gilt der Knoten als neu (Hostname, WAN-proto) |
 | `018z-neanderfunk-ifbind-anchor` | x86, einmal | alte Aufzählung nachbauen, WAN, LAN und weitere Karten an die Karte binden, nur bei Herkunft vor 2022.1 |
 | `019-migrate-interface-order` | Gluon | tauscht LAN/WAN nach alter Treiber-Ladereihenfolge (ab 2022.1) |
 | `020-interfaces` | Gluon | setzt `lan_ifname`/`wan_ifname` neu (x86: eth0/eth1) |
 | `020a-neanderfunk-ifbind` | x86, **jedes Mal** | `lan_ifname`/`wan_ifname` und `gluon.iface_extra_*` auf die gebundenen Karten |
 | `020z-neanderfunk-legacy-migrate` | einmal, nur alte Herkunft | Konfiguration migrieren (unten) |
 | `021-interface-roles` | Gluon | legt fehlende `gluon.iface_*` mit Site-Vorgaben an |
+| `030-system` | Gluon | Hostname nur bei Neuinstallation (deshalb `015`) |
+| `990-neanderfunk-orphan-configs` | **jedes Mal** | verwaiste Konfigurationen löschen (unten) |
 
 ### Altkonfiguration (020z)
 
@@ -50,10 +59,12 @@ Skript läuft nicht noch einmal.
    Site-Vorgaben. Gluon 2014.x kennt noch kein `network.mesh_lan`; steht dann
    ein Ethernet-Port in der alten Client-Bridge (`client.ifname` als String
    `'eth0.1 bat0'`), ist LAN `client`. `mesh_lan` aus heißt bis 2021.1 immer: LAN steckt in der
-   Client-Bridge, also Rolle `client`. Die Bridge selbst ist zu diesem
-   Zeitpunkt nicht mehr lesbar: `11_network-migrate-bridges` (OpenWrt
-   uci-defaults, läuft vor `zzz-gluon-upgrade`) hat `client.ifname` schon nach
-   `device`/`ports` verschoben und dabei verfälscht.
+   Client-Bridge, also Rolle `client`. Die alte Client-Bridge liest das
+   Skript aus `network_gluon-old`: `11_network-migrate-bridges` (OpenWrt
+   uci-defaults, läuft vor `zzz-gluon-upgrade`) hat `client.ifname` dort nach
+   `device br-client`/`ports` verschoben. Bei 2014.4 bleiben die Ports dabei
+   lesbar; bei 2015.1 stand danach nur `br-client` selbst als Port, dann
+   entscheidet allein `mesh_lan`.
 3. VPN: `gluon.mesh_vpn` aus `fastd`/`tunneldigger` `enabled` und dem
    Bandbreitenlimit aus `simple-tc` bzw. `limit_bw_down`.
 4. `gluon-core` `preserve_channels` → `gluon.wireless`.
@@ -193,6 +204,10 @@ der Boot-Partition, neue Skripte im Archiv (05.10.2026):
   only 2 cards now", nichts gebunden.
 - sysupgrade mit danach umgesteckten Karten (andere PCI-Plätze): LAN, WAN und
   die dritte Karte per MAC wiedergefunden, PCI-Pfade nachgetragen.
+
+Offen: Ende-zu-Ende auf x86 mit echtem sysupgrade aus Barrier Breaker auf das
+MBR-Image und danach auf das EFI-Image (Buildsystem, nach dem nächsten Lauf);
+ein Sprung auf echter Router-Hardware.
 
 Frühere Tests, QEMU x86-64, Ziel 26100312bro, Altkonfigurationen echter Knoten
 (x86-Bindung damals noch mit `primary_mac` als Anker):
