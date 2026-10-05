@@ -13,13 +13,21 @@ Was `020z-neanderfunk-legacy-migrate` tut
 -----------------------------------------
 
 Läuft nur, wenn `gluon_version` eine Version vor 2021 nennt, eine
-`/etc/config/gluon-simple-tc` da ist oder `firewall.client` existiert. Danach
+`/etc/config/gluon-simple-tc` da ist, `/lib/gluon/version/core` existiert
+(2014.x-Releases ohne `gluon_version`) oder `firewall.client` existiert. Danach
 steht `/lib/gluon/core/sysconfig/neanderfunk_legacy_migrated` (alte Version),
 und das Skript läuft nicht noch einmal.
 
 1. `gluon-simple-tc` → `simple-tc` (seit 2016.1 umbenannt; die Migration hat
    Gluon mit `fc7c8cb0` in v2019.1 entfernt). Danach übernimmt Gluons
    `500-mesh-vpn` das Bandbreitenlimit nach `gluon.mesh_vpn`.
+1a. LAN in der Client-Bridge ohne `network.mesh_lan` (Gluon 2014.x):
+   `mesh_lan` mit `auto='0'` anlegen. Sonst legt `220-interface-lan` die
+   Sektion mit der Site-Vorgabe an, und seine Prüfung, ob LAN schon in
+   `client.ifname` steht, scheitert am alten String `'eth0.1 bat0'` (`get_list`
+   liefert ein einziges Element). LAN läge dann zugleich in br-client und im
+   aktiven mesh_lan. Mit `auto='0'` setzt 220 `disabled=1`, und LAN bleibt in
+   der Client-Bridge.
 2. Alte Zonen `firewall.client`, `firewall.local_node`, `dhcp.client` löschen,
    `sysctl.conf` mit `ip_forward=1` auf Vorgabe zurück (entfernt mit
    `ab2f82ca` in v2021.1).
@@ -58,3 +66,8 @@ Zonen, `sysctl.conf`, eigener Branch bleibt (fremde Sektionen weg), fremder
 Branch wird zum Default, zweiter Lauf ohne Wirkung. Ein Knoten mit
 `v2021.1.2` bleibt unberührt. Ein echter Sprung 2015.1.2 → 2021.1 steht aus
 (braucht ein 2021.1-Image mit dem Paket).
+
+Emulation (QEMU malta-be, Aufbau Buildsystem), 24100427bro WR841N v9, Sicherung
+eines 2014.4-Knotens (ffsb, LAN `eth0` in `client.ifname`, kein mesh_lan),
+05.10.2026: `mesh_lan` disabled, `client.ifname` = `eth0 bat0 local-port`;
+vorher eth0 zugleich in br-client und mesh_lan aktiv.

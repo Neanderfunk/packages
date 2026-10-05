@@ -22,7 +22,10 @@ end
 -- Herkunft: gluon_version steht bis 999-version noch auf der alten Firmware
 local year = tonumber(((sysconfig.gluon_version or ''):match('^v?(20%d%d)%.')))
 local stc = util.readfile('/etc/config/gluon-simple-tc') ~= nil
-if not ((year and year < 2021) or stc or uci:get('firewall', 'client')) then
+-- 2014.x-Releases: kein gluon_version, nur /lib/gluon/version/<paket>
+-- (001-upgrade setzt dann gluon_version = '')
+local v2014 = util.readfile('/lib/gluon/version/core') ~= nil
+if not ((year and year < 2021) or stc or v2014 or uci:get('firewall', 'client')) then
 	return
 end
 print('neanderfunk-legacy-migrate: migrating config from ' .. (sysconfig.gluon_version or '?'))
@@ -31,6 +34,27 @@ print('neanderfunk-legacy-migrate: migrating config from ' .. (sysconfig.gluon_v
 --    das Bandbreitenlimit (entfernt mit fc7c8cb0, v2019.1)
 if stc then
 	os.rename('/etc/config/gluon-simple-tc', '/etc/config/simple-tc')
+end
+
+-- 1a. LAN in der Client-Bridge ohne network.mesh_lan (Gluon 2014.x): 220-interface-lan
+--     legte mesh_lan sonst mit Site-Vorgabe an und prueft "LAN schon in
+--     client.ifname" per get_list - bei einem String 'eth0.1 bat0' ein einziges
+--     Element, eth0.1 wird nicht gefunden. Folge: LAN zugleich in br-client und
+--     mesh_lan an. Mit auto='0' setzt 220 disabled=1, 300 laesst LAN in der
+--     Client-Bridge (Befund Buildsystem, ffsb 2014.4).
+if not uci:get('network', 'mesh_lan') and sysconfig.lan_ifname then
+	local ifn = uci:get('network', 'client', 'ifname')
+	if type(ifn) == 'table' then ifn = table.concat(ifn, ' ') end
+	local inclient = {}
+	for t in (ifn or ''):gmatch('%S+') do inclient[t] = true end
+	for lanif in sysconfig.lan_ifname:gmatch('%S+') do
+		if inclient[lanif] then
+			uci:section('network', 'interface', 'mesh_lan', { auto = '0' })
+			uci:save('network')
+			print('neanderfunk-legacy-migrate: LAN ' .. lanif .. ' was in the client bridge, mesh_lan off')
+			break
+		end
+	end
 end
 
 -- 2. Alte Zonen und sysctl.conf (entfernt mit ab2f82ca, v2021.1)
