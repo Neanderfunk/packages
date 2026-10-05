@@ -265,7 +265,8 @@ zurückgeholt. Die Werkzeuge führen sie wieder (`ubiquiti-loco-m-xw`,
 `ubiquiti-nanostation-loco-m2/m5-xw` -> `ubiquiti-nanostation-loco-m-xw`,
 `ubiquiti-nanostation-m2/m5-xw` -> `ubiquiti-nanostation-m-xw`): Ein Knoten,
 der schon Gluon fährt, hat beschreibbaren Flash, und eine NanoStation XW in
-RDV ist per handgemachtem Manifest aus der Sackgasse nach 2023.1.5 gesprungen und
+der Domain Radevormwald (48_rdvw) ist per handgemachtem Manifest aus der
+Sackgasse nach 2023.1.5 gesprungen und
 ohne Eingriff wieder online gekommen (Entscheidung adorfer, 05.10.2026).
 
 Ohne Weg per Autoupdater (bewusst nicht im Manifest, von Hand umstellen):
