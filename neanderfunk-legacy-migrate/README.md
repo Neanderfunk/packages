@@ -116,6 +116,15 @@ jeder 5-Feld-Zeile die beiden 4-Feld-Zeilen, und für alte Modellnamen (z. B.
 dieselben Zeilen mit dem alten Namen. Die Zuordnung alt -> neu steht als
 Tabelle in den Skripten, eigene Ergänzungen per `-a`.
 
+Ubiquiti AirMax XW: Gluon hat die Aliase der alten ar71xx-Namen beim
+AirMax-Ausbau entfernt (Gefahr eines schreibgeschützten Flash) und nicht
+zurückgeholt. Die Werkzeuge führen sie wieder (`ubiquiti-loco-m-xw`,
+`ubiquiti-nanostation-loco-m2/m5-xw` -> `ubiquiti-nanostation-loco-m-xw`,
+`ubiquiti-nanostation-m2/m5-xw` -> `ubiquiti-nanostation-m-xw`): Ein Knoten,
+der schon Gluon fährt, hat beschreibbaren Flash, und eine NanoStation XW in
+RDV ist per handgemachtem Manifest aus der Sackgasse nach 2023.1.5 gesprungen und
+ohne Eingriff wieder online gekommen (Entscheidung adorfer, 05.10.2026).
+
 Ohne Weg per Autoupdater (bewusst nicht im Manifest, von Hand umstellen):
 
 - **CPE210/220/510/520 v1:** Das sysupgrade von Gluon 2016.2 lehnt das
@@ -128,8 +137,6 @@ Ohne Weg per Autoupdater (bewusst nicht im Manifest, von Hand umstellen):
   (paravirtualisiert gegen GRUB). Ungetestet, daher kein Alias.
 - **Netgear WNDR3700 v4:** Upgrade-Pfad nie gegangen (Kernelpartition
   gewachsen, Gluon e1437781).
-- **Ubiquiti AirMax XW** (NanoStation/Loco M XW unter alten Namen): Aliase
-  derzeit nicht enthalten, Gluon hat sie mit dem AirMax-Ausbau entfernt.
 - x86: Ziel ist 2025.1 (Zweig `v2025.1.x`), dort steht, was x86 braucht.
 
 Offen: ob der Autoupdater sehr alter Firmwares (ecdsautils 0.3.x) heutige
