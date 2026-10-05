@@ -2,22 +2,26 @@
 -- SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
 -- SPDX-License-Identifier: BSD-3-Clause
 --
--- x86, einmalig beim Sprung von einer aelteren Firmware: die alte Zuordnung
--- LAN/WAN an die Karte binden, BEVOR 019-migrate-interface-order und
--- 020-interfaces die Namen neu verteilen (siehe neanderfunk/ifbind.lua).
--- Hier stehen in sysconfig noch lan_ifname/wan_ifname der alten Firmware.
--- Anker ist primary_mac: die MAC der Karte, die bei der Erstinstallation
--- eth0 war. Nur bei genau zwei Karten und alten Namen eth0/eth1 eindeutig.
--- Nur bei Herkunft vor 2022.1 (noch keine gluon.iface_*-Rollen): genau dort
--- steigt 019 aus. Ab 2022.1 rechnet 019 mit der echten alten Ladereihenfolge
--- der Treiber und ist genauer als primary_mac (Erstinstallation, nicht
--- letzter Stand); 020a bindet danach den Stand.
+-- x86, einmalig beim Sprung von einer Firmware vor 2022.1 (noch keine
+-- gluon.iface_*-Rollen; genau dort steigt Gluons 019 aus): die alten Rollen
+-- an die Karten binden, BEVOR 019-migrate-interface-order und 020-interfaces
+-- die Namen neu verteilen (siehe neanderfunk/ifbind.lua).
+--
+-- Dafuer wird die alte Aufzaehlung nachgebaut: welche Karte bei OpenWrt
+-- 14.07 bis 19.07 eth0, eth1 ... hiess (Treiber-Ladereihenfolge, dann
+-- PCI-Adresse). Aus der alten network-Konfiguration kommt, wofuer jede ethN
+-- benutzt wurde (WAN-Bridge, Mesh, Client-Bridge). Gebunden werden WAN, LAN
+-- und jede weitere benutzte Karte (als gluon.iface_extra_<alter Name>).
+-- Gegenproben: wan_ifname/lan_ifname aus sysconfig, primary_mac. Bei
+-- Widerspruch wird NICHTS gebunden, und 020a darf auch nicht den zufaelligen
+-- Stand nach board.json festschreiben (neanderfunk_bind_conflict).
+--
 -- Gelingt die Bindung, uebernimmt sie das Umsortieren, und 019 wird
 -- uebersprungen, damit nicht doppelt getauscht wird.
 
 local platform = require 'gluon.platform'
 local sysconfig = require 'gluon.sysconfig'
-if not platform.match('x86') or sysconfig.neanderfunk_bind_wan then
+if not platform.match('x86') or sysconfig.neanderfunk_bind_wan or sysconfig.neanderfunk_bind_conflict then
 	return
 end
 
@@ -25,34 +29,114 @@ local uci = require('simple-uci').cursor()
 if #uci:get_list('gluon', 'iface_lan', 'role') > 0 or #uci:get_list('gluon', 'iface_wan', 'role') > 0 then
 	return
 end
+if not uci:get('network_gluon-old', 'client') and not uci:get('network_gluon-old', 'wan') then
+	return
+end
 
 local ifbind = require 'neanderfunk.ifbind'
-local lan, wan, prim = sysconfig.lan_ifname, sysconfig.wan_ifname, sysconfig.primary_mac
-if not lan or not wan or not prim then
-	return
-end
-local old0
-if lan == 'eth0' and wan == 'eth1' then
-	old0 = 'lan'
-elseif wan == 'eth0' and lan == 'eth1' then
-	old0 = 'wan'
-else
-	return
-end
-
 local nics = ifbind.nics()
-if #nics ~= 2 then
+if #nics < 2 then
 	return
 end
-local a = ifbind.find(nics, prim:lower() .. ' ')
-if not a then
-	return
-end
-local b = nics[1] == a and nics[2] or nics[1]
 
-local bind = { [old0] = a, [old0 == 'lan' and 'wan' or 'lan'] = b }
-sysconfig.neanderfunk_bind_lan = ifbind.key(bind.lan)
-sysconfig.neanderfunk_bind_wan = ifbind.key(bind.wan)
+local function fail(reason)
+	sysconfig.neanderfunk_bind_conflict = reason
+	print('neanderfunk-ifbind: NOT binding, ' .. reason .. '; check LAN/WAN by hand (README)')
+	os.execute("logger -t neanderfunk-ifbind -p daemon.warn 'not binding: " .. reason:gsub("'", '') .. "' 2>/dev/null")
+end
+
+local order, why = ifbind.old_order(nics, platform.match('x86', 'geode'))
+if not order then
+	return fail(why)
+end
+local old = {}
+for i, n in ipairs(order) do
+	old['eth' .. (i - 1)] = n
+end
+
+local usage = ifbind.old_usage(uci)
+for name in pairs(usage) do
+	if not old[name] then
+		return fail('old config uses ' .. name .. ', only ' .. #nics .. ' cards now')
+	end
+end
+for _, k in ipairs({ 'wan_ifname', 'lan_ifname' }) do
+	local v = sysconfig[k]
+	if v and not old[v] then
+		return fail(k .. '=' .. v .. ' does not map to a card')
+	end
+end
+
+-- WAN: sysconfig, sonst die Karte in der alten WAN-Bridge; beides muss passen
+local wan = sysconfig.wan_ifname
+for name, u in pairs(usage) do
+	if u.wan then
+		if wan and wan ~= name then
+			return fail('wan_ifname=' .. wan .. ' but old WAN bridge has ' .. name)
+		end
+		wan = name
+	end
+end
+if not wan then
+	return fail('no old WAN interface')
+end
+
+-- Gegenprobe primary_mac: Mit lan_ifname UND wan_ifname war die Erstinstallation
+-- schon zweikartig, primary_mac war damals eth0. Zeigt sie auf die Karte, die
+-- wir fuer die alte eth1 halten, ist die Rekonstruktion falsch.
+local prim = ifbind.old_primary_mac(uci, sysconfig)
+if prim and sysconfig.lan_ifname and #nics == 2 and old.eth1.mac == prim then
+	return fail('primary_mac ' .. prim .. ' is the card we think was eth1')
+end
+
+-- LAN: sysconfig, sonst die Mesh-Karte, sonst die Client-Karte, sonst die
+-- erste uebrige Karte in alter Reihenfolge
+local function pick(pred)
+	for i = 0, #order - 1 do
+		local name = 'eth' .. i
+		if name ~= wan and pred(name, usage[name] or {}) then
+			return name
+		end
+	end
+end
+local lan = sysconfig.lan_ifname
+	or pick(function(_, u) return u.mesh end)
+	or pick(function(_, u) return u.client end)
+	or pick(function() return true end)
+if lan == wan then
+	return fail('LAN and WAN are both ' .. wan)
+end
+
+-- weitere benutzte Karten: eigene Sektion, Rolle wie frueher
+if not io.open('/etc/config/gluon') then
+	io.open('/etc/config/gluon', 'w'):close()
+end
+local extra = {}
+for name, u in pairs(usage) do
+	if name ~= wan and name ~= lan then
+		local roles = {}
+		if u.client then table.insert(roles, 'client') end
+		if u.mesh then table.insert(roles, 'mesh') end
+		if #roles > 0 then
+			uci:section('gluon', 'interface', 'iface_extra_' .. name, {
+				name = old[name].name,
+				role = roles,
+				neanderfunk_bind = ifbind.key(old[name]),
+			})
+			table.insert(extra, string.format('%s=%s(%s)', name, old[name].name, table.concat(roles, '+')))
+		end
+	end
+end
+uci:save('gluon')
+
+sysconfig.neanderfunk_bind_lan = ifbind.key(old[lan])
+sysconfig.neanderfunk_bind_wan = ifbind.key(old[wan])
 sysconfig.migrated_interface_order = ''
-print(string.format('neanderfunk-ifbind: anchored LAN=%s WAN=%s (primary_mac was old eth0, %s)',
-	sysconfig.neanderfunk_bind_lan, sysconfig.neanderfunk_bind_wan, old0))
+print(string.format('neanderfunk-ifbind: anchored old %s->%s WAN, old %s->%s LAN%s (old order: %s)',
+	wan, old[wan].name, lan, old[lan].name,
+	#extra > 0 and (', extra ' .. table.concat(extra, ' ')) or '',
+	(function()
+		local t = {}
+		for i, n in ipairs(order) do t[i] = n.driver end
+		return table.concat(t, ' ')
+	end)()))

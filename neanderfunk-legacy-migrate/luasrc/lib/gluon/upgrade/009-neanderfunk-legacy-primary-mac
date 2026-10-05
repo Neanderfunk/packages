@@ -1,0 +1,49 @@
+#!/usr/bin/lua
+-- SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+-- SPDX-License-Identifier: BSD-3-Clause
+--
+-- x86, einmalig beim Sprung von einer Firmware vor 2022.1, vor Gluons
+-- 010-primary-mac: Fehlt primary_mac in sysconfig (etwa bei Sicherungen aus
+-- 2014.4), nimmt 010 die MAC des NEUEN eth0, und die node_id wechselt, sobald
+-- sich die Treiber-Reihenfolge geaendert hat. Die alte Firmware hat ihre
+-- primary_mac aber bei jedem Upgrade in network.client.macaddr geschrieben;
+-- die nehmen wir, sonst die Karte, die frueher eth0 war (neanderfunk/ifbind.lua).
+-- Merkt sich ausserdem den alten Wert fuer 018z (neanderfunk_old_primary_mac).
+
+local platform = require 'gluon.platform'
+local sysconfig = require 'gluon.sysconfig'
+if not platform.match('x86') or sysconfig.neanderfunk_old_primary_mac or sysconfig.neanderfunk_bind_wan then
+	return
+end
+
+local uci = require('simple-uci').cursor()
+if #uci:get_list('gluon', 'iface_lan', 'role') > 0 or #uci:get_list('gluon', 'iface_wan', 'role') > 0 then
+	return
+end
+if not uci:get('network_gluon-old', 'client') then
+	return
+end
+
+sysconfig.neanderfunk_old_primary_mac = sysconfig.primary_mac or ''
+if sysconfig.primary_mac then
+	return
+end
+
+local ifbind = require 'neanderfunk.ifbind'
+local nics = ifbind.nics()
+local mac = ifbind.old_primary_mac(uci, sysconfig)
+local why = 'network.client.macaddr'
+if mac and not ifbind.find(nics, mac .. ' ') then
+	-- Karte nicht mehr im Geraet: trotzdem die alte Identitaet behalten
+	why = why .. ', card not present'
+end
+if not mac then
+	local order = ifbind.old_order(nics, platform.match('x86', 'geode'))
+	if order and order[1] and order[1].mac then
+		mac, why = order[1].mac, 'old eth0 (' .. order[1].driver .. ')'
+	end
+end
+if mac then
+	sysconfig.primary_mac = mac
+	print(string.format('neanderfunk-ifbind: primary_mac %s from %s', mac, why))
+end

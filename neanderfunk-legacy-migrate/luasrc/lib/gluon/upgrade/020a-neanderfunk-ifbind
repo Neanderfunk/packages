@@ -17,6 +17,29 @@ local ifbind = require 'neanderfunk.ifbind'
 local nics = ifbind.nics()
 local lan, wan = sysconfig.lan_ifname, sysconfig.wan_ifname
 
+-- weitere Karten (gluon.iface_extra_*, von 018z): Name nachfuehren
+local uci = require('simple-uci').cursor()
+uci:foreach('gluon', 'interface', function(i)
+	local n = i.neanderfunk_bind and ifbind.find(nics, i.neanderfunk_bind)
+	if n then
+		if n.name ~= i.name then
+			print(string.format('neanderfunk-ifbind: %s %s -> %s (bound to card)', i['.name'], tostring(i.name), n.name))
+			uci:set('gluon', i['.name'], 'name', n.name)
+		end
+		if n.mac and n.mac ~= '' then
+			uci:set('gluon', i['.name'], 'neanderfunk_bind', ifbind.key(n))
+		end
+	end
+end)
+uci:save('gluon')
+
+-- 018z hat einen Widerspruch gefunden: den Stand nach board.json NICHT
+-- festschreiben, bis jemand LAN/WAN von Hand geprueft hat (README)
+if sysconfig.neanderfunk_bind_conflict and not sysconfig.neanderfunk_bind_wan then
+	print('neanderfunk-ifbind: not binding (' .. sysconfig.neanderfunk_bind_conflict .. ')')
+	return
+end
+
 if not sysconfig.neanderfunk_bind_wan then
 	local l, w = lan and ifbind.byname(nics, lan), wan and ifbind.byname(nics, wan)
 	if l and w then
