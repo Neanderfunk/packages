@@ -23,6 +23,7 @@ Die Skripte laufen zwischen Gluons eigenen Upgrade-Skripten:
 
 | Skript | wann | was |
 |---|---|---|
+| `015-neanderfunk-legacy-version` | einmal, nur Herkunft 2014.x | `gluon_version` aus `/lib/gluon/version/core`, sonst gilt der Knoten als neu (Hostname, WAN-proto) |
 | `009-neanderfunk-legacy-primary-mac` | x86, einmal | fehlende `primary_mac` aus der alten Konfiguration, vor Gluons `010-primary-mac` |
 | `018z-neanderfunk-ifbind-anchor` | x86, einmal | alte Aufzählung nachbauen, WAN, LAN und weitere Karten an die Karte binden, nur bei Herkunft vor 2022.1 |
 | `019-migrate-interface-order` | Gluon | tauscht LAN/WAN nach alter Treiber-Ladereihenfolge (ab 2022.1) |
@@ -46,7 +47,9 @@ Skript läuft nicht noch einmal.
    `mesh_radioX` mit `mode adhoc`) wird zu `mesh_radioX` an, damit der Knoten
    die Rolle mesh bekommt.
 2. Rollen aus `mesh_wan`/`mesh_lan` (`auto`/`disabled`), ausgehend von den
-   Site-Vorgaben. `mesh_lan` aus heißt bis 2021.1 immer: LAN steckt in der
+   Site-Vorgaben. Gluon 2014.x kennt noch kein `network.mesh_lan`; steht dann
+   ein Ethernet-Port in der alten Client-Bridge (`client.ifname` als String
+   `'eth0.1 bat0'`), ist LAN `client`. `mesh_lan` aus heißt bis 2021.1 immer: LAN steckt in der
    Client-Bridge, also Rolle `client`. Die Bridge selbst ist zu diesem
    Zeitpunkt nicht mehr lesbar: `11_network-migrate-bridges` (OpenWrt
    uci-defaults, läuft vor `zzz-gluon-upgrade`) hat `client.ifname` schon nach
@@ -165,6 +168,15 @@ Grenzen
 
 Tests
 -----
+
+Emulation (QEMU malta-be, Gluon-Rootfs mit RAM-Overlay, Aufbau Buildsystem),
+26100423bro WDR3600, Sicherungen echter Altknoten (05.10.2026):
+
+- 2014.4 (ffsb, 1043 v1, kein `gluon_version`, LAN `eth0.1` in `client.ifname`):
+  `gluon_version` v2014.4 erkannt, Hostname bleibt, LAN `client` und in der
+  Client-Bridge; vorher Hostname auf Vorgabe und LAN `mesh`.
+- 2017.1.7 (ffac) und 2020.2.2 (12_dusuk): Rollen wie mit Version 1.
+
 
 QEMU x86-64, Ziel 26100423bro, echte Sicherung eines 2014.4-Knotens
 (v2014.4-57-g8f853aa, `primary_mac` fehlt; alt eth0 e1000 WAN, eth1 igb

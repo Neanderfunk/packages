@@ -90,6 +90,27 @@ if not uci:get('gluon', 'iface_lan') and not uci:get('gluon', 'iface_wan') and n
 	}
 	roles.single = site.interfaces.single.default_roles({unpack(roles.wan)})
 	local mlan, mwan = old_enabled('mesh_lan'), old_enabled('mesh_wan')
+	-- Gluon 2014.x kennt noch kein network.mesh_lan: Der LAN-Port steht dann
+	-- in der Client-Bridge (client.ifname als String 'eth0.1 bat0'; nach
+	-- 11_network-migrate-bridges in device br-client/ports). Dann ist LAN
+	-- client, nicht die Site-Vorgabe (Befund Buildsystem, ffsb 2014.4).
+	if mlan == nil and not uci:get('network_gluon-old', 'mesh_lan') then
+		local ports = {}
+		local ifn = uci:get('network_gluon-old', 'client', 'ifname')
+		if type(ifn) == 'table' then ifn = table.concat(ifn, ' ') end
+		for t in (ifn or ''):gmatch('%S+') do table.insert(ports, t) end
+		uci:foreach('network_gluon-old', 'device', function(d)
+			if d.name == 'br-client' then
+				for _, t in ipairs(d.ports or {}) do table.insert(ports, t) end
+			end
+		end)
+		for _, t in ipairs(ports) do
+			if t:match('^eth') or t:match('^lan') then
+				mlan = false
+				break
+			end
+		end
+	end
 	-- mesh_lan aus hiess bis 2021.1 immer: LAN steckt in der Client-Bridge
 	-- (220-interface-lan), also Rolle client. Die Bridge selbst ist nicht mehr
 	-- lesbar: 11_network-migrate-bridges (uci-defaults, laeuft vor

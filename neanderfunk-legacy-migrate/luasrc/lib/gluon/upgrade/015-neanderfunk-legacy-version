@@ -1,0 +1,30 @@
+#!/usr/bin/lua
+-- SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+-- SPDX-License-Identifier: BSD-3-Clause
+--
+-- Herkunft Gluon v2014.x (Release-Staende): Die schrieben kein
+-- sysconfig/gluon_version, nur /lib/gluon/version/<paket> (kommt per keep.d
+-- mit). Gluon bis 2021.1 hatte dafuer in 001-upgrade
+--   if access('/lib/gluon/version/core') and not gluon_version then gluon_version = '' end
+-- 2025.1 hat das nicht mehr, und der Knoten gilt als Neuinstallation:
+-- Hostname zurueck auf die Vorgabe (030-system), statisches WAN wird DHCP
+-- (110-network), Erstwerte in 150-poe-passthrough, 180-outdoors und
+-- neanderfunk-preserve-wifichannel. Dieselbe Regel hier, vor 030; die
+-- Version aus core ("3-v2014.4" -> "v2014.4"), damit 020z das Alter kennt.
+-- Danach /lib/gluon/version weg, das Verzeichnis gibt es in 2025.1 nicht.
+
+local sysconfig = require 'gluon.sysconfig'
+local util = require 'gluon.util'
+
+local core = util.readfile('/lib/gluon/version/core')
+if not core then
+	return
+end
+
+if not sysconfig.gluon_version then
+	sysconfig.gluon_version = core:match('(v20%d%d%.[%w.+~-]*)') or ''
+	print('neanderfunk-legacy-migrate: gluon_version "' .. sysconfig.gluon_version
+		.. '" from /lib/gluon/version/core (Gluon 2014.x)')
+end
+
+os.execute('rm -rf /lib/gluon/version')
