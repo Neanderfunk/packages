@@ -207,3 +207,16 @@ Frühere Tests, QEMU x86-64, Ziel 26100312bro, Altkonfigurationen echter Knoten
 - 2023.2.6 Feldstand (igb + e1000, VPN mit Limit, WAN uplink+mesh, LAN mesh):
   mit und ohne Paket dasselbe Ergebnis; kein Legacy-Vermerk, nur die
   Bindungsdateien kommen dazu.
+
+Verwaiste Konfigurationen (`990-neanderfunk-orphan-configs`)
+-----------------------------------------------------------
+
+Läuft bei jedem Upgrade auf jedem Knoten. Löscht `/etc/config/alfred`,
+`luci`, `ucitrack`, `socat` und `keep_settings`, wenn das zugehörige Programm
+nicht im Image ist (`/usr/sbin/alfred`, luci-base, `/usr/bin/socat`;
+`keep_settings` ist ein Fremdpaket alter Communities). Solche Dateien schleppt
+ein sysupgrade aus alten Firmwares mit, oder aus einem Image, das das Paket
+noch hatte (Sackgasse: socat seit 04.10.2026 raus). Bewusst nicht:
+`/etc/config/fastd` mit dem alten Schlüssel (adorfer 05.10.2026) und
+`dhcp.local_client` (legt Gluon selbst an). Getestet in der Emulation mit einer
+2014.4-Sicherung: alfred, luci, ucitrack gelöscht, fastd bleibt.
