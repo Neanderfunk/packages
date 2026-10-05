@@ -92,3 +92,45 @@ ein sysupgrade aus alten Firmwares mit, oder aus einem Image, das das Paket
 noch hatte (Sackgasse: socat seit 04.10.2026 raus). Bewusst nicht:
 `/etc/config/fastd` mit dem alten Schlüssel (adorfer 05.10.2026) und
 `dhcp.local_client` (legt Gluon selbst an). Getestet in der Emulation (oben).
+
+Manifeste für alte Knoten
+-------------------------
+
+Das Paket übernimmt die Konfiguration beim Sprung. Damit ein Altknoten den
+Sprung überhaupt angeboten bekommt, muss er das Manifest lesen können und
+darin seinen Modellnamen finden. Dafür liegen in `contrib/` die Werkzeuge
+(siehe `contrib/README.md`). Dieser Zweig ist die Sackgasse für 4/32-Geräte (letztes Gluon dafür: 2021.1); alle anderen Geräte gehen nach 2025.1 (Zweig `v2025.1.x`), ein zusammengeführtes Manifest bietet jedem Modell die passende Linie an.
+
+Welche Zeilen ein Knoten liest:
+
+| Firmware des Knotens | liest im Manifest |
+|---|---|
+| Gluon bis 2016.2.3 | `<modell> <version> <sha512> <datei>` (4 Felder), die letzte passende Zeile |
+| Gluon 2016.2.4 bis 2017.1 | `<modell> <version> <sha256> <datei>` (4 Felder, 64 Zeichen Prüfsumme) |
+| Gluon 2018.1 bis heute | `<modell> <version> <sha256> <größe> <datei>` (5 Felder); Gluon ab 2021.1 erzeugt nur noch diese |
+
+Die Unterschriften decken alles vor `---` ab, egal welches Format.
+`manifest-altformat.sh` bzw. `manifeste-zusammenfuehren.sh` schreiben zu
+jeder 5-Feld-Zeile die beiden 4-Feld-Zeilen, und für alte Modellnamen (z. B.
+`tp-link-tl-wr1043n-nd-v2` aus der ar71xx-Zeit, `x86-kvm`, `x86-virtualbox`)
+dieselben Zeilen mit dem alten Namen. Die Zuordnung alt -> neu steht als
+Tabelle in den Skripten, eigene Ergänzungen per `-a`.
+
+Ohne Weg per Autoupdater (bewusst nicht im Manifest, von Hand umstellen):
+
+- **CPE210/220/510/520 v1:** Das sysupgrade von Gluon 2016.2 lehnt das
+  ath79-Image ab, nachdem der Autoupdater das Netz schon gestoppt hat; der
+  Knoten bliebe bis zum Stromreset offline. Nur die 5-Feld-Zeile.
+- **x86 mit Gluon 2014.x:** `get_image_name()` liefert dort auf x86 `nil`, der
+  Autoupdater bricht ab ("doesn't support this hardware model").
+- **Xen-Gäste (`x86-xen`, bis Gluon 2016.2):** Das Ziel gibt es seit 2017.1
+  nicht mehr; ein heutiges x86-Image bootet dort vermutlich nicht
+  (paravirtualisiert gegen GRUB). Ungetestet, daher kein Alias.
+- **Netgear WNDR3700 v4:** Upgrade-Pfad nie gegangen (Kernelpartition
+  gewachsen, Gluon e1437781).
+- **Ubiquiti AirMax XW** (NanoStation/Loco M XW unter alten Namen): Aliase
+  derzeit nicht enthalten, Gluon hat sie mit dem AirMax-Ausbau entfernt.
+- x86: Ziel ist 2025.1 (Zweig `v2025.1.x`), dort steht, was x86 braucht.
+
+Offen: ob der Autoupdater sehr alter Firmwares (ecdsautils 0.3.x) heutige
+Signaturen annimmt, ist noch nicht im Labor geprüft.
