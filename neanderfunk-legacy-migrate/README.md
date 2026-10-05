@@ -241,8 +241,11 @@ Manifeste für alte Knoten
 
 Das Paket übernimmt die Konfiguration beim Sprung. Damit ein Altknoten den
 Sprung überhaupt angeboten bekommt, muss er das Manifest lesen können und
-darin seinen Modellnamen finden. Dafür liegen in `contrib/` die Werkzeuge
-(siehe `contrib/README.md`). Dieser Zweig ist das Ziel für alle Geräte, die Gluon 2025.1 unterstützt; 4/32-Geräte gehen in die Sackgasse (Zweig `v2021.1.x`), ein zusammengeführtes Manifest bietet jedem Modell die passende Linie an.
+darin seinen Modellnamen finden. Dafür gibt es die Werkzeuge in
+[Neanderfunk/gluon-manifest-tools](https://github.com/Neanderfunk/gluon-manifest-tools)
+(`manifest-altformat.sh`, `manifeste-zusammenfuehren.sh`, `manifest-pruefen.sh`,
+für jede Gluon-Community nutzbar; dort auch die Formate je Gluon-Version und
+der Weg für x86-Altknoten). Dieser Zweig ist das Ziel für alle Geräte, die Gluon 2025.1 unterstützt; 4/32-Geräte gehen in die Sackgasse (Zweig `v2021.1.x`), ein zusammengeführtes Manifest bietet jedem Modell die passende Linie an.
 
 Welche Zeilen ein Knoten liest:
 
