@@ -94,7 +94,7 @@ build the check runs at build time.
 | `/usr/lib/lua/nodeplacer/manifest.lua` | body parser and date parser |
 | `/usr/lib/lua/nodeplacer/state.lua` | attempt counter in `/tmp/nodeplacer.state` |
 | `/lib/gluon/upgrade/510-nodeplacer` | writes `/etc/config/nodeplacer` from site.conf, installs the cron job |
-| `/usr/lib/micron.d/nodeplacer` | hourly run at a random minute |
+| `/usr/lib/micron.d/nodeplacer` | hourly run at a random minute, plus a random 0-29 s delay |
 | `/usr/lib/respondd/neanderfunk-nodeplacer.so` | `nodeinfo.software.nodeplacer`: enabled, target, attempts, last manifest date |
 
 ## Exit codes of nodeplacer-fetch

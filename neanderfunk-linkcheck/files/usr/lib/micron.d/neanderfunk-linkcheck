@@ -1,2 +1,10 @@
-*/5 * * * * /lib/gluon/neanderfunk-linkcheck/linkcheck.sh &> /dev/null
-*/8 * * * * /lib/gluon/neanderfunk-linkcheck/gateway.sh
+# Minuten versetzt (siehe /usr/lib/micron.d/hotfix), dazu je Knoten fest 0-29 s
+# aus dem letzten Byte der primaeren MAC: linkcheck und gateway.sh gehen uebers
+# Netz, so fragen nicht alle Knoten einer Domain in derselben Sekunde. read und
+# $(( )) sind ash-Builtins, kein Prozess ausser sleep (2021.1-ash hat kein $RANDOM).
+# Kein "#" in den Zeilen: micrond schneidet ab dort als Kommentar ab (daher
+# IFS=: statt ${m##*:}).
+# gateway.sh 15 s gegen linkcheck versetzt: beide treffen sich alle 40 min in
+# derselben Minute (:22, :02 ...).
+2-59/5 * * * * IFS=: read a a a a a m < /lib/gluon/core/sysconfig/primary_mac; sleep $((0x$m % 30)); /lib/gluon/neanderfunk-linkcheck/linkcheck.sh &> /dev/null
+6-59/8 * * * * IFS=: read a a a a a m < /lib/gluon/core/sysconfig/primary_mac; sleep $(((0x$m + 15) % 30)); /lib/gluon/neanderfunk-linkcheck/gateway.sh

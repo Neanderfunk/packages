@@ -19,5 +19,8 @@ end
 os.remove('/usr/lib/micron.d/ath9kblackout')
 
 local f = io.open('/usr/lib/micron.d/neanderfunk-wifi-blackout', 'w')
-f:write(string.format('*/%i * * * * /usr/sbin/wifi-blackout\n', step_size))
+-- ab Minute 1 statt zur vollen Stunde (Versatz der Feed-Jobs, siehe
+-- /usr/lib/micron.d/hotfix); bei stepsize 1 bleibt es jede Minute
+local first = step_size > 1 and 1 or 0
+f:write(string.format('%i-59/%i * * * * /usr/sbin/wifi-blackout\n', first, step_size))
 f:close()

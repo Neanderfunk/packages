@@ -1,12 +1,19 @@
-*/7 * * * * /lib/gluon/neanderfunk-hotfix/healthcheck.sh
-*/15 * * * * /lib/gluon/neanderfunk-hotfix/IfNoWificlient.sh
+# Minuten versetzt (Auftrag adorfer/Buildsystem 05.10.2026): nicht alle Jobs zur
+# vollen Stunde und zu jeder Fuenferminute, wo schon Gluons
+# tunneldigger-watchdog (*/5) laeuft. Plan ueber alle Feed-Jobs: linkcheck :x2,
+# watchdog :x3, healthcheck 5-59/7, gateway.sh 6-59/8, wifi-blackout 1-59/10,
+# IfNoWificlient 14-59/15, check_wifi_firmware 1-59/3 - hoechstens zwei teure
+# Jobs je Minute (mit check_wifi_firmware an zwei Minuten drei).
+# micrond kennt nur "a-b/n": "5/7" allein hiesse nur Minute 5.
+5-59/7 * * * * /lib/gluon/neanderfunk-hotfix/healthcheck.sh
+14-59/15 * * * * /lib/gluon/neanderfunk-hotfix/IfNoWificlient.sh
 
-*/5 * * * * /lib/gluon/neanderfunk-hotfix/watchdog.sh
+3-59/5 * * * * /lib/gluon/neanderfunk-hotfix/watchdog.sh
 
 # Own entry rather than a line in healthcheck.sh: a crashed wifi firmware
 # leaves the node deaf, and waiting out healthcheck's 7 minute period twice
 # would take a quarter of an hour. The check is two globs and a read.
-*/3 * * * * /lib/gluon/neanderfunk-hotfix/check_wifi_firmware.sh
+1-59/3 * * * * /lib/gluon/neanderfunk-hotfix/check_wifi_firmware.sh
 
 # Every minute: after a TX timeout the check has to see tx_packets stand for
 # three runs, and a node whose ethernet is dead is cut off entirely. On nodes

@@ -65,7 +65,10 @@ math.randomseed(seed1 * 0x100 + seed2)
 urandom:close()
 
 local minute = math.random(0, 59)
+-- dazu 0-29 s, damit Knoten mit derselben Minute den Mirror nicht in derselben
+-- Sekunde fragen
+local second = math.random(0, 29)
 
 local f = io.open(cronfile, 'w')
-f:write(string.format('%i * * * * /usr/sbin/nodeplacer\n', minute))
+f:write(string.format('%i * * * * sleep %i; /usr/sbin/nodeplacer\n', minute, second))
 f:close()
