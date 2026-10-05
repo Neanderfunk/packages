@@ -60,17 +60,26 @@ Bewusst nicht
 Getestet
 --------
 
-Nur die Logik, auf einer 2025.1-VM (gleiche Lua-Schnittstellen) mit der
-echten Konfiguration eines 2015.1.2-Knotens: Umbenennung samt Limit 8000/500,
-Zonen, `sysctl.conf`, eigener Branch bleibt (fremde Sektionen weg), fremder
-Branch wird zum Default, zweiter Lauf ohne Wirkung. Ein Knoten mit
-`v2021.1.2` bleibt unberührt. Ein echter Sprung 2015.1.2 → 2021.1 steht aus
-(braucht ein 2021.1-Image mit dem Paket).
+Zuerst nur die Logik, auf einer 2025.1-VM (gleiche Lua-Schnittstellen) mit
+der echten Konfiguration eines 2015.1.2-Knotens: Umbenennung samt Limit
+8000/500, Zonen, `sysctl.conf`, eigener Branch bleibt (fremde Sektionen weg),
+fremder Branch wird zum Default, zweiter Lauf ohne Wirkung. Ein Knoten mit
+`v2021.1.2` bleibt unberührt.
 
-Emulation (QEMU malta-be, Aufbau Buildsystem), 24100427bro WR841N v9, Sicherung
-eines 2014.4-Knotens (ffsb, LAN `eth0` in `client.ifname`, kein mesh_lan),
-05.10.2026: `mesh_lan` disabled, `client.ifname` = `eth0 bat0 local-port`;
-vorher eth0 zugleich in br-client und mesh_lan aktiv.
+Danach echte Sprünge in der Emulation (QEMU malta-be, Gluon-Rootfs mit
+RAM-Overlay, Aufbau Buildsystem, router-werkstatt
+`docs/emulation-alte-gluon-images.md`), Ziel 24100427bro WR841N v9, Sicherungen
+echter Altknoten, 05.10.2026:
+
+- 2015.1.1 (ffems, IBSS, fastd), 2016.1 und 2018.2.2 (ffdus): IBSS wird
+  802.11s, VPN-Schalter und Limits kommen an, Mesh auf LAN richtig, keine
+  Fehler im Upgrade-Log (Buildsystem).
+- 2014.4 (ffsb, LAN `eth0` in `client.ifname`, kein mesh_lan): vorher eth0
+  zugleich in br-client und mesh_lan aktiv; mit Schritt 1a `mesh_lan`
+  disabled, `client.ifname` = `eth0 bat0 local-port`. Dazu `alfred`, `luci`,
+  `ucitrack` gelöscht, `fastd` bleibt.
+
+Offen: ein Sprung auf echter Hardware (841 mit Altfirmware).
 
 Verwaiste Konfigurationen (`990-neanderfunk-orphan-configs`)
 -----------------------------------------------------------
@@ -82,5 +91,4 @@ nicht im Image ist (`/usr/sbin/alfred`, luci-base, `/usr/bin/socat`;
 ein sysupgrade aus alten Firmwares mit, oder aus einem Image, das das Paket
 noch hatte (Sackgasse: socat seit 04.10.2026 raus). Bewusst nicht:
 `/etc/config/fastd` mit dem alten Schlüssel (adorfer 05.10.2026) und
-`dhcp.local_client` (legt Gluon selbst an). Getestet in der Emulation mit einer
-2014.4-Sicherung: alfred, luci, ucitrack gelöscht, fastd bleibt.
+`dhcp.local_client` (legt Gluon selbst an). Getestet in der Emulation (oben).
