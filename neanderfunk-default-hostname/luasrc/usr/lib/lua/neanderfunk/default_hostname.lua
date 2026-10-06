@@ -64,7 +64,9 @@ local tail = {
 
 local function word(t)
 	if t:find('%d') or #t <= 2 then
-		return t:upper()
+		-- "i" direkt hinter einer Ziffer bleibt klein (C20i, AP3825i): steht so
+		-- auf dem Geraet, und I, l und 1 sehen je nach Schrift gleich aus
+		return (t:upper():gsub('(%d)I$', '%1i'))
 	end
 	return t:sub(1, 1):upper() .. t:sub(2)
 end
