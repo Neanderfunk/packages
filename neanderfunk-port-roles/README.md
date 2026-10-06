@@ -27,33 +27,38 @@ nachgerüstet (`790-56-…mt7530…bridge-port-isolation`, `793-03-…qca8k…`)
 Eine Rolle je Port
 ------------------
 
-`025-neanderfunk-port-roles` (nach `021-interface-roles`) zerlegt Sektionen mit
-mehreren Ports in eine Sektion je Port, `gluon.iface_port_<port>`, mit den
-Rollen der Gruppe. Gluon baut daraus wie immer `br-client`, `br-wan` und das
-Mesh. Ein Port ohne Rolle wird nicht verwendet.
+Die Seite „Ports" zeigt je einzeln verwendbarem Port (DSA-Port, eigene
+Netzwerkkarte) eine Zeile, auch wenn er wie ab Werk in einer Gruppe steckt
+(`gluon.iface_lan` mit `name='/lan'`). **Eingegriffen wird nur, wenn sich etwas
+ändert** - derselbe Weg wie beim Befehl `portrole` (neanderfunk-banner):
 
-Die Gruppen-Sektion bleibt stehen - sonst legte `021` sie beim nächsten Lauf mit
-allen Ports neu an. Sie bekommt `name='/none'` und merkt sich, woher ihre Ports
-kamen (`neanderfunk_ports_from`) und welche Rollen sie hatte
-(`neanderfunk_default_role`); bringt ein Board-Update einen Port dazu, bekommt
-er darüber eine eigene Sektion. Auf Gluons Seite „Netzwerk" steht sie deshalb
-als leere Zeile.
+* Ein Port mit der Rolle seiner Gruppe bleibt in der Gruppe.
+* Bekommt ein Port eine andere Rolle, wird er herausgelöst: die Gruppe behält
+  die Liste der übrigen Ports (`name='lan1 lan3'`), der Port bekommt eine
+  eigene Sektion `gluon.iface_<port>` (`.` wird `_`; ist der Name belegt,
+  `iface_port_<port>`). Die Hop-Penalty der Gruppe wandert mit.
+* Wollen alle Ports einer Gruppe dieselbe neue Rolle, bekommt die Gruppe diese
+  Rolle, statt zerlegt zu werden.
+* Bekommt ein herausgelöster Port wieder die Rolle seiner Board-Gruppe, wandert
+  er zurück, seine Sektion entfällt; ist die Gruppe wieder vollständig, steht
+  dort wieder `/lan`.
+* Sektionen, die nicht nur für den einen Port angelegt wurden (Gluons
+  `iface_wan`, `iface_extra_*` von neanderfunk-legacy-migrate), bleiben stehen
+  und bekommen nur die Rolle.
 
-Zerlegt wird nur, was sich einzeln verwenden lässt: DSA-Ports und eigene
-Netzwerkkarten. **Hinter swconfig** (ältere ath79) hängen alle LAN-Ports an einem
-`eth0.1`; solche Sektionen bleiben, wie sie sind. Ports, die schon eine eigene
-Sektion haben (etwa von Hand angelegt), fasst das Paket nicht an.
+Ein Knoten, an dem niemand die Seite benutzt, behält Gluons Aufbau. Bis
+Version 1 zerlegte das Paket bei jedem `gluon-reconfigure` alle Gruppen
+(`025-neanderfunk-port-roles`, `iface_port_*`); das ist entfallen, die Version
+war in keinem Image.
 
-Von Hand, ohne Oberfläche:
+**Hinter swconfig** (ältere ath79) hängen alle LAN-Ports an einem `eth0.1`; die
+Seite zeigt dann eine Zeile je Gruppe („LAN (eth0.1)") und einen Hinweis.
 
-```
-uci delete gluon.iface_port_lan2.role
-uci add_list gluon.iface_port_lan2.role='client'
-uci commit gluon
-```
+Gluon baut aus den Sektionen wie immer `br-client`, `br-wan` und das Mesh. Ein
+Port ohne Rolle wird nicht verwendet.
 
-danach `gluon-reconfigure` und Reboot (per SSH von der Sitzung gelöst, siehe
-`docs/gluon-reconfigure.md`).
+Von Hand, ohne Oberfläche: `portrole lan2 client` (zurück: `portrole lan2 lan`),
+danach `reconf`.
 
 Mesh-Modus
 ----------
@@ -63,8 +68,8 @@ Mesh-Modus
 
 | Modus | Ergebnis |
 | --- | --- |
-| `auto` (Default) | `isolate`, wenn es auf allen Mesh-Ports wirkt, sonst `separate` |
-| `isolate` | Gluons eigener Weg: eine Bridge `mesh_other`, `isolate` an jedem Port |
+| `isolate` (Vorgabe) | Gluons eigener Weg: eine Bridge `mesh_other`, `isolate` an jedem Port |
+| `auto` | `isolate`, wenn es auf allen Mesh-Ports wirkt, sonst `separate` |
 | `separate` | je Port eine Bridge `mesh_<port>` mit eigenem `gluon_wired`, also ein eigenes batman-adv-Interface - wirkt wie Isolation, ohne dass der Switch sie können muss |
 | `bridge` | eine gemeinsame Bridge ohne Isolation |
 
@@ -87,7 +92,7 @@ Oberfläche
 ----------
 
 Seite **„Ports"** in den Erweiterten Einstellungen (hinter „Netzwerk"): je Port
-die Rollen, dazu der Mesh-Modus und für die aktuellen Mesh-Ports, ob der Switch
+die Rollen (umgesetzt wie oben beschrieben, `portroles.apply()`), dazu der Mesh-Modus und für die aktuellen Mesh-Ports, ob der Switch
 in Hardware isoliert und was `auto` gerade bedeutet. Gespeichert wird wie auf
 Gluons Seite „Netzwerk" nur per `commit`; wirksam wird es mit dem Reconfigure
 beim „Speichern & Neustarten" im Wizard.
@@ -97,7 +102,7 @@ VLANs je Port
 
 Auf einem einzeln verwendbaren Port (DSA-Port oder eigene Netzwerkkarte) lassen
 sich getaggte VLANs anlegen. Jedes VLAN ist eine eigene Sektion
-`gluon.iface_port_<port>_<vid>` mit `name='<port>.<vid>'` und eigenen Rollen;
+`gluon.iface_<port>_<vid>` mit `name='<port>.<vid>'` und eigenen Rollen;
 netifd legt das VLAN-Unterinterface an, sobald es in einer Bridge oder einem
 Interface auftaucht. Auf der Seite „Ports" gibt es dafür je Port eine Liste von
 VLAN-IDs; ein neues VLAN erscheint nach dem Speichern als eigene Zeile unter
@@ -111,9 +116,9 @@ der Kernel in Software; für reine VLAN-Mesh-Ports wählt `auto` deshalb
 Von Hand:
 
 ```
-uci set gluon.iface_port_lan3_5=interface
-uci set gluon.iface_port_lan3_5.name='lan3.5'
-uci add_list gluon.iface_port_lan3_5.role='mesh'
+uci set gluon.iface_lan3_5=interface
+uci set gluon.iface_lan3_5.name='lan3.5'
+uci add_list gluon.iface_lan3_5.role='mesh'
 uci commit gluon
 ```
 
@@ -130,14 +135,42 @@ Einschränkungen
   Switch-VLANs selbst zu verwalten.
   Welche Feldgeräte das betrifft (rund die Hälfte, und 2025.1 ändert daran
   nichts): `docs/feldgeraete-dsa-swconfig.md` im Feed.
-* **Am Gerät mit Gluon 2025.1 noch nicht geprüft**, insbesondere: ob ein
-  VLAN-Unterinterface auf einem DSA-Port, der zugleich (ungetaggt) in einer
-  Bridge steckt, bei `mt7530`/`qca8k` sauber durchgereicht wird, und ob
-  `isolate` unter 6.6 zwischen den Ports wirklich nichts mehr weiterleitet.
+* **Noch nicht am Gerät geprüft:** ob ein VLAN-Unterinterface auf einem
+  DSA-Port, der zugleich (ungetaggt) in einer Bridge steckt, bei
+  `mt7530`/`qca8k` sauber durchgereicht wird; `qca8k` (IPQ4019) überhaupt;
+  die Modi `separate`/`bridge` unter 6.6.
 * **Ein Port ohne Rolle** wird nicht verwendet; ein VLAN ohne Rolle ebenso.
 
 Geprüft
 -------
+
+**06.10.2026, Gluon 2025.1 (26100604bro, Kernel 6.6.151)**, Xiaomi 4A Gigabit
+`33f1` (mt7530), lan1 am ERX, lan2 am WDR3600, beide Mesh:
+
+* `isolate` wirkt in Hardware: Der WDR3600 sieht über sein Kabel nur den 33f1,
+  nicht den ERX. Gegenprobe: `isolated` an beiden Ports zur Laufzeit 40 s aus -
+  der ERX erscheint sofort als Kabel-Nachbar des WDR3600, danach wieder weg.
+* Rollen je Port über `portroles.apply()` und echtes `gluon-reconfigure` mit
+  Neustart: lan1 Mesh, lan2 Client. `lan2` steckt in `br-client` (MAC des
+  WDR3600 dort gelernt), `lan1` direkt am batman-adv, Gateway über lan1; beim
+  WDR3600 laufen die Kabel-Nachbarn aus, über den Client-Port kommt kein Mesh.
+  Rückweg (lan2 wieder Mesh): `iface_lan2` entfällt, `iface_lan` wieder `/lan`,
+  nach dem Neustart Ausgangszustand.
+* Seite per Config-Mode-CGI im Normalbetrieb (Dateien per bind-mount aus
+  `/tmp`): GET zeigt je Port eine Zeile, die Rollen und „mt7530-mdio, isoliert in
+  Hardware"; POST lan2 Client und zurück schreibt dasselbe wie oben.
+* WDR3600 (swconfig): GET zeigt „eth0.1"/„eth0.2" je Gruppe und den Hinweis,
+  keine VLANs.
+
+`gluon-reconfigure` meldete dabei rc=1: in 26100604bro sind `009`/`015` von
+neanderfunk-legacy-migrate nicht ausführbar (behoben im Feed 9986c08), nicht
+dieses Paket.
+
+Host-Test der Logik: `lua5.1 tests/apply_test.lua` (zwölf Fälle: unverändert,
+herauslösen, zurückholen, alle gleich, gemischt, portrole- und
+legacy-migrate-Sektionen, swconfig, verwaister Port, VLAN, Hop-Penalty).
+
+Ältere Prüfungen (Version 1, mit automatischem Zerlegen):
 
 Am 2026-09-10 auf einem Xiaomi 4A Gigabit (mt7530, noch Gluon 2023.2, Kernel
 5.15) mit Gluons echter Kette `020`, `021`, `025`, `110`, `210`, `230`,
@@ -157,5 +190,4 @@ Außerdem mit derselben Kette: VLAN 5 auf `lan1` als `client` landet in
 in `wired_mesh`.
 
 Die Seite ist per Nachbau geprüft (mt7530 unter 5.15 und 6.6, x86, WDR3600 mit
-swconfig; VLANs anlegen und entfernen). Auf einem Gerät mit Gluon 2025.1 steht
-der Test noch aus.
+swconfig; VLANs anlegen und entfernen).
