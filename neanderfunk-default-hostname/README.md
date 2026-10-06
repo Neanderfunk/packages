@@ -34,13 +34,15 @@ Bindestrichen getrennt.
    `aquila-pro-ai-`; `fritz-box-` wird `FB`, `mi-router-` wird `Mi`,
    `fritz-(wlan-)repeater-` wird `Repeater`. `archer-` bleibt (ArcherC7).
 4. Teile mit Ziffern und Teile bis zwei Zeichen groß, sonst großer
-   Anfangsbuchstabe: `nwa50ax-pro` wird `NWA50AXPro`, `unifi-ac-mesh` wird
+   Anfangsbuchstabe; ein `i` direkt hinter einer Ziffer am Ende bleibt klein
+   (`ArcherC20i`, `AP3825i`: so steht es auf dem Gerät, und I, l und 1 sehen je
+   nach Schrift gleich aus): `nwa50ax-pro` wird `NWA50AXPro`, `unifi-ac-mesh` wird
    `UnifiACMesh`.
 5. Eine kleine Tabelle für Namen, bei denen die Regel nichts Brauchbares
    ergibt (`x86-64` wird `x86`, `librerouter-v1` wird `LibreRouter` ...).
 
 Beispiele: `WDR3600`, `WR1043ND`, `MR90X`, `M60`, `CovrX1860`, `WR3000S`,
-`FB4040`, `Mi4AGiga`, `NWA50AXPro`, `AP3825I`, `ArcherC7`, `Unifi6LR`. Über
+`FB4040`, `Mi4AGiga`, `NWA50AXPro`, `AP3825i`, `ArcherC7`, `Unifi6LR`. Über
 alle 325 Images des Laufs 26100423bro ist der längste Kurzname 17 Zeichen lang.
 Revisionen desselben Geräts ergeben denselben Namen, gewollt.
 
