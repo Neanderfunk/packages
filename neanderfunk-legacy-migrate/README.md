@@ -55,7 +55,12 @@ Bewusst nicht
   geht das WLAN-Mesh verloren.
 - batman-adv-Kompatibilität: 2015.1 spricht compat 14, 2021.1 compat 15.
 - x86-Bindung LAN/WAN: `020-interfaces` behält in 2021.1 die vorhandenen
-  Namen aus sysconfig, da springt nichts.
+  Namen aus sysconfig, da springt nichts (im x86-Test unten bestätigt: OpenWrt
+  14.07 und 19.07 zählen die Karten gleich).
+- `primary_mac` aus der alten Konfiguration (in 2025.1 `009`): fehlt sie
+  (Sicherungen aus 2014.4), nimmt 2021.1 die MAC von eth0, die node_id
+  wechselt. Ohne Belang, solange x86 nicht über die Sackgasse geht; die
+  Sackgasse baut kein x86.
 
 Getestet
 --------
@@ -79,7 +84,21 @@ echter Altknoten, 05.10.2026:
   disabled, `client.ifname` = `eth0 bat0 local-port`. Dazu `alfred`, `luci`,
   `ucitrack` gelöscht, `fastd` bleibt.
 
-Offen: ein Sprung auf echter Hardware (841 mit Altfirmware).
+x86, QEMU mit KVM, echte Images 24100612bro (x86-generic, 21_dias-key),
+06.10.2026. Ausgangspunkt der eingerichtete 2014.4-Knoten (v2014.4-57-g8f853aa,
+drei Karten: eth0 e1000 WAN mit VPN und Limit 3000/200, eth1 igb Mesh-LAN,
+eth2 pcnet in der Client-Bridge):
+
+- Echtes sysupgrade 2014.4 -> 2021.1: Konfiguration weg (`bad geometry: block
+  count 4096 exceeds size of device (1024 blocks)`, alte Bootpartition 4 MB,
+  Gluon #1010). Das Paket kommt nicht zum Zug.
+- Von Hand (Sicherung als `sysupgrade.tgz` in Partition 1): `config restore`,
+  dann alles übernommen: Hostname, Kontakt, Koordinaten, VPN mit Limit, Rollen
+  (e1000 WAN, igb Mesh, pcnet in br-client), Branch -> `sackgasse`, Vermerk
+  `neanderfunk_legacy_migrated=v2014.4-57-g8f853aa`.
+- Danach weiter auf 2025.1 (26100600bro, x86-legacy-MBR): alles erhalten.
+
+Auf echter Hardware nicht getestet; die Emulation reicht (adorfer 06.10.2026).
 
 Verwaiste Konfigurationen (`990-neanderfunk-orphan-configs`)
 -----------------------------------------------------------
