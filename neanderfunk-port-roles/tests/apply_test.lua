@@ -178,5 +178,14 @@ portroles.apply(u, { wan = { 'uplink' }, lan1 = { 'mesh' }, lan2 = { 'client' } 
 local hp = u.data.iface_lan2 and u.data.iface_lan2.batadv_hop_penalty
 if hp ~= '30' then fails = fails + 1; print('FAIL hop penalty: ' .. tostring(hp)) else print('ok   hop penalty') end
 
+-- 12. Rolle als Option (String) statt Liste, wie nach "uci set ...role=mesh"
+board('lan1 lan2', 'wan')
+u = new_uci({
+	{ 'iface_wan', { name = '/wan', role = 'uplink' } },
+	{ 'iface_lan', { name = '/lan', role = 'mesh' } },
+})
+portroles.apply(u, { wan = { 'uplink' }, lan1 = { 'mesh' }, lan2 = { 'client' } })
+check('Rolle als String', u, 'iface_wan=/wan:uplink iface_lan=lan1:mesh iface_lan2=lan2:client')
+
 print(fails == 0 and 'alle Tests gruen' or (fails .. ' Fehler'))
 os.exit(fails == 0 and 0 or 1)

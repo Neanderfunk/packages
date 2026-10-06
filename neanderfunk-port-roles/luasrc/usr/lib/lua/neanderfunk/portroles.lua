@@ -217,7 +217,9 @@ function M.apply(uci, desired)
 			table.insert(singles, { section = s['.name'], port = ports[1] })
 			return
 		end
-		local cur = s.role or {}
+		-- get_list statt s.role: eine von Hand per "uci set" gesetzte Rolle ist ein
+		-- String, keine Liste
+		local cur = uci:get_list('gluon', s['.name'], 'role')
 		local role = nil
 		for _, port in ipairs(ports) do
 			if desired[port] and same(desired[port], cur) then
@@ -419,7 +421,7 @@ end
 function M.mesh_other_ports(uci)
 	local mesh, uplink, ret = {}, {}, {}
 	uci:foreach('gluon', 'interface', function(s)
-		local roles = s.role or {}
+		local roles = uci:get_list('gluon', s['.name'], 'role')
 		for _, port in ipairs(M.resolve(s.name)) do
 			if util.contains(roles, 'mesh') then
 				mesh[port] = true
