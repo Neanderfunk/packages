@@ -111,6 +111,10 @@ Folgen für uns:
 
 ### 1.5 mt7915: der Kernel räumt jetzt selbst auf
 
+**Berichtigt 06.10.2026:** `0012` ist ein Gluon-Patch (`cbcbda747d3c`), nicht
+Teil von OpenWrt 24.10, und in unseren Images ersetzt. Stand siehe Nachtrag
+am Ende dieses Abschnitts.
+
 Neu in 2025.1: `patches/openwrt/0012-mt7915-detect-and-purge-stuck-PLE-queues.patch`
 (David Bauer) — der Treiber pollt die Queue-Zustände und leert festhängende
 Queues selbst.
@@ -139,8 +143,8 @@ in fünf Minuten.
 Folgen:
 
 * `neanderfunk-mt7915-backlog` bleibt auf diesem Branch entfernt. Die
-  Begruendung ist `0012`, nicht der Power-Save-Strang: der kommt mit 2025.1
-  noch nicht mit.
+  Begruendung von damals (`0012`) gilt fuer unsere Images nicht mehr, siehe
+  Nachtrag 06.10.2026 unten.
 * `neanderfunk-hotfix` `wifi_firmware` (Reboot bei abgestuerzter mt76-Firmware,
   MCU-Timeout, openwrt/mt76#690 weiter offen) bleibt unveraendert. Der
   debugfs-Pfad, den er liest, existiert im neuen Treiber noch. Am Geraet zu
@@ -149,6 +153,18 @@ Folgen:
 * `CONFLICTS:=ffac-mt7915-hotfix` in hotfix bleibt richtig; das Paket gibt es
   in den community-packages weiter. `ffac-mt7915-maxinactivity` gibt es unter
   2025.1 nicht mehr, der Feed nimmt darauf keinen Bezug.
+
+
+**Nachtrag 06.10.2026 (Hinweis der Buildsystem-Session, dort geprueft):**
+gluon-patches-hardware `kernel/mt7915-ps-aql`
+(`adb6e5377cff0c198750ab96849febf54a82ff29`, aktiv seit Pin `a50d4b3`) loescht
+Gluons `0012` und legt stattdessen die sechs Power-Save/AQL-Patches aus Gluon
+main (#3673) ein. Einen einzelnen Fix in mt76 oder OpenWrt 24.10, der
+`neanderfunk-mt7915-backlog` ueberfluessig macht, gibt es nicht. 2025.1 bringt
+mt7915-Recovery-Fixes und mt76 `e5fef138` (inactivity polling) mit. Dass das
+zusammen mit PS/AQL das Backlog-Bild verhindert, ist abgeleitet, nicht
+gemessen; die Feldauswertung (U1) ist offen. Die Commit-Nachricht von
+`038debe` ("der Fix steckt in 2025.1 im Treiber") ist in diesem Punkt falsch.
 
 ## 2. Was unverändert bleibt
 

@@ -16,10 +16,15 @@ where 2025.1 makes them necessary.
 >   itself from 2023.2 until their migration is sorted out.
 > * **`neanderfunk-erx-migrate` is gone from this branch**: it belongs to the
 >   intermediate Gluon 2023.2 image of the EdgeRouter X migration.
-> * **`neanderfunk-mt7915-backlog` is gone as well.** OpenWrt 24.10 as shipped
->   with Gluon 2025.1 carries an in-driver fix for stuck mt7915 PLE queues
->   (`patches/openwrt/0012-mt7915-detect-and-purge-stuck-PLE-queues.patch`),
->   which is what that package worked around. It still exists on `v2023.2.x`.
+> * **`neanderfunk-mt7915-backlog` is gone as well.** Our images replace
+>   Gluon's own `patches/openwrt/0012-mt7915-detect-and-purge-stuck-PLE-queues.patch`
+>   (a Gluon patch, not part of OpenWrt 24.10) with the six mt7915
+>   power-save/AQL patches from Gluon main (#3673), see gluon-patches-hardware
+>   `kernel/mt7915-ps-aql` (adb6e5377cff0c198750ab96849febf54a82ff29). Whether
+>   these, together with the mt7915 recovery fixes and mt76 `e5fef138`
+>   (inactivity polling) in 2025.1, keep the backlog pattern away is derived,
+>   not measured; the field evaluation is open. The package still exists on
+>   `v2023.2.x`.
 > * Points that can only be settled on running hardware are listed in
 >   `docs/2025.1-regressionstest.md` ("Was der Prüfer NICHT abdeckt").
 
