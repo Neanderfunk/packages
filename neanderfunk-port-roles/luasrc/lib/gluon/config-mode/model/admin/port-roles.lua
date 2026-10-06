@@ -43,7 +43,14 @@ local desired = {}
 for _, row in ipairs(portroles.rows(uci)) do
 	if row.port then
 		local port = row.port
-		local o = role_option('port_' .. port:gsub('[^%w]', '_'), port,
+		-- hinter swconfig heisst der einzige "Port" einer Gruppe eth0.1 - dann
+		-- die Gruppe dazuschreiben: "LAN (eth0.1)"
+		local title = port
+		local group = row.section and row.section:match('^iface_(%a+)$')
+		if not portroles.splittable(port) and (group == 'lan' or group == 'wan' or group == 'single') then
+			title = group:upper() .. ' (' .. port .. ')'
+		end
+		local o = role_option('port_' .. port:gsub('[^%w]', '_'), title,
 			row.section and uci:get_list('gluon', row.section, 'role') or {})
 		function o:write(data)
 			desired[port] = data or {}

@@ -271,7 +271,9 @@ function M.apply(uci, desired)
 		if M.own_section(s.section, s.port) and rejoin(s.port, s.section) then
 			uci:delete('gluon', s.section)
 		elseif not groups[s.section] then
-			set_roles(uci, s.section, desired[s.port])
+			if not same(uci:get_list('gluon', s.section, 'role'), desired[s.port]) then
+				set_roles(uci, s.section, desired[s.port])
+			end
 		else
 			-- eine Gruppe, die nur noch diesen Port hat
 			groups[s.section].role = desired[s.port]
