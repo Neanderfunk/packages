@@ -172,8 +172,15 @@ Grenzen
 - **Echtes sysupgrade von Gluon bis 2021.1 auf die heutigen x86-Images
   verliert die ganze Konfiguration**: OpenWrt bis 19.07 mountet Partition 1
   fest als ext4, die Images sind seit der EFI-Umstellung `-squashfs-combined-efi`
-  mit FAT (Gluon #2967). Dieses Paket greift dort erst mit einem Image mit
-  ext4-Boot; die Entscheidung darüber liegt bei Buildsystem/adorfer.
+  mit FAT (Gluon #2967). Deshalb baut 2025.1 für x86-generic, -legacy und -64
+  zusätzlich ein MBR-Image mit ext4-Boot (`other/...-mbr-sysupgrade.img.gz`,
+  gluon-patches-hardware `a50d4b3`), und die Manifest-Werkzeuge lenken alte
+  Knoten darauf (x86-generic auf x86-legacy). Getestet, siehe unten.
+- **x86 bis Gluon 2016.2.5** (Bootpartition 4 MB): Auch das MBR-Image hilft
+  nicht, das alte sysupgrade liest die Partitionstabelle nicht neu ein, die
+  Konfiguration geht verloren (Gluon #1010, behoben in 2016.2.6). Weg nur von
+  Hand oder über 2016.2.6+ als Zwischenstufe; Sprungmatrix in
+  gluon-manifest-tools `docs/x86-altknoten.md`.
 - Der Fall, dass Gluons `019` auf x86 selbst tauscht, ließ sich in QEMU nicht
   erzeugen (igb lädt als Boot-Modul).
 
@@ -205,9 +212,27 @@ der Boot-Partition, neue Skripte im Archiv (05.10.2026):
 - sysupgrade mit danach umgesteckten Karten (andere PCI-Plätze): LAN, WAN und
   die dritte Karte per MAC wiedergefunden, PCI-Pfade nachgetragen.
 
-Offen: Ende-zu-Ende auf x86 mit echtem sysupgrade aus Barrier Breaker auf das
-MBR-Image und danach auf das EFI-Image (Buildsystem, nach dem nächsten Lauf);
-ein Sprung auf echter Router-Hardware.
+Ende-zu-Ende auf x86 mit echtem sysupgrade, QEMU mit KVM, drei Karten
+(e1000, igb, pcnet), 05./06.10.2026:
+
+- 2014.4 -> 2025.1-MBR: Konfiguration weg (Bootpartition 4 MB, oben).
+  Danach MBR -> EFI (wie beim nächsten Release): "Partition layout has
+  changed", Konfiguration erhalten, bootet im BIOS-Modus.
+- Echte 2021.1-Images (24100612bro), eingerichteter Knoten (Hostname, Kontakt,
+  Koordinaten, VPN mit Limit 3000/200, e1000 LAN-Mesh, igb WAN, pcnet in der
+  Client-Bridge), Ziel 26100600bro:
+  - x86-64 -> x86-64-MBR: alles erhalten, Rollen trotz gedrehter Aufzählung
+    (igb jetzt eth0) an der richtigen Karte, pcnet als `iface_extra_eth2`
+    client, `primary_mac` und node_id bleiben.
+  - x86-generic -> x86-legacy-MBR (der Weg der Manifest-Werkzeuge): ebenso.
+  - x86-64 -> EFI-Image: `mount: mounting /dev/sda1 on /mnt failed: Invalid
+    argument`, Konfiguration weg (Gegenprobe).
+- 2014.4 von Hand auf 2021.1 (Sackgasse) und weiter auf 2025.1-x86-legacy-MBR:
+  alles erhalten. Die node_id wechselt dabei, weil 2021.1 `primary_mac` von
+  eth0 nimmt (dort fehlt `009`); x86 geht im Feld nicht über die Sackgasse.
+
+Auf echter Router-Hardware nicht getestet; die Emulation reicht (adorfer
+06.10.2026).
 
 Frühere Tests, QEMU x86-64, Ziel 26100312bro, Altkonfigurationen echter Knoten
 (x86-Bindung damals noch mit `primary_mac` als Anker):
