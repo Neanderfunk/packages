@@ -3,7 +3,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-port-roles
-PKG_VERSION:=1
+PKG_VERSION:=2
 PKG_LICENSE:=BSD-3-Clause
 
 include $(TOPDIR)/../package/gluon.mk
@@ -15,15 +15,17 @@ define Package/neanderfunk-port-roles
 endef
 
 define Package/neanderfunk-port-roles/description
-  Splits Gluon's interface sections that hold several ports (gluon.iface_lan
-  with all LAN ports) into one section per port, so every port can have its
-  own role (uplink, mesh, client, none) - on DSA switches and separate network
-  interfaces; ports behind swconfig are left as they are.
+  A "Ports" page in the config mode's Advanced settings: one role per network
+  port (uplink, mesh, client, none) on DSA switches and separate network
+  interfaces, plus VLANs per port. Nothing changes until someone sets a port
+  to a role other than its group's; then that port gets its own section
+  gluon.iface_<port> (the same scheme as the portrole command), and setting
+  it back puts it into the group again. Ports behind swconfig keep one role
+  per group.
   gluon.port_roles.mesh_mode chooses how LAN ports with the mesh role are
-  joined: bridge, isolate (Gluon's default), separate (one bridge and one
-  batman-adv interface per port) or auto (isolate where the switch can do it
-  in hardware - mt7530/qca8k on kernel 6.6 - otherwise separate).
-  Adds a "Ports" page to the config mode's Advanced settings.
+  joined: isolate (Gluon's own way, the default), bridge, separate (one bridge
+  and one batman-adv interface per port) or auto (isolate where the switch can
+  do it in hardware - mt7530/qca8k on kernel 6.6 - otherwise separate).
   Written for Gluon 2025.1.
 endef
 

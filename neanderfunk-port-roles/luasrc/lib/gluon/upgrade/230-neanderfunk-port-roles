@@ -15,6 +15,7 @@
 --   separate  mesh_other durch eine Bridge je Port ersetzen, jede ein eigenes
 --             gluon_wired, also ein eigenes batman-adv-Interface
 --   auto      isolate, wenn es auf allen Ports wirkt, sonst separate
+--   (ohne Einstellung gilt isolate, siehe get_mode)
 --             (siehe port_info() im Modul neanderfunk.portroles)
 --
 -- Vor 300 muss es laufen, weil 300-firewall-rules jedes gluon_wired-Interface

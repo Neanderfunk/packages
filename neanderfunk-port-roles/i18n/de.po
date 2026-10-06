@@ -52,8 +52,8 @@ msgstr "Modus"
 msgid "Automatic"
 msgstr "Automatisch"
 
-msgid "Isolated (one bridge)"
-msgstr "Isoliert (eine Bridge)"
+msgid "Isolated (one bridge, Gluon default)"
+msgstr "Isoliert (eine Bridge, Gluon-Vorgabe)"
 
 msgid "Isolated (separate bridges)"
 msgstr "Isoliert (getrennte Bridges)"

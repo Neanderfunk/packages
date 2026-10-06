@@ -28,7 +28,7 @@ msgstr ""
 msgid "How LAN ports with the \"Mesh\" role are joined. \"Isolated\" keeps them from forwarding to each other; on switches that cannot do this in hardware, \"separate bridges\" gives the same result with one mesh interface per port."
 msgstr ""
 
-msgid "Isolated (one bridge)"
+msgid "Isolated (one bridge, Gluon default)"
 msgstr ""
 
 msgid "Isolated (separate bridges)"

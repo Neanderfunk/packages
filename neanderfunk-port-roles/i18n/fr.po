@@ -34,8 +34,8 @@ msgstr "En pont, non isolés"
 msgid "How LAN ports with the \"Mesh\" role are joined. \"Isolated\" keeps them from forwarding to each other; on switches that cannot do this in hardware, \"separate bridges\" gives the same result with one mesh interface per port."
 msgstr "Comment les ports LAN avec le rôle « Mesh » sont reliés. « Isolés » les empêche de se transmettre le trafic entre eux ; sur les switchs qui ne le font pas en matériel, « ponts séparés » donne le même résultat avec une interface mesh par port."
 
-msgid "Isolated (one bridge)"
-msgstr "Isolés (un pont)"
+msgid "Isolated (one bridge, Gluon default)"
+msgstr "Isolés (un pont, réglage de Gluon)"
 
 msgid "Isolated (separate bridges)"
 msgstr "Isolés (ponts séparés)"

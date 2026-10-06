@@ -3,9 +3,12 @@
 --
 -- Seite "Ports": eine Rolle je Port und der Mesh-Modus fuer die LAN-Mesh-Ports.
 -- Die Rollen sind dieselben gluon.iface_*-Sektionen, die auch Gluons Seite
--- "Netzwerk" zeigt; 025-neanderfunk-port-roles legt sie je Port an. Gespeichert
--- wird wie dort nur per commit - wirksam wird es mit dem gluon-reconfigure beim
--- "Speichern & Neustarten" im Wizard.
+-- "Netzwerk" zeigt. Ab Werk stecken die LAN-Ports in einer Gruppe (iface_lan,
+-- name='/lan'); erst wenn ein Port hier eine andere Rolle bekommt, wird er
+-- herausgeloest (gluon.iface_<port>, wie beim Befehl portrole). Wer nichts
+-- aendert, behaelt Gluons Aufbau. Gespeichert wird wie dort nur per commit -
+-- wirksam wird es mit dem gluon-reconfigure beim "Speichern & Neustarten" im
+-- Wizard.
 
 local uci = require('simple-uci').cursor()
 local portroles = require 'neanderfunk.portroles'
@@ -20,25 +23,44 @@ local f = Form(translate('Ports'), translate(
 
 local s = f:section(Section, translate('Roles'))
 
-uci:foreach('gluon', 'interface', function(config)
-	local ports = portroles.resolve(config.name)
-	if #ports == 0 then
-		-- Gruppen-Sektion, deren Ports in eigene Sektionen gewandert sind
-		return
-	end
-	local section_name = config['.name']
-	local o = s:option(MultiListValue, section_name, table.concat(ports, ' '))
+local function role_option(id, title, default)
+	local o = s:option(MultiListValue, id, title)
 	o.orientation = 'horizontal'
 	o:value('uplink', 'Uplink')
 	o:value('mesh', 'Mesh')
 	o:value('client', 'Client')
 	o:exclusive('uplink', 'client')
 	o:exclusive('mesh', 'client')
-	o.default = config.role
-	function o:write(data)
-		uci:set_list('gluon', section_name, 'role', data)
+	o.default = default
+	return o
+end
+
+-- Gewuenschte Rollen je Port, umgesetzt erst in f:write (gluon-web schreibt
+-- erst alle Optionen, dann das Formular), weil das Herausloesen und
+-- Zurueckholen alle Ports einer Gruppe zugleich sehen muss.
+local desired = {}
+
+for _, row in ipairs(portroles.rows(uci)) do
+	if row.port then
+		local port = row.port
+		local o = role_option('port_' .. port:gsub('[^%w]', '_'), port,
+			row.section and uci:get_list('gluon', row.section, 'role') or {})
+		function o:write(data)
+			desired[port] = data or {}
+		end
+	else
+		local section_name = row.section
+		local o = role_option(section_name, table.concat(row.ports, ' '),
+			uci:get_list('gluon', section_name, 'role'))
+		function o:write(data)
+			if data and #data > 0 then
+				uci:set_list('gluon', section_name, 'role', data)
+			else
+				uci:delete('gluon', section_name, 'role')
+			end
+		end
 	end
-end)
+end
 
 -- VLANs je Port: jedes VLAN ist eine eigene gluon.iface_*-Sektion mit
 -- name='<port>.<vid>'. netifd legt das VLAN-Unterinterface an, wenn es in einer
@@ -46,7 +68,12 @@ end)
 -- Zeile erscheint nach dem Speichern oben bei den Rollen. Gluon schreibt erst
 -- die Rollen, dann diese Listen - ein in derselben Speicherung entferntes VLAN
 -- bekommt also noch seine Rollen und wird danach geloescht.
-local physical = portroles.physical_ports(uci)
+local physical = {}
+for _, row in ipairs(portroles.rows(uci)) do
+	if row.port and portroles.splittable(row.port) then
+		table.insert(physical, row.port)
+	end
+end
 if #physical > 0 then
 	local v = f:section(Section, translate('VLANs'), translate(
 		'Tagged VLANs on a single port, entered as VLAN IDs (1-4094). After saving, '
@@ -68,7 +95,7 @@ if #physical > 0 then
 			end
 			for vid in pairs(want) do
 				if not have[vid] then
-					uci:section('gluon', 'interface', portroles.vlan_section(port, vid), {
+					uci:section('gluon', 'interface', portroles.port_section(uci, port .. '.' .. vid), {
 						name = port .. '.' .. vid,
 					})
 				end
@@ -131,8 +158,8 @@ end
 
 local m = f:section(Section, translate('Wired mesh between LAN ports'), description)
 local mode = m:option(ListValue, 'mesh_mode', translate('Mode'))
+mode:value('isolate', translate('Isolated (one bridge, Gluon default)'))
 mode:value('auto', translate('Automatic'))
-mode:value('isolate', translate('Isolated (one bridge)'))
 mode:value('separate', translate('Isolated (separate bridges)'))
 mode:value('bridge', translate('Bridged, not isolated'))
 mode.default = portroles.get_mode(uci)
@@ -144,6 +171,7 @@ function mode:write(data)
 end
 
 function f:write()
+	portroles.apply(uci, desired)
 	uci:commit('gluon')
 end
 
