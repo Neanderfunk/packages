@@ -92,10 +92,25 @@ Oberfläche
 ----------
 
 Seite **„Ports"** in den Erweiterten Einstellungen (hinter „Netzwerk"): je Port
-die Rollen (umgesetzt wie oben beschrieben, `portroles.apply()`), dazu der Mesh-Modus und für die aktuellen Mesh-Ports, ob der Switch
+die Rollen (umgesetzt wie oben beschrieben, `portroles.apply()`; nur Zeilen, die
+auf dieser Seite geändert wurden, alles gesammelt in `f:write` auf einem frisch
+geladenen Cursor - siehe „Sammelseite“ unten), dazu der Mesh-Modus und für die aktuellen Mesh-Ports, ob der Switch
 in Hardware isoliert und was `auto` gerade bedeutet. Gespeichert wird wie auf
 Gluons Seite „Netzwerk" nur per `commit`; wirksam wird es mit dem Reconfigure
 beim „Speichern & Neustarten" im Wizard.
+
+Sammelseite (neanderfunk-setup-mode)
+------------------------------------
+
+Im Setup-Mode stehen Gluons Seite „Netzwerk" und „Ports" auf einer Seite und
+werden gemeinsam gespeichert: erst alle geänderten Admin-Formulare (commit wird
+dort zu save), „Netzwerk" vor „Ports", zuletzt der Wizard mit
+`gluon-reconfigure` und Neustart. Beide schreiben `gluon.iface_*.role`. Damit
+eine Änderung auf „Netzwerk" nicht von unberührten Zeilen dieser Seite
+zurückgenommen wird, zählt hier nur, was gegenüber der Anzeige geändert wurde,
+und geschrieben wird auf einem frisch geladenen Cursor, der die schon
+gespeicherten Deltas von „Netzwerk" sieht. Bei echtem Widerspruch (dieselbe
+Rolle auf beiden Seiten verschieden geändert) gewinnt „Ports".
 
 VLANs je Port
 -------------
@@ -166,9 +181,20 @@ Geprüft
 neanderfunk-legacy-migrate nicht ausführbar (behoben im Feed 9986c08), nicht
 dieses Paket.
 
-Host-Test der Logik: `lua5.1 tests/apply_test.lua` (zwölf Fälle: unverändert,
+**07.10.2026, Sammelseite am 33f1** (Dateien per bind-mount, POST auf
+`/wizard` mit allen Feldern der Seite): auf „Netzwerk" LAN von Mesh auf Mesh +
+Uplink, auf „Ports" nur lan2 auf Client. Nach dem einen Reconfigure des Wizards
+stand schon vor dem Neustart `iface_lan` = `lan1` (mesh, uplink) und
+`iface_lan2` = `lan2` (client) in `/etc/config/gluon`; nach dem Neustart lan1 in
+`br-wan` (Mesh zum ERX darüber), lan2 in `br-client`. Danach zurück auf den
+Ausgangsstand. Im Normalbetrieb braucht der Test `mkdir -p
+/var/gluon/setup-mode`, sonst wartet wizard-save-lock 50 s und zeigt die
+Neustart-Seite, ohne zu speichern.
+
+Host-Test der Logik: `lua5.1 tests/apply_test.lua` (vierzehn Fälle: unverändert,
 herauslösen, zurückholen, alle gleich, gemischt, portrole- und
-legacy-migrate-Sektionen, swconfig, verwaister Port, VLAN, Hop-Penalty).
+legacy-migrate-Sektionen, swconfig, verwaister Port, VLAN, Hop-Penalty, Rolle
+als String, nur geänderte Zeile, VLANs setzen).
 
 Ältere Prüfungen (Version 1, mit automatischem Zerlegen):
 

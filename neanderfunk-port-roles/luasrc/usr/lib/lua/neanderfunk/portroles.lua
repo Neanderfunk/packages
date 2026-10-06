@@ -314,6 +314,42 @@ function M.apply(uci, desired)
 	end
 end
 
+--- VLANs eines Ports auf die Liste vids bringen: fehlende als eigene Sektion
+--- (gluon.iface_<port>_<vid>, name='<port>.<vid>', ohne Rolle) anlegen,
+--- ueberzaehlige loeschen. Ein neues VLAN bekommt seine Rolle danach in einer
+--- eigenen Zeile der Seite.
+function M.set_vlans(uci, port, vids)
+	local want = {}
+	for _, vid in ipairs(vids or {}) do
+		local n = tonumber(vid)
+		if n then
+			want[tostring(n)] = true
+		end
+	end
+	local have = {}
+	for _, vid in ipairs(M.vlans_of(uci, port)) do
+		have[vid] = true
+	end
+	for vid in pairs(want) do
+		if not have[vid] then
+			uci:section('gluon', 'interface', M.port_section(uci, port .. '.' .. vid), {
+				name = port .. '.' .. vid,
+			})
+		end
+	end
+	local pattern = '^' .. port:gsub('%p', '%%%0') .. '%.(%d+)$'
+	local remove = {}
+	uci:foreach('gluon', 'interface', function(sec)
+		local vid = type(sec.name) == 'string' and sec.name:match(pattern)
+		if vid and not want[vid] then
+			table.insert(remove, sec['.name'])
+		end
+	end)
+	for _, name in ipairs(remove) do
+		uci:delete('gluon', name)
+	end
+end
+
 --- VLAN-IDs, die auf einem Port als eigene Sektion ("<port>.<vid>") stehen.
 function M.vlans_of(uci, port)
 	local ret = {}

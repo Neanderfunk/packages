@@ -9,6 +9,15 @@
 -- aendert, behaelt Gluons Aufbau. Gespeichert wird wie dort nur per commit -
 -- wirksam wird es mit dem gluon-reconfigure beim "Speichern & Neustarten" im
 -- Wizard.
+--
+-- Geschrieben wird erst in f:write, gesammelt und auf einem frisch geladenen
+-- Cursor, und nur, was auf dieser Seite gegenueber der Anzeige geaendert wurde.
+-- Grund ist die Sammelseite von neanderfunk-setup-mode: Dort werden Gluons Seite
+-- "Netzwerk" (dieselben gluon.iface_*-Rollen) und diese Seite gemeinsam
+-- gespeichert, "Netzwerk" zuerst, commit als save. Der Cursor von oben kennt nur
+-- den Stand von vor dem Absenden; ein frischer sieht die schon gespeicherten
+-- Deltas. Unberuehrte Zeilen dieser Seite duerfen eine Aenderung auf
+-- "Netzwerk" nicht zuruecknehmen.
 
 local uci = require('simple-uci').cursor()
 local portroles = require 'neanderfunk.portroles'
@@ -35,10 +44,22 @@ local function role_option(id, title, default)
 	return o
 end
 
--- Gewuenschte Rollen je Port, umgesetzt erst in f:write (gluon-web schreibt
--- erst alle Optionen, dann das Formular), weil das Herausloesen und
--- Zurueckholen alle Ports einer Gruppe zugleich sehen muss.
-local desired = {}
+-- Was diese Seite schreiben will, gesammelt bis f:write (gluon-web schreibt
+-- erst alle Optionen, dann das Formular): Rollen je Port (das Herausloesen und
+-- Zurueckholen muss alle Ports einer Gruppe zugleich sehen), Rollen ganzer
+-- Gruppen (swconfig), VLAN-Listen je Port, Mesh-Modus.
+local desired, group_roles, vlan_lists, new_mode = {}, {}, {}, nil
+
+local function list_key(list, numeric)
+	local ret = {}
+	for _, v in ipairs(list or {}) do
+		if v ~= '' then
+			table.insert(ret, numeric and tostring(tonumber(v)) or tostring(v))
+		end
+	end
+	table.sort(ret)
+	return table.concat(ret, ' ')
+end
 
 for _, row in ipairs(portroles.rows(uci)) do
 	if row.port then
@@ -50,20 +71,20 @@ for _, row in ipairs(portroles.rows(uci)) do
 		if not portroles.splittable(port) and (group == 'lan' or group == 'wan' or group == 'single') then
 			title = group:upper() .. ' (' .. port .. ')'
 		end
-		local o = role_option('port_' .. port:gsub('[^%w]', '_'), title,
-			row.section and uci:get_list('gluon', row.section, 'role') or {})
+		local shown = row.section and uci:get_list('gluon', row.section, 'role') or {}
+		local o = role_option('port_' .. port:gsub('[^%w]', '_'), title, shown)
 		function o:write(data)
-			desired[port] = data or {}
+			if list_key(data) ~= list_key(shown) then
+				desired[port] = data or {}
+			end
 		end
 	else
 		local section_name = row.section
-		local o = role_option(section_name, table.concat(row.ports, ' '),
-			uci:get_list('gluon', section_name, 'role'))
+		local shown = uci:get_list('gluon', section_name, 'role')
+		local o = role_option(section_name, table.concat(row.ports, ' '), shown)
 		function o:write(data)
-			if data and #data > 0 then
-				uci:set_list('gluon', section_name, 'role', data)
-			else
-				uci:delete('gluon', section_name, 'role')
+			if list_key(data) ~= list_key(shown) then
+				group_roles[section_name] = data or {}
 			end
 		end
 	end
@@ -72,9 +93,9 @@ end
 -- VLANs je Port: jedes VLAN ist eine eigene gluon.iface_*-Sektion mit
 -- name='<port>.<vid>'. netifd legt das VLAN-Unterinterface an, wenn es in einer
 -- Bridge oder einem Interface auftaucht. Neue VLANs kommen ohne Rolle an; ihre
--- Zeile erscheint nach dem Speichern oben bei den Rollen. Gluon schreibt erst
--- die Rollen, dann diese Listen - ein in derselben Speicherung entferntes VLAN
--- bekommt also noch seine Rollen und wird danach geloescht.
+-- Zeile erscheint nach dem Speichern oben bei den Rollen. f:write legt erst die
+-- VLANs an bzw. loescht sie und setzt dann die Rollen; die Rolle eines in
+-- derselben Speicherung entfernten VLANs faellt damit weg.
 local physical = {}
 for _, row in ipairs(portroles.rows(uci)) do
 	if row.port and portroles.splittable(row.port) then
@@ -91,31 +112,11 @@ if #physical > 0 then
 		local o = v:option(DynamicList, 'vlans_' .. port:gsub('[^%w]', '_'), port)
 		o.datatype = 'irange(1, 4094)'
 		o.optional = true
-		o.default = portroles.vlans_of(uci, port)
+		local shown = portroles.vlans_of(uci, port)
+		o.default = shown
 		function o:write(data)
-			local want, have = {}, {}
-			for _, vid in ipairs(data or {}) do
-				want[tostring(tonumber(vid))] = true
-			end
-			for _, vid in ipairs(portroles.vlans_of(uci, port)) do
-				have[vid] = true
-			end
-			for vid in pairs(want) do
-				if not have[vid] then
-					uci:section('gluon', 'interface', portroles.port_section(uci, port .. '.' .. vid), {
-						name = port .. '.' .. vid,
-					})
-				end
-			end
-			local remove = {}
-			uci:foreach('gluon', 'interface', function(sec)
-				local vid = type(sec.name) == 'string' and sec.name:match('^' .. port:gsub('%p', '%%%0') .. '%.(%d+)$')
-				if vid and not want[vid] then
-					table.insert(remove, sec['.name'])
-				end
-			end)
-			for _, name in ipairs(remove) do
-				uci:delete('gluon', name)
+			if list_key(data, true) ~= list_key(shown, true) then
+				vlan_lists[port] = data or {}
 			end
 		end
 	end
@@ -171,15 +172,33 @@ mode:value('separate', translate('Isolated (separate bridges)'))
 mode:value('bridge', translate('Bridged, not isolated'))
 mode.default = portroles.get_mode(uci)
 function mode:write(data)
-	if not uci:get('gluon', 'port_roles') then
-		uci:section('gluon', 'port_roles', 'port_roles', {})
+	if data ~= mode.default then
+		new_mode = data
 	end
-	uci:set('gluon', 'port_roles', 'mesh_mode', data)
 end
 
 function f:write()
-	portroles.apply(uci, desired)
-	uci:commit('gluon')
+	local c = require('simple-uci').cursor()
+	for port, vids in pairs(vlan_lists) do
+		portroles.set_vlans(c, port, vids)
+	end
+	for section, roles in pairs(group_roles) do
+		if c:get('gluon', section) then
+			if #roles > 0 then
+				c:set_list('gluon', section, 'role', roles)
+			else
+				c:delete('gluon', section, 'role')
+			end
+		end
+	end
+	portroles.apply(c, desired)
+	if new_mode then
+		if not c:get('gluon', 'port_roles') then
+			c:section('gluon', 'port_roles', 'port_roles', {})
+		end
+		c:set('gluon', 'port_roles', 'mesh_mode', new_mode)
+	end
+	c:commit('gluon')
 end
 
 return f

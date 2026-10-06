@@ -187,5 +187,24 @@ u = new_uci({
 portroles.apply(u, { wan = { 'uplink' }, lan1 = { 'mesh' }, lan2 = { 'client' } })
 check('Rolle als String', u, 'iface_wan=/wan:uplink iface_lan=lan1:mesh iface_lan2=lan2:client')
 
+-- 13. Sammelseite: "Netzwerk" hat iface_lan schon auf client gestellt (frischer
+-- Cursor sieht das), auf "Ports" wurde nur lan2 geaendert -> lan1 folgt der Gruppe
+board('lan1 lan2', 'wan')
+u = new_uci({
+	{ 'iface_wan', { name = '/wan', role = { 'uplink' } } },
+	{ 'iface_lan', { name = '/lan', role = { 'client' } } },
+})
+portroles.apply(u, { lan2 = { 'uplink' } })
+check('nur geaenderte Zeile', u, 'iface_wan=/wan:uplink iface_lan=lan1:client iface_lan2=lan2:uplink')
+
+-- 14. VLANs setzen und entfernen
+u = new_uci({
+	{ 'iface_wan', { name = '/wan', role = { 'uplink' } } },
+	{ 'iface_lan', { name = '/lan', role = { 'client' } } },
+	{ 'iface_lan1_7', { name = 'lan1.7', role = { 'mesh' } } },
+})
+portroles.set_vlans(u, 'lan1', { '5' })
+check('VLANs', u, 'iface_wan=/wan:uplink iface_lan=/lan:client iface_lan1_5=lan1.5:-')
+
 print(fails == 0 and 'alle Tests gruen' or (fails .. ' Fehler'))
 os.exit(fails == 0 and 0 or 1)
