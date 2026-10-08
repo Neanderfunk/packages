@@ -155,6 +155,19 @@ Das Log in `/tmp` ist nach dem Reboot weg. Wer es lesen will, lässt das
 `; reboot` weg, sieht sich `/tmp/gluon-reconfigure.log` an und startet danach
 von Hand neu.
 
+**Falle Rollen:** `gluon.iface_*.role` ist eine Liste. Setzen nur mit
+`uci delete` und `uci add_list`:
+
+```sh
+uci delete gluon.iface_lan.role
+uci add_list gluon.iface_lan.role=mesh
+```
+
+`uci set gluon.iface_lan.role=mesh` erzeugt dagegen eine Option. Gluons
+Upgrade-Skripte `021`, `110` und `210` brechen daran ab („pairs: table
+expected, got string“), das Netz ist danach ohne WAN, Client-Bridge und
+Kabel-Mesh (beobachtet am 06.10.2026 am TL-WR1043N/ND v2).
+
 ## Testen, ohne den Flash anzufassen
 
 Weil Upgrade-Skripte nur `uci:save()` benutzen, lassen sie sich am laufenden

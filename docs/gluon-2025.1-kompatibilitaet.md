@@ -166,6 +166,12 @@ zusammen mit PS/AQL das Backlog-Bild verhindert, ist abgeleitet, nicht
 gemessen; die Feldauswertung (U1) ist offen. Die Commit-Nachricht von
 `038debe` ("der Fix steckt in 2025.1 im Treiber") ist in diesem Punkt falsch.
 
+**Basis für U1** (28.09.-03.10.2026, aus kollektor6 `/var/lib/nfsyslog`):
+MR90X, WR3000S, COVR, zwei M60 und M30 hatten je Tag `eth_tx_stall` 0,
+`wifi_firmware` 0, `mcu-timeout` 0-1 (MR90X und M60 b48d je 1 am 02.10.) und
+hostapd-Restarts 0-14 (an Update-Tagen mehr). Der 03.10. zählt komplett als
+Update-Tag. Die Zähler ab 04.10. werden gegen diese Basis verglichen.
+
 ## 2. Was unverändert bleibt
 
 Geprüft, nicht vermutet:
@@ -264,3 +270,12 @@ x86-Testknoten und ggf. Server-Hardware, nicht unsere Pakete — aber
 `linkcheck`s Bridge-Port-Marker (`bridgeport.br-wan,eth1`) würden sich nach so
 einem Tausch neu scharfschalten. Da die Marker in `/tmp` liegen, kostet das
 nichts.
+
+## 7. Nachtrag: batman-adv-Stand (04.10.2026)
+
+Gluon main bringt batman-adv 2025.4 (+94 Patches), Gluon 2025.1 batman-adv
+2024.3 (+101 Patches). Die Supernode-Messung zu batman-adv 2026.3 zeigte keinen
+messbaren Effekt (supernodes-Repo
+`docs/supernodes/batman-2026.3-kein-messbarer-effekt.md`, `175ecc5`), und im Log v2026.2..v2026.3 steht kein Performance-Commit.
+batman-adv-Backports nach 2025.1 deshalb nur für Sicherheit/Stabilität oder mit
+einer Messung am Knoten begründen.

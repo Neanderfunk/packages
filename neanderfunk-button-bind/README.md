@@ -17,6 +17,9 @@ Verfügbare Funktionen (`uci set button-bind.wifi.function=N; uci commit`):
 
 Einstellbar ist das auch im Config-Mode unter „Taster".
 
+Im Setup-Mode hat der Taster über dieses Paket keine Funktion: Dort gehört der
+Kurzdruck [neanderfunk-setup-wifi](../neanderfunk-setup-wifi/README.md).
+
 Knoten ohne Taster oder ohne WLAN
 ---------------------------------
 

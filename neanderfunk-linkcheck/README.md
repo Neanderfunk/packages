@@ -119,7 +119,7 @@ Checks
 | `bridges` | a bridge that was present has disappeared | wifi restart, reboot |
 | `bridge_ports` | a port that was part of a bridge dropped out of it | wifi restart, reboot |
 | `mesh_neighbours` | a wifi mesh radio that had >=2 neighbours now has none | wifi restart, reboot |
-| `mesh_unicast` | a wifi mesh radio has established peers, but none of up to three answers a unicast ping6 to its link-local address on that interface (seen on MT7986 after a scan: broadcast and batman OGMs keep working, unicast is dead on both radios, `wifi down; wifi up` fixes it). Armed after the first answer | wifi restart, reboot |
+| `mesh_unicast` | a wifi mesh radio has established peers, but none of up to three answers a unicast ping6 to its link-local address on that interface (seen on MT7986 after a scan: broadcast and batman OGMs keep working, unicast is dead on the scanned radio only, `wifi down; wifi up` fixes it). Armed after the first answer | wifi restart, reboot |
 | `no_gateway` | no batman gateway in range for 4 runs (`gateway.sh`) | reboot |
 | `ipv6_anycast` | the IPv6 anycast address unreachable for 4 runs (`gateway.sh`) | reboot |
 | `public_prefix` | br-client has lost its public IPv6 prefix, having had one (`gateway.sh`) | reboot |
@@ -143,6 +143,11 @@ reached the anycast address, at least once since boot can reboot over losing it.
 Four consecutive failures - roughly half an hour - are needed. Both used to live
 in neanderfunk-hotfix; they ask whether the network still works, not whether
 this node is healthy, so they belong here.
+
+To test `mesh_unicast` without a scan, drop the outgoing echo requests on one
+mesh interface (there is no `nft` on the 2025.1 images):
+`ip6tables -A OUTPUT -o meshN -p icmpv6 --icmpv6-type echo-request -j DROP`,
+and remove the rule again with `-D` instead of `-A`.
 
 
 What it logs, and how often

@@ -51,6 +51,8 @@ Verhalten
   `50-gluon-setup-mode`, unverändert. Beim Genexis Pulse EX400 zählt die
   kapazitive `wps`-Taste für den Kurzdruck mit (Gluon nimmt sie dort nur vom
   Langdruck aus); der Reset-Knopf ebenso.
+- **Geräte ohne Taste:** Mit `start = 'button'` gibt es dort kein
+  Setup-WLAN.
 - **Nach dem Timeout:** `wifi down`, Logzeile, der Zugang per Kabel bleibt.
   Kein Neustart – ein unkonfigurierter Knoten käme wieder in den Setup-Mode,
   am Kabel flöge man aus der Eingabe.
@@ -137,3 +139,18 @@ iPhone-Test noch aus.
 
 Tasten ohne Finger:
 `ACTION=released BUTTON=reset SEEN=1 /sbin/hotplug-call button`.
+
+**EX400** (13.09.2026 aus den Quellen geprüft, nicht an Hardware): Die
+WPS-Sensorfläche ist Kanal 3 des SX9512 und liefert `KEY_WPS_BUTTON`
+(`kmod-keyboard-sx951x` in den DEVICE_PACKAGES). `kmod-button-hotplug` macht
+daraus `BUTTON=wps` mit `pressed`/`released` und `SEEN`, der Handler nimmt
+`wps` also ohne Sonderfall. Restrisiko: Eine Fehlauslösung der Sensorfläche
+öffnet im Setup-Mode das offene WLAN ohne Finger.
+
+Fallen
+------
+
+- **procd startet eine Instanz nicht neu, wenn sich nur die Umgebung
+  (`env`) ändert.** Damit ein erneuter Kurzdruck den Timer neu startet, muss
+  sich die Kommandozeile ändern, deshalb geht der Zeitpunkt als Argument an
+  die Timeout-Instanz.

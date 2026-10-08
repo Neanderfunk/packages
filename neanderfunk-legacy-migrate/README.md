@@ -17,6 +17,8 @@ Hintergrund und Pfade: router-werkstatt `docs/gluon-migrationspfade.md`
 Das Paket landet in jedem 2025.1-Image. Bei Herkunft ab 2022.1 (unsere Flotte)
 ändert es nichts außer der x86-Bindung (siehe Tests).
 
+Größe im Image: etwa 2,7 KB xz ohne Kommentare.
+
 Ablauf beim Upgrade
 -------------------
 

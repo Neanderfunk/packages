@@ -191,6 +191,11 @@ Ausgangsstand. Im Normalbetrieb braucht der Test `mkdir -p
 /var/gluon/setup-mode`, sonst wartet wizard-save-lock 50 s und zeigt die
 Neustart-Seite, ohne zu speichern.
 
+Falle beim Test: `/tmp` ist nach dem Neustart leer, die per bind-mount
+eingehängten Dateien fehlen dann. Testketten deshalb mit `set -e` bzw. `&&`
+verketten, sonst laufen Reconfigure und Neustart mit dem alten Stand weiter
+(am 06.10. ein unnötiger Neustart).
+
 Host-Test der Logik: `lua5.1 tests/apply_test.lua` (vierzehn Fälle: unverändert,
 herauslösen, zurückholen, alle gleich, gemischt, portrole- und
 legacy-migrate-Sektionen, swconfig, verwaister Port, VLAN, Hop-Penalty, Rolle

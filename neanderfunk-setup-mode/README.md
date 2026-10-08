@@ -73,6 +73,14 @@ Feldes. Passwort und Bestätigung vergleicht die Seite schon im Browser
 Die alten Adressen unter `admin/` funktionieren weiter und zeigen die
 einzelnen Seiten wie bisher.
 
+**Nur „Speichern & Neustarten“** (Entscheidung adorfer): Einen Knopf
+„Speichern“ ohne Neustart gibt es auf der Sammelseite nicht, ohne
+Seitenwechsel wäre er sinnlos. Im klassischen Wizard bleibt er. Unten rechts
+läuft eine Leiste mit dem Knopf und einem Zähler der Änderungen mit.
+
+**Größe:** etwa 15,5 KB xz für dieses Paket und
+neanderfunk-config-mode-theme zusammen.
+
 Interna, auf die sich das Paket verlässt
 ----------------------------------------
 

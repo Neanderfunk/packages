@@ -237,3 +237,17 @@ Abfragen:
 gluon-neighbour-info -d ::1 -p 1001 -r statistics | jsonfilter -e '@.neanderfunk'
 gluon-neighbour-info -d ::1 -p 1001 -r nodeinfo | jsonfilter -e '@.neanderfunk'
 ```
+
+Nachtrag: Airtime
+-----------------
+
+Airtime liefert nicht dieses Modul, sondern Gluons `respondd-module-airtime`.
+Beobachtungen dazu (12.-14.09.2026):
+
+- mesh- und client-Interface desselben Radios liefern identische
+  Survey-Zähler (mac80211 `drv_get_survey` ohne vif). Eine feste Wahl des
+  Interfaces bringt also nichts.
+- Der Reihensprung in der Airtime und extreme busy-Werte an Schulstr7-AP01
+  können von der Aufstellung kommen: Die NWA50AX Pro der Schulstr7 stehen dicht
+  gestapelt in einer Kiste in der Werkstatt, auf denselben Kanälen. Vor einer
+  Treiber-Ursache erst Feldwerte anderer mt76-Knoten vergleichen.

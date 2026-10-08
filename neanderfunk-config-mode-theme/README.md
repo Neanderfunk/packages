@@ -32,6 +32,10 @@ packages {
 `gluon-config-mode-core`. So macht es auch
 `ffgraz-config-mode-theme-funkfeuer` in den community-packages.
 
+Geprüft im horst-Lauf `26091206bro`: Die Abwahl `-gluon-config-mode-theme`
+greift ohne opkg-Konflikt. Im WDR3600-Image waren beide neanderfunk-Pakete
+drin, `gluon-config-mode-theme` nicht.
+
 Einzelheiten
 ------------
 

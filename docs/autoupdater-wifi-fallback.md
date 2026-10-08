@@ -177,3 +177,6 @@ Wiederholung) und der Fall mehrerer Treffer mit fehlschlagendem ersten.
   repariert, um 23:42 war der Knoten wieder normal im Netz.
 - Den Mitschnitt-Supplicant auf die Offline-SSID mit der **gekürzten** Form
   einstellen, sonst ist der Knoten nach der Umstellung nicht mehr erreichbar.
+- Nach einem Neustart ist `/tmp` leer. Testketten deshalb mit `set -e` bzw.
+  `&&` bauen, sonst laufen die folgenden Schritte ohne die Dateien aus `/tmp`
+  weiter.
