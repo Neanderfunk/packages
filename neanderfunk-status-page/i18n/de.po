@@ -28,6 +28,9 @@ msgstr "Image-Name"
 msgid "Mesh MAC address"
 msgstr "Mesh-MAC-Adresse"
 
+msgid "Next node"
+msgstr "Next-Node"
+
 msgid "Offline SSID"
 msgstr "Offline-SSID"
 

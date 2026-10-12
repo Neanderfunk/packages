@@ -22,6 +22,9 @@ msgstr ""
 msgid "Mesh MAC address"
 msgstr ""
 
+msgid "Next node"
+msgstr ""
+
 msgid "Offline SSID"
 msgstr ""
 
