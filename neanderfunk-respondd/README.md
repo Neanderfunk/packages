@@ -193,8 +193,9 @@ Welche Hardware was liefert (Testknoten, 14.09.2026):
 | MT7981 (filogic) | ZyXEL NWA50AX Pro (Schulstr7-Kiste) | `soc` 77–78; die MT7915 liefert abwechselnd 491000, 0 und ~70 °C - meist verworfen |
 | MT7986 (filogic) | MERCUSYS MR90X v1 | `soc` 42, `mt7915_phy0/1` 41/45 |
 | MT7621 + MT7915 | D-Link COVR-X1860, ZyXEL NWA55AXE | nur `mt7915_phy0/1` (55); der MT7621 hat keinen Sensor |
-| MT7621 + mt7603/mt76x2 | Xiaomi 4A Gigabit | nichts |
-| ath79 (ath9k, ath10k) | TL-WDR3600, TL-WR1043ND v2, Archer C25 | nichts |
+| MT7621 + mt7603/mt76x2 | Xiaomi 4A Gigabit | nichts; mit mt76-Patch 900 (Test, 12.10.) gibt es die Zone `mt76x2_phy1`, sie liefert aber keinen Wert (kein externer PA) und fällt weg |
+| MT7620A + mt76x0 | TP-Link Archer C20i | mit mt76-Patch 900 (Test, 12.10.): `mt76x0_phy0` 89-93 °C; ohne den Patch nichts |
+| ath79 (ath9k, ath10k) | TL-WDR3600, TL-WR1043ND v2, Archer C25 | nichts; ath10k sollte mit `ATH10K_THERMAL` (Test seit 12.10.) `ath10k_hwmon` liefern, noch nicht am Gerät geprüft |
 | ipq40xx | FRITZ!Box 4040 | nichts |
 | mpc85xx | Extreme WS-AP3825i | nichts |
 | x86 | FUTRO S550 (`k8temp`) | nichts: der Sempron meldet 4294918296 = −49 °C, verworfen |
