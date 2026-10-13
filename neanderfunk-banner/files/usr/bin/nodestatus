@@ -368,11 +368,11 @@ local overlay_ro = (readfile('/proc/mounts') or ''):find('/ overlay ro,', 1, tru
 
 -- SoC-Temperatur aus neanderfunk-respondd (statistics.neanderfunk.temperature,
 -- dort gefiltert und 10 s gecacht) - dieselbe Zahl wie auf der Statusseite.
--- Ohne Sensor oder mit aelterer Firmware steht nichts da. ASCII "C" statt
--- Gradzeichen: auch die serielle Konsole soll es lesen koennen.
+-- Ohne Sensor oder mit aelterer Firmware steht nichts da. Mit Gradzeichen
+-- (adorfer 13.10.2026); vlen() zaehlt das UTF-8-Zeichen als eine Spalte.
 local soc = stats.neanderfunk and stats.neanderfunk.temperature
 	and tonumber(stats.neanderfunk.temperature.soc)
-local soctxt = soc and string.format('SoC %.1f C', soc) or ''
+local soctxt = soc and string.format('SoC %.1f°C', soc) or ''
 
 local l1, l5, l15 = (readline('/proc/loadavg') or ''):match('^(%S+) (%S+) (%S+)')
 local loadwarn = tonumber(l5) and tonumber(l5) > nproc
