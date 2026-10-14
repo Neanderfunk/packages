@@ -140,7 +140,10 @@ it the node is not armed again until it has really seen neighbours again.
 `no_gateway` and `ipv6_anycast` run from a second cron entry (`gateway.sh`,
 every 8 minutes) and arm the same way: only a node that has seen a gateway, or
 reached the anycast address, at least once since boot can reboot over losing it.
-Four consecutive failures - roughly half an hour - are needed. Both used to live
+`no_gateway` needs four consecutive failures, roughly half an hour.
+`ipv6_anycast` sends 20 echo requests per run (deadline 25 s, one reply is
+enough) and reboots after three consecutive failed runs, so after 16 to 24
+minutes without a single reply (until 14.10.2026: 10 pings, four runs). Both used to live
 in neanderfunk-hotfix; they ask whether the network still works, not whether
 this node is healthy, so they belong here.
 
