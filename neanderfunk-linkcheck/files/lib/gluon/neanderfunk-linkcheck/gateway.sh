@@ -3,8 +3,9 @@
 #
 # Two independent checks, both only armed once the node has seen the thing
 # working at least once since boot - a node that never had a gateway must not
-# reboot over it. Both escalate over four checks (*/8, so roughly half an hour)
-# before rebooting, and neither reboots within the first
+# reboot over it. The gateway checks escalate over four runs (*/8, so roughly
+# half an hour), the anycast ping over three runs of 20 pings each, before
+# rebooting, and none reboots within the first
 # linkcheck.settings.reboot_uptime_min minutes of uptime.
 #
 # This lived in neanderfunk-hotfix as rebootIfNoGw.sh. It is a "does the
@@ -17,7 +18,7 @@
 autoupdater_running && exit 0
 
 # Einzelinstanz-Lock. Dieses Skript kann laenger laufen als sein Cron-Intervall:
-# bis zu zehn Pings je oeffentlichem Prefix, und davon kann es mehrere geben. Ohne Lock
+# bis zu zwanzig Pings je oeffentlichem Prefix, und davon kann es mehrere geben. Ohne Lock
 # startet micrond den naechsten Lauf trotzdem, und zwei gleichzeitige Laeufe
 # zaehlen dieselbe Stoerung doppelt in die Strike-Dateien.
 #
@@ -115,7 +116,9 @@ ipv6_subnet=""
 returnval=1
 for pfx in $prefixes ; do
 	[ -z "$ipv6_subnet" ] && ipv6_subnet="$pfx"   # nur fuer die Logmeldung
-	if ping6 "${pfx}::ac1" -c 10 -w 15 >/dev/null 2>&1 ; then
+	# 20 Pings, eine Antwort genuegt (adorfer 14.10.2026: 3 Strikes statt 4,
+	# dafuer 20 statt 10 Pings). Ein Lauf deckt so rund 20 s ab statt 10.
+	if ping6 "${pfx}::ac1" -c 20 -w 25 >/dev/null 2>&1 ; then
 		ipv6_subnet="$pfx"
 		returnval=0
 		break
@@ -125,8 +128,8 @@ done
 if ! check_disabled ipv6_anycast && { [ "$returnval" -ne 0 ] || [ -z "$ipv6_subnet" ]; } ; then
 	if [ -f /tmp/linkcheck.ip6anycast-seen ] ; then
 		logger -s -t "neanderfunk-linkcheck" -p 5 "[ipv6_anycast] IPv6 anycast address not reachable"
-		if [ "$(strike /tmp/linkcheck.ip6anycast-gone)" -ge 4 ] ; then
-			reboot_if_old ipv6_anycast "IPv6 anycast unreachable for 4 checks"
+		if [ "$(strike /tmp/linkcheck.ip6anycast-gone)" -ge 3 ] ; then
+			reboot_if_old ipv6_anycast "IPv6 anycast unreachable for 3 checks"
 		fi
 	fi
 else
