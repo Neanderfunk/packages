@@ -82,6 +82,18 @@ Nachbar und Interface, wie `batctl n`. Drahtformat und App unveraendert.
 obwohl er abgeschaltet war. Jetzt `get_bool` aus `/lib/functions.sh`, also
 jede Schreibweise, die OpenWrt fuer einen Wahrheitswert kennt.
 
+`patches/0006`-`0009` sind unveraenderte Cherry-Picks aus Upstream
+(`freifunk-darmstadt/node-whisperer`, Autor Grische, je mit Zeile
+`cherry picked from commit`), uebernommen am 16.10.2026:
+
+* `0006` = `f291cb0`: `mesh-vpn`-Vergleich mit exakter Grenze statt
+  `strlen(ifname)`.
+* `0007` = `b7ca4dd`: ubus-Fehler als Text ins Log.
+* `0008` = `1c41339`: bei ubus-Timeout die Vendor-Elemente nicht
+  zuruecksetzen (tritt laut Upstream beim fruehen Start auf).
+* `0009` = `aa409ee`: `sys/sysinfo.h` statt Linux-Header, noetig erst mit
+  musl in OpenWrt 25.12, unter 24.10 ohne Wirkung.
+
 Namensraum
 ----------
 
@@ -166,3 +178,7 @@ installiert. Bleiben zwei echte Logikfixes:
 * `1c41339` bricht beim ubus-Timeout ab, statt die Vendor-Elemente
   zurueckzusetzen. An fuenf Knoten gemessen: null solche Fehler im Log, also
   aktuell ohne Wirkung fuer uns.
+
+Seit 16.10.2026 sind beide als `patches/0006` und `0008` drin (dazu `0007`,
+auf dem `0008` aufsetzt, und `0009`), auf Wunsch adorfer, ohne den Pin zu
+bewegen. Beim naechsten Bump auf Upstream entfallen diese vier Patches.

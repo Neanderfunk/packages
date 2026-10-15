@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Grische <2787581+grische@users.noreply.github.com>
+Date: Thu, 9 Apr 2026 23:41:33 +0200
+Subject: [PATCH 7/9] interface: print human-readable ubus error
+
+(cherry picked from commit b7ca4ddd631b2fcabf36d9d24ae7c8a88d199de2)
+---
+ src/interface.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/interface.c b/src/interface.c
+index 5e8d8dc..0091635 100644
+--- a/src/interface.c
++++ b/src/interface.c
+@@ -68,7 +68,7 @@ int nw_interface_update(struct ubus_context *ctx, char *vendor_elements)
+ 		log_debug("Sending vendor elements to id=%d name=%s", iface->ubus.id, iface->ubus.name);
+ 		ret = ubus_invoke(ctx, iface->ubus.id, "set_vendor_elements", b.head, NULL, NULL, 1000);
+ 		if (ret) {
+-			log_error("Failed to send vendor elements to id=%d name=%s code=%d", iface->ubus.id, iface->ubus.name, ret);
++			log_error("Failed to send vendor elements to id=%d name=%s error=%s", iface->ubus.id, iface->ubus.name, ubus_strerror(ret));
+ 
+ 			/* Delete element */
+ 			blob_buf_init(&b, 0);
+@@ -76,7 +76,7 @@ int nw_interface_update(struct ubus_context *ctx, char *vendor_elements)
+ 			
+ 			ret = ubus_invoke(ctx, iface->ubus.id, "set_vendor_elements", b.head, NULL, NULL, 1000);
+ 			if (ret) {
+-				log_error("Failed to reset vendor elements for id=%d name=%s code=%d", iface->ubus.id, iface->ubus.name, ret);
++				log_error("Failed to reset vendor elements for id=%d name=%s error=%s", iface->ubus.id, iface->ubus.name, ubus_strerror(ret));
+ 			}
+ 		}
+ 	}
+-- 
+2.53.0
+
