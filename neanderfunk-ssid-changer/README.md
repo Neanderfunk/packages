@@ -184,3 +184,17 @@ Die Umschaltentscheidungen sind dadurch unveraendert: auf einem Pruefstand, der
 das Skript Minute fuer Minute durch Ausfaelle, einen kurzen Wackler, einen
 gesperrten `wifi reconf` und `gwofflinemaxcount = 0` schickt, entscheidet es
 Minute fuer Minute wie vorher; hinzu kommen nur die Zaehler.
+
+## Abgleich mit Upstream (16.10.2026)
+
+Vor dem RC-Bau 2025.1 gegen `ffac-ssid-changer` und den offenen
+[community-packages PR #180](https://github.com/freifunk-gluon/community-packages/pull/180)
+geprueft. Dessen Hauptpunkt, die vertauschte Hysterese im mittleren TQ-Bereich
+(upstream `is_online = off_count > 0`), ist hier seit 06.09.2026 behoben
+(`is_online = off_count == 0`, wie der Kommentar es meint): zwischen
+`tq_limit_min` und `tq_limit_max` bleibt der bisherige Zustand. Die uebrigen
+Punkte des PR (Umschalten nur an Fenstergrenzen, Umschalten in den ersten
+Minuten nach dem Boot, `uci:save` in der Schleife, leere Zustandsdateien)
+wirken mit unseren Site-Werten (`switch_timeframe = 2`, `first = 10`,
+`gwofflinemaxcount = 3`, `tq_limit` 35/45) nicht oder sind schon behoben.
+Feldbeobachtung adorfer: kein Flappen der Offline-SSID. Keine Aenderung.
