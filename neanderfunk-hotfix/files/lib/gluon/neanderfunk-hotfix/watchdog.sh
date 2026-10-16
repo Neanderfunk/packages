@@ -30,9 +30,20 @@
 
 . /lib/gluon/neanderfunk-hotfix/common.sh
 
-check_disabled watchdog && exit 0
-
 PIDFILE=/tmp/hotfix.watchdog.pid
+
+# Abgeschaltet: trotzdem die eigene pid eintragen, bevor wir gehen. Sonst sieht
+# eine Instanz, die vor dem Abschalten zur Laufzeit (uci set ...disabled=1)
+# gestartet wurde, weiter ihre eigene pid, haelt micrond nach der deadline fuer
+# tot und startet neu - ausgerechnet das Abschalten loeste so einen Reboot aus
+# (WR3000H am Testplatz, 16.10.2026). Ein Wort wie "disabled" statt der pid
+# reicht nicht: die Schleife unten haelt nicht-numerischen Inhalt fuer die
+# eigene pid und wacht weiter.
+if check_disabled watchdog ; then
+	echo $$ > "$PIDFILE" 2>/dev/null
+	exit 0
+fi
+
 RUNMARK=/tmp/hotfix.autoupdater-running
 FLASHMARK=/tmp/hotfix.autoupdater-flashing
 

@@ -545,9 +545,17 @@ kill, or stopped and never restarted - nothing on the node would ever notice or
 reboot it again. `watchdog.sh` closes that hole:
 
 micrond starts it every `watchdog_interval_min` minutes (default 5). Each new
-instance relieves its predecessor by killing it. An instance that is *not*
-relieved within 3x that interval concludes there is no micrond starting jobs any
-more, and reboots.
+instance relieves its predecessor by writing its own pid into
+`/tmp/hotfix.watchdog.pid`; the predecessor sees that on its next slice and
+exits. An instance that is *not* relieved within 3x that interval concludes
+there is no micrond starting jobs any more, and reboots.
+
+Switched off (`hotfix.watchdog.disabled`), each run still writes its pid before
+it exits. Without that, switching the watchdog off at runtime made the instance
+already running believe micrond was dead and reboot the node 15 minutes later
+(seen on 16.10.2026 during a load test). Writing a word such as `disabled`
+instead of the pid would not do: the waiting instance treats non-numeric content
+as its own pid and keeps watching.
 
 The value is clamped to the period micrond actually uses, which the script reads
 out of its own cron entry in `/usr/lib/micron.d/hotfix`. Both `*/5` and a
