@@ -87,7 +87,7 @@ jeweils aktuelle ID):
 | Domain | `neanderfunk_legacy.mesh_id` |
 | --- | --- |
 | 01_vel ... 11_lvr | `ffnef-<kurz>-mesh` (z. B. `ffnef-vel-mesh`) |
-| 13_dusfl | `FFDUS-BATBONE` [abgeleitet: alle dus-Domains bis 2020] |
+| 13_dusfl | `FFDUS-BATBONE` (dus ging in 13_dusfl auf, bestätigt adorfer 18.10.2026) |
 | 14_bar, 15_mrh, 17_wip | `FFBAR-BATBONE`, `FFMRH-BATBONE`, `FFWIP-BATBONE` |
 | 16_gmb | `FFGMB-BATBONE`, `FFMH-BATBONE` |
 | 32_lvrnw | `lvrmw-mesh` |
