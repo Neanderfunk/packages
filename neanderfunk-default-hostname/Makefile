@@ -21,10 +21,6 @@ define Package/neanderfunk-default-hostname/description
   hostname/default-hostname from gluon-patches-packages, which makes
   gluon.util.default_hostname() call this module; without the patch the
   package does nothing. Existing nodes keep their hostname.
-  With multidomain, the prefix comes from neanderfunk_hostname_prefix in the
-  domain file (site-wide hostname_prefix otherwise), and during the first
-  setup the wizard swaps the prefix in the node name when the domain
-  selection changes (in the browser and on submit).
   Written for Gluon 2025.1.
 endef
 

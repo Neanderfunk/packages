@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: BSD-3-Clause
 -- SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
 --
--- Vorgabe-Hostname fuer neue Knoten: <Praefix><Kurzname>-<letzte 4 der node_id>,
+-- Vorgabe-Hostname fuer neue Knoten: <hostname_prefix><Kurzname>-<letzte 4 der node_id>,
 -- etwa "dias-WDR3600-1b8c" statt "dias-6466b3ce1b8c". Aufgerufen von
 -- gluon.util.default_hostname() (Patch hostname/default-hostname in
 -- gluon-patches-packages); Gluon setzt den Namen damit beim ersten Start
@@ -12,9 +12,6 @@
 -- getrennt. Regel: Hersteller vorne weg, Hardware-Revision und Fuellwoerter
 -- hinten weg, Vorsilben der Produktlinie weg oder kuerzer; Teile mit Ziffern
 -- und kurze Teile gross, sonst mit grossem Anfangsbuchstaben.
---
--- Praefix: neanderfunk_hostname_prefix der Domain, sonst das site-weite
--- hostname_prefix (Multi-Domain, adorfer 18.10.2026).
 
 local M = {}
 
@@ -127,61 +124,8 @@ function M.short(image)
 	return r
 end
 
--- Praefix der aktuellen Domain (neanderfunk_hostname_prefix in der
--- Domain-Datei), sonst das uebergebene site-weite hostname_prefix
-function M.prefix(site_prefix)
-	local ok, site = pcall(require, 'gluon.site')
-	if ok then
-		local p = site.neanderfunk_hostname_prefix()
-		if type(p) == 'string' then
-			return p
-		end
-	end
-	return site_prefix
-end
-
--- Praefix je Domain-Code fuer alle Domains im Image: neanderfunk_hostname_prefix
--- der Domain-Datei, sonst das site-weite hostname_prefix. Leer ohne
--- Multi-Domain. Liest die Dateien direkt, weil gluon.site nur die aktuelle
--- Domain kennt.
-function M.domain_prefixes()
-	local json = require 'jsonc'
-	local util = require 'gluon.util'
-	local site = json.load('/lib/gluon/site.json') or {}
-	local default = site.hostname_prefix or ''
-	local list = {}
-	for _, path in ipairs(util.glob('/lib/gluon/domains/*.json')) do
-		local code = path:match('([^/]+)%.json$')
-		local d = json.load(path) or {}
-		local p = d.neanderfunk_hostname_prefix
-		list[code] = type(p) == 'string' and p or default
-	end
-	return list
-end
-
--- Praefix tauschen: Beginnt name mit dem Praefix einer Domain (laengster
--- Treffer, leere Praefixe zaehlen nicht), wird es durch new ersetzt; Mitte
--- und Kennung hinten bleiben. Sonst bleibt name unveraendert. Dieselbe Regel
--- steht als JavaScript in view/neanderfunk/hostname-prefix.html.
-function M.swap_prefix(name, prefixes, new)
-	if type(name) ~= 'string' or type(new) ~= 'string' then
-		return name
-	end
-	local best = ''
-	for _, p in pairs(prefixes) do
-		if #p > #best and name:sub(1, #p) == p then
-			best = p
-		end
-	end
-	if best == '' then
-		return name
-	end
-	return new .. name:sub(#best + 1)
-end
-
 -- Vorgabe-Hostname; nil, wenn das Image nicht bekannt ist (dann bleibt Gluons Form)
 function M.hostname(prefix, node_id)
-	prefix = M.prefix(prefix)
 	local ok, platform_info = pcall(require, 'platform_info')
 	if not ok then
 		return nil
