@@ -1,0 +1,189 @@
+#!/usr/bin/lua
+-- SPDX-License-Identifier: BSD-3-Clause
+-- SPDX-FileCopyrightText: 2026 adorfer/Neanderfunk
+--
+-- Vor Gluons 005-set-domain: Ein Knoten, der von einer Single-Domain-Firmware
+-- kommt, hat kein gluon.core.domain. 005 setzt dann default_domain, egal aus
+-- welcher Domain er kam. Wir erkennen die alte Domain an der alten
+-- Konfiguration und setzen gluon.core.domain vorher.
+--
+-- Die alte Konfiguration steht hier noch: 001-reset-uci hat network nach
+-- network_gluon-old verschoben und wireless nach wireless_gluon-old kopiert;
+-- 998-commit loescht beide erst am Ende.
+--
+-- Merkmale (Entscheidung adorfer 18.10.2026), das erste eindeutige gewinnt:
+--   1. Mesh-ID         wireless.*.mesh_id          <-> wifi24/wifi5.mesh.id
+--      (2023.2 legt mesh_radioN mit mesh_id auch bei abgeschaltetem Mesh an)
+--   2. next_node IPv4  network.local_node.ipaddr   <-> next_node.ip4
+--      fuer Knoten ohne WLAN (x86, ERX) und wenn die Mesh-ID nicht eindeutig ist.
+--   3. sonst nichts setzen, 005 nimmt default_domain.
+-- Kein IPv6 (Praefixwechsel 12/2024), kein domain_seed (nicht in uci).
+--
+-- Verglichen wird mit den Domain-Dateien im Image und mit frueheren Werten aus
+-- dem Schluessel neanderfunk_legacy der Domain-Datei (Listen mesh_id und
+-- next_node_ip4). Aliase sind Symlinks und werden uebersprungen. Passt ein
+-- Merkmal auf mehrere Domains, zaehlt es nicht.
+--
+-- Mesh-IDs, die mehrere Domains nacheinander oder gleichzeitig hatten
+-- (lvrmw-mesh: 32 und 34, lvrso-mesh: 34 und 35, lvrsw-mesh: 36 bis 42),
+-- gehoeren deshalb in neanderfunk_legacy ALLER Domains, die sie hatten: dann
+-- sind sie mehrdeutig, und die IPv4 entscheidet. Die IPv4 ist erst seit der
+-- Umnummerierung 04-05/2023 je Domain eindeutig, aeltere Werte gehoeren nicht
+-- in neanderfunk_legacy (Auswertung Buildsystem, Simulation 18.10.2026).
+
+local unistd = require 'posix.unistd'
+local stat = require 'posix.sys.stat'
+local dirent = require 'posix.dirent'
+local json = require 'jsonc'
+
+local DOMAINS = '/lib/gluon/domains/'
+
+if not unistd.access(DOMAINS) then
+	return
+end
+
+local uci = require('simple-uci').cursor()
+
+if uci:get('gluon', 'core', 'domain') then
+	return
+end
+
+local function log(msg)
+	io.stderr:write('neanderfunk-domain-from-legacy: ' .. msg .. '\n')
+	-- logger ueber stdin: die Werte stammen aus der alten Konfiguration und
+	-- gehoeren nicht in eine Shell-Kommandozeile
+	local p = io.popen('logger -t neanderfunk-domain', 'w')
+	if p then
+		p:write(msg .. '\n')
+		p:close()
+	end
+end
+
+local function strip_plen(addr)
+	if type(addr) == 'table' then
+		addr = addr[1]
+	end
+	if type(addr) ~= 'string' then
+		return nil
+	end
+	return (addr:gsub('/%d+$', ''))
+end
+
+local function as_list(v)
+	if v == nil then
+		return {}
+	elseif type(v) == 'table' then
+		return v
+	end
+	return { v }
+end
+
+-- Alte Werte
+local old_ip4 = strip_plen(uci:get('network_gluon-old', 'local_node', 'ipaddr'))
+local old_mesh = {}
+uci:foreach('wireless_gluon-old', 'wifi-iface', function(s)
+	if s.mode == 'mesh' and s.mesh_id then
+		old_mesh[s.mesh_id] = true
+	end
+end)
+
+local meshes = {}
+for id in pairs(old_mesh) do
+	table.insert(meshes, id)
+end
+table.sort(meshes)
+
+-- Neuinstallation: keine alte Konfiguration, nichts zu erkennen
+if not old_ip4 and #meshes == 0 then
+	return
+end
+
+-- Domains im Image
+local cand = { ip4 = {}, mesh = {} }
+
+local function add(kind, value, code)
+	if type(value) ~= 'string' then
+		return
+	end
+	cand[kind][value] = cand[kind][value] or {}
+	cand[kind][value][code] = true
+end
+
+for name in dirent.files(DOMAINS) do
+	local code = name:match('^(.+)%.json$')
+	local path = DOMAINS .. name
+	local st = code and stat.lstat(path)
+	if st and stat.S_ISREG(st.st_mode) ~= 0 then
+		local d = json.load(path) or {}
+		local legacy = d.neanderfunk_legacy or {}
+		add('ip4', (d.next_node or {}).ip4, code)
+		for _, w in ipairs({ 'wifi24', 'wifi5' }) do
+			add('mesh', ((d[w] or {}).mesh or {}).id, code)
+		end
+		for _, v in ipairs(as_list(legacy.next_node_ip4)) do add('ip4', v, code) end
+		for _, v in ipairs(as_list(legacy.mesh_id)) do add('mesh', v, code) end
+	end
+end
+
+-- genau eine Domain im Set: deren Code; mehrere: nil, true
+local function single(set)
+	local found
+	for code in pairs(set or {}) do
+		if found then
+			return nil, true
+		end
+		found = code
+	end
+	return found
+end
+
+-- Mesh-ID: alle Mesh-Schnittstellen muessen auf dieselbe Domain zeigen
+local by_mesh
+for _, id in ipairs(meshes) do
+	local code, ambiguous = single(cand.mesh[id])
+	if ambiguous then
+		log(string.format('Mesh-ID %s passt auf mehrere Domains, zaehlt nicht', id))
+		by_mesh = false
+		break
+	elseif code then
+		if by_mesh and by_mesh ~= code then
+			log(string.format('Mesh-IDs %s zeigen auf verschiedene Domains, zaehlen nicht',
+				table.concat(meshes, ',')))
+			by_mesh = false
+			break
+		end
+		by_mesh = code
+	end
+end
+by_mesh = by_mesh or nil
+
+local by_ip4
+if old_ip4 then
+	local ambiguous
+	by_ip4, ambiguous = single(cand.ip4[old_ip4])
+	if ambiguous then
+		log(string.format('next_node %s passt auf mehrere Domains, zaehlt nicht', old_ip4))
+	end
+end
+
+local code, via
+if by_mesh then
+	code, via = by_mesh, 'Mesh-ID ' .. table.concat(meshes, ',')
+	if by_ip4 and by_ip4 ~= by_mesh then
+		-- nur zur Nachverfolgung: die IPv4 kann aus der Zeit vor der
+		-- Umnummerierung 2023 stammen und heute einer anderen Domain gehoeren
+		log(string.format('Hinweis: next_node %s zeigt auf %s, Mesh-ID gewinnt', old_ip4, by_ip4))
+	end
+elseif by_ip4 then
+	code, via = by_ip4, 'next_node ' .. old_ip4
+end
+
+if not code then
+	log(string.format('keine Domain erkannt (Mesh-ID %s, next_node %s), default_domain greift',
+		#meshes > 0 and table.concat(meshes, ',') or '-', old_ip4 or '-'))
+	return
+end
+
+log(string.format('Domain %s erkannt an %s', code, via))
+uci:set('gluon', 'core', 'domain', code)
+uci:save('gluon')
