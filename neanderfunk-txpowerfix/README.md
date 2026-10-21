@@ -158,3 +158,32 @@ wurde zu 999. Das ging an zwei Stellen schief:
 Seit OpenWrt 21.02 beantwortet `band` (`2g`/`5g`) die Frage direkt; `hwmode`
 bleibt als aeltere Schreibweise als Rueckfall. Ausserdem werden jetzt die
 `wifi-device`-Sektionen durchlaufen statt fest `radio0`/`radio1` anzunehmen.
+
+Vor dem Wechsel auf OpenWrt 25.12 (Stand 2026-10-21)
+----------------------------------------------------
+
+Die 5-GHz-Vorzugsliste (`EHT80, EHT40, HE80, HE40, VHT80, VHT40, HT40`) kann
+auf **VHT40** oder **EHT40** landen, wenn ein Radio diese Modi kann, 80 MHz aber
+nicht in seiner `htmodelist` führt. Für EHT reicht dafür ein Radio ohne EHT80,
+weil `EHT40` vor `HE80` steht.
+
+Unter OpenWrt 24.10 (Gluon 2025.1) ist das harmlos: Die Shell-Fassung der
+wifi-scripts (`mac80211_prepare_iw_htmode`) kennt `VHT40` und `EHT40`.
+
+Die ucode-Fassung in **OpenWrt 25.12** dagegen erkennt 40 MHz in
+`iw_htmode()` per `substr(config.htmode, 2) == "40"`. Das passt für `HT40` und
+`HE40`, nicht für `VHT40`/`EHT40` (`"T40"`). Dann tritt das Mesh-Interface ohne
+Breite bei, fällt auf NOHT und ist auf 54 Mbit/s begrenzt (gemeldet für Gluon
+auf 25.12, AX3600 mit AP32x). Behoben in OpenWrt main mit
+[openwrt/openwrt#24843](https://github.com/openwrt/openwrt/pull/24843)
+(`f73d3121e72d`, 23.08.2026), Stand 21.10.2026 nicht nach 25.12 zurückportiert.
+
+Beim Wechsel auf eine Gluon-Basis mit 25.12 deshalb eins von beiden:
+
+* den Upstream-Fix per gluon-patches mitnehmen, solange 25.12 ihn nicht hat
+  (bevorzugt, die Liste bleibt dann wie sie ist), oder
+* `VHT40` und `EHT40` aus `HTMODES_50` streichen; ein solches Radio behält dann
+  Gluons eigenen Modus.
+
+Nicht betroffen: 2.4 GHz (nur 20 MHz in der Liste), `HT40` auf reinen
+11n-5-GHz-Radios (etwa ath9k im WDR3600), `HE40` und alle 80-MHz-Modi.
