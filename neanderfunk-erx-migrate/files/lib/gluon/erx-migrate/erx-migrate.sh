@@ -22,8 +22,7 @@
 #   UNBEAUFSICHTIGT=1 sh erx-migrate.sh ...    ohne Rueckfrage (fuer das Paket)
 #
 # Unsere eigenen Pakete koennen mitten in die Migration hineinrebooten. Sie
-# haengen an ZWEI verschiedenen Waechtern, und keiner deckt alle ab (Notiz aus
-# der Paket-Session, erx-migration-hinweis.md):
+# haengen an ZWEI verschiedenen Waechtern, und keiner deckt alle ab:
 #
 #   * hotfix/watchdog.sh, Deadman fuer micrond, Frist 15 Minuten. Haelt
 #     ausschliesslich /tmp/hotfix.autoupdater-flashing zurueck - nicht der
@@ -327,7 +326,7 @@ fi
 # Bewusst OHNE -f. "pgrep -f" durchsucht die ganze Kommandozeile und findet
 # damit auch jeden Prozess, in dessen Aufruf der Pfad bloss vorkommt - im
 # Zweifel dieses Skript selbst, das sich dann mitten in der Migration
-# erschiesst. Hinweis aus der Paket-Session, am 2026-09-09 am Knoten
+# erschiesst. Am 2026-09-09 am Knoten
 # nachgeprueft:
 #
 #   pgrep    watchdog.sh  -> nur das Skript          (comm=watchdog.sh)

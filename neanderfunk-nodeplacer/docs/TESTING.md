@@ -65,10 +65,10 @@ kopieren und damit schlafen.
 
 ## Build-Umgebung fuer den C-Helfer und ein Testimage
 
-* Gluon v2023.2.6 unter `~/build/nodeplacer-gluon`, `make update` gelaufen.
+* Gluon v2023.2.6 in einem lokalen Baum, `make update` gelaufen.
 * `site/` = `https://firmware.ffnef.de/stable/21_dias.key/site` (site.conf,
   site.mk, modules, i18n, image-customization.lua) plus:
-  * `modules`: Feed `nodeplacer` = `file:///home/adorfer/projekte/freifunk/packages/neanderfunk-nodeplacer-dev`
+  * `modules`: Feed `nodeplacer` = `file:///<pfad>/neanderfunk-nodeplacer-dev`
     (Commit in `PACKAGES_NODEPLACER_COMMIT`, nach Aenderungen am Paket
     nachziehen und `make update` bzw. `git -C packages/nodeplacer pull`;
     der Feed-Alias heisst `nodeplacer`, das Paket darin
@@ -389,7 +389,7 @@ neuen Pfad) und luacheck laufen gruen.
 Auftrag adorfer (RC 2023.2.6): noch einmal belegen, dass Nodeplacer auch mit
 weniger Signaturen arbeitet - und dass zu wenige abgewiesen werden. Ohne
 eigenen Build (adorfer: vorhandenes Image nehmen), mit dem Serienimage
-`gluon-nef-21_dias-26091411bro-x86-64` (Feed 377c7f5) aus dem horst-Lauf
+`gluon-nef-21_dias-26091411bro-x86-64` (Feed 377c7f5) aus dem Lauf
 images-1789377119.
 
 Aufbau:

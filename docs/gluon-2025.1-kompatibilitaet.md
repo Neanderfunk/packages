@@ -1,8 +1,8 @@
 # Neanderfunk-Pakete gegen Gluon 2025.1.x
 
 Statische Prüfung vom 2026-09-08, Quellenstand `v2023.2.6` (unser Betrieb) gegen
-`v2025.1.3`. Verglichen wurde der Gluon-Baum unter
-`~/projekte/freifunk/firmware/gluon`, dazu die beiden gepinnten OpenWrt-Stände
+`v2025.1.3`. Verglichen wurde ein Gluon-Checkout,
+dazu die beiden gepinnten OpenWrt-Stände
 und die Feed-Pins für `autoupdater` und `batctl`. Ohne Hardware mit 2025.1
 konnte nichts davon am lebenden Objekt gegengeprüft werden; wo eine Aussage nur
 aus dem Quelltext stammt, steht das dabei.
