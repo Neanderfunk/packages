@@ -65,10 +65,10 @@ kopieren und damit schlafen.
 
 ## Build-Umgebung fuer den C-Helfer und ein Testimage
 
-* Gluon v2023.2.6 unter `~/build/nodeplacer-gluon`, `make update` gelaufen.
+* Gluon v2023.2.6 in einem lokalen Baum, `make update` gelaufen.
 * `site/` = `https://firmware.ffnef.de/stable/21_dias.key/site` (site.conf,
   site.mk, modules, i18n, image-customization.lua) plus:
-  * `modules`: Feed `nodeplacer` = `file:///home/adorfer/projekte/freifunk/packages/neanderfunk-nodeplacer-dev`
+  * `modules`: Feed `nodeplacer` = `file:///<pfad>/neanderfunk-nodeplacer-dev`
     (Commit in `PACKAGES_NODEPLACER_COMMIT`, nach Aenderungen am Paket
     nachziehen und `make update` bzw. `git -C packages/nodeplacer pull`;
     der Feed-Alias heisst `nodeplacer`, das Paket darin

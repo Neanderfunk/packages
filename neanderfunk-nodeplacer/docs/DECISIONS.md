@@ -12,7 +12,7 @@ Status: **offen** / **entschieden** / **verworfen**.
   `/etc/config/nodeplacer`, site.conf-Block `nodeplacer`, Manifest
   `nodeplacer.manifest`, C-Helfer `nodeplacer-fetch`, Hauptprogramm
   `/usr/sbin/nodeplacer`. Projektordner umbenannt nach
-  `~/projekte/freifunk/packages/neanderfunk-nodeplacer`.
+  `neanderfunk-nodeplacer`.
 * Historie: Arbeitstitel war "domainswitch"; verworfen wegen Kollision mit
   `gluon-scheduled-domain-switch` und `gluon-switch-domain`. Anforderung
   war: keine negativen, z. B. xenophoben Konnotationen wie "forced
@@ -157,7 +157,7 @@ Status: **offen** / **entschieden** / **verworfen**.
 ## D-014 Projektort und Repository
 
 * Status: **entschieden**
-* Entwicklung in `~/projekte/freifunk/packages/neanderfunk-nodeplacer` (eigenes
+* Entwicklung im Verzeichnis `neanderfunk-nodeplacer` (eigenes
   Git-Repo). Auslieferung spaeter ueber den eulenfunk-Feed
   (https://github.com/eulenfunk/packages, Branch v2023.2.x) oder
   community-packages.
@@ -347,7 +347,7 @@ Status: **offen** / **entschieden** / **verworfen**.
 * Status: **entschieden** (adorfer, 2026-09-04)
 * Kein Release, keine Feed-Einbindung und keine Aenderung an den
   Site-Templates, bevor die noetigen Aenderungen im Buildsystem
-  (`~/projekte/freifunk/firmware`) gemacht sind. Die Release-Schritte aus
+  gemacht sind. Die Release-Schritte aus
   DESIGN/TESTING bleiben als Liste stehen, werden aber nicht angegangen,
   bis adorfer das Signal gibt.
 
@@ -380,7 +380,7 @@ Status: **offen** / **entschieden** / **verworfen**.
 * Status: **entschieden** (adorfer, 2026-09-04)
 * Das Paket heisst `neanderfunk-nodeplacer`, das Entwicklungs-Repo
   `Adorfer/neanderfunk-nodeplacer-dev`, das Projektverzeichnis
-  `~/projekte/freifunk/packages/neanderfunk-nodeplacer`.
+  `neanderfunk-nodeplacer`.
 * Grund: die Herkunft soll am Namen ablesbar sein. Die uebrigen Pakete des
   Feeds (`eulenfunk-*`, `gluon-*`) werden demnaechst ebenfalls umbenannt,
   das aber spaeter und nicht im Rahmen dieses Projekts.

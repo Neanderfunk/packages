@@ -111,7 +111,7 @@ Luecke, die dieses Package fuellen soll.
 
 ## Umfeld
 
-* Firmware-Build: `~/projekte/freifunk/firmware` (build.sh, Sites-Dateien,
+* Firmware-Build: Repo FirmwareConfigs (build.sh, Sites-Dateien,
   Templates), Gluon-Checkout unter `firmware/gluon` auf Branch v2023.2.x.
 * Eigener Package-Feed: https://github.com/eulenfunk/packages (Branch
   v2023.2.x), wird ueber `modules` der Site als Feed `eulenfunk` eingebunden.

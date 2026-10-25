@@ -1,7 +1,7 @@
 # Recherche: Was Gluon 2023.2.x bereits mitbringt
 
-Stand: 2026-09-04. Fundstellen beziehen sich auf den lokalen Checkout
-`~/projekte/freifunk/firmware/gluon` (Branch v2023.2.x, Tag v2023.2.6) und
+Stand: 2026-09-04. Fundstellen beziehen sich auf den lokalen Gluon-Checkout
+(Branch v2023.2.x, Tag v2023.2.6) und
 den Gluon-packages-Feed (https://github.com/freifunk-gluon/packages).
 
 ## 1. Autoupdater: Aufbau und Manifest-Pruefung
