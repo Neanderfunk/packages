@@ -5,9 +5,6 @@ Backport des gleichnamigen Pakets aus `v2025.1.x` für Gluon 2021.1. Zweck:
 alte Knoten (2015.1, 2016.x) einer übernommenen Community auf 2021.1
 heranholen, als Zwischenstufe oder für 4/32-Geräte als Endstation.
 
-Hintergrund: router-werkstatt `docs/gluon-migrationspfade.md`
-(Abschnitte „Migrationsskript statt Zwischenstufen“ und „Zusätzliche Aufgaben
-für das Migrationsskript“, Spalte „Ziel 2021.1“).
 
 Was `020z-neanderfunk-legacy-migrate` tut
 -----------------------------------------
@@ -72,8 +69,7 @@ fremder Branch wird zum Default, zweiter Lauf ohne Wirkung. Ein Knoten mit
 `v2021.1.2` bleibt unberührt.
 
 Danach echte Sprünge in der Emulation (QEMU malta-be, Gluon-Rootfs mit
-RAM-Overlay, Aufbau Buildsystem, router-werkstatt
-`docs/emulation-alte-gluon-images.md`), Ziel 24100427bro WR841N v9, Sicherungen
+RAM-Overlay), Ziel 24100427bro WR841N v9, Sicherungen
 echter Altknoten, 05.10.2026:
 
 - 2015.1.1 (ffems, IBSS, fastd), 2016.1 und 2018.2.2 (ffdus): IBSS wird

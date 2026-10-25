@@ -17,7 +17,7 @@ define Package/$(PKG_NAME)/description
   Upgrade script that redoes the config migrations Gluon removed before
   2021.1 (gluon-simple-tc, old firewall zones, sysctl.conf) and moves a
   foreign autoupdater branch to the site default. Backport of the v2025.1.x
-  package; see router-werkstatt docs/gluon-migrationspfade.md.
+  package.
 endef
 
 $(eval $(call BuildPackageGluon,$(PKG_NAME)))

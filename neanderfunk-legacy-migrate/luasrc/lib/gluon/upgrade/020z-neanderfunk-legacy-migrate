@@ -3,8 +3,8 @@
 -- SPDX-License-Identifier: BSD-3-Clause
 --
 -- Backport des Pakets aus v2025.1.x fuer Ziel 2021.1, etwa um alte Knoten
--- (2015.1, 2016.x) einer uebernommenen Community heranzuholen
--- (router-werkstatt docs/gluon-migrationspfade.md). Nur, was Gluon bis 2021.1
+-- (2015.1, 2016.x) einer uebernommenen Community heranzuholen.
+-- Nur, was Gluon bis 2021.1
 -- entfernt hat; Mesh auf WAN/LAN, VPN-Schalter, preserve_channels, IBSS und
 -- Koordinaten erledigt 2021.1 selbst. IBSS-Nachbarn und die batman-adv-
 -- Kompatibilitaet (2015.1: compat 14) bleiben bewusst aussen vor.
