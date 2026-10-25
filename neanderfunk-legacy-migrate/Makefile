@@ -18,8 +18,7 @@ define Package/$(PKG_NAME)/description
   band, mesh on WAN/LAN to roles, VPN switch and bandwidth limit, IBSS mesh,
   preserve_channels, old firewall zones, sysctl.conf, foreign autoupdater
   branches), and on x86 bind LAN/WAN to the network card (PCI path and
-  hardware MAC) instead of ethN. See router-werkstatt
-  docs/gluon-migrationspfade.md.
+  hardware MAC) instead of ethN.
 endef
 
 $(eval $(call BuildPackageGluon,$(PKG_NAME)))

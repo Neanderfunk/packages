@@ -1,7 +1,7 @@
 # Entwurf: neanderfunk-automesh
 
 Stand 02.10.2026, Fassung 2. Noch kein Code, Testtermin offen. Die
-Entstehung mit beiden Reviews der Buildsystem-Session steht in der
+Entstehung mit beiden Reviews steht in der
 Git-Historie dieser Datei (Fassung 1 bis 9bfdd64). Hier steht nur noch der
 bereinigte Stand. Herkunft einzelner Regeln in Klammern: (A) = Entscheidung
 adorfer, (R1-x) / (R2-x) = erstes bzw. zweites Review.
@@ -107,7 +107,7 @@ Versuche: 3 mal je 3 s. Abgefragt wird bei jedem neuen Originator in `gwl`
 und im 60-s-Takt für Gateways, die noch unbekannt sind (R1-8).
 
 **MAC-Schema** (Gateway-Ansible des Maintainers, Rolle gateways_batman;
-Felddaten und Supernode-Session bestätigen es): `02:ca:ff:ee:<NN>:<SS>`,
+Felddaten bestätigen es): `02:ca:ff:ee:<NN>:<SS>`,
 NN = Domainnummer in Dezimalziffern, SS = Supernode (01 pasophae bis
 06 ganymed). Grenzen: Domain ≥ 100 und Supernode ≥ 10 sprengen es, und das
 Präfix ist kein Alleinstellungsmerkmal (`02:ca:ff:ee:ba:be`). Deshalb nur

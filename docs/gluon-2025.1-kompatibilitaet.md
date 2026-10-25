@@ -1,8 +1,8 @@
 # Neanderfunk-Pakete gegen Gluon 2025.1.x
 
 Statische Prüfung vom 2026-09-08, Quellenstand `v2023.2.6` (unser Betrieb) gegen
-`v2025.1.3`. Verglichen wurde der Gluon-Baum unter
-`~/projekte/freifunk/firmware/gluon`, dazu die beiden gepinnten OpenWrt-Stände
+`v2025.1.3`. Verglichen wurde ein Gluon-Checkout,
+dazu die beiden gepinnten OpenWrt-Stände
 und die Feed-Pins für `autoupdater` und `batctl`. Ohne Hardware mit 2025.1
 konnte nichts davon am lebenden Objekt gegengeprüft werden; wo eine Aussage nur
 aus dem Quelltext stammt, steht das dabei.
@@ -155,7 +155,7 @@ Folgen:
   2025.1 nicht mehr, der Feed nimmt darauf keinen Bezug.
 
 
-**Nachtrag 06.10.2026 (Hinweis der Buildsystem-Session, dort geprueft):**
+**Nachtrag 06.10.2026 (beim Bau geprüft):**
 gluon-patches-hardware `kernel/mt7915-ps-aql`
 (`adb6e5377cff0c198750ab96849febf54a82ff29`, aktiv seit Pin `a50d4b3`) loescht
 Gluons `0012` und legt stattdessen die sechs Power-Save/AQL-Patches aus Gluon
