@@ -1,7 +1,7 @@
 # gluon-reconfigure: wie Gluon seine Konfiguration erzeugt
 
 Stand 2026-09-10. Gelesen im Quelltext von Gluon **v2023.2.6** und **v2025.1.3**
-(Baum `~/projekte/freifunk/firmware/gluon`, Tags). Was am Gerät nachgeprüft
+(Gluon-Checkout, Tags). Was am Gerät nachgeprüft
 ist, steht ausdrücklich dabei.
 
 Anlass: Die offizielle Doku beschreibt `gluon-reconfigure` nur knapp. Beim

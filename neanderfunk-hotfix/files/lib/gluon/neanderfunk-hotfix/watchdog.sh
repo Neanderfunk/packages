@@ -148,7 +148,7 @@ while : ; do
 			# dann KILL an alle verbliebenen Prozesse.
 			#
 			# Hier zu rebooten hiess, mitten in einen Flash-Vorgang zu
-			# rebooten. Gemeldet aus der Firmware-Session am 2026-09-09: vier
+			# rebooten. Gemeldet am 2026-09-09: vier
 			# von fuenf ERX-Migrationslaeufen wurden so abgebrochen, das Geraet
 			# stand danach mit neuem Kernel auf altem Rootfs. Wer uns TERM
 			# schickt, weiss in aller Regel, was er tut - also aussteigen.

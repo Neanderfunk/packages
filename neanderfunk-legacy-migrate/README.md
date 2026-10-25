@@ -11,8 +11,6 @@ WAN/LAN, mit falschem VPN-Schalter und am fremden Autoupdater.
 Dazu kommt auf x86 eine dauerhafte Bindung von LAN/WAN an die Netzwerkkarte
 statt an `ethN`.
 
-Hintergrund und Pfade: router-werkstatt `docs/gluon-migrationspfade.md`
-(Abschnitt „Noch älter“) und `docs/gluon-historie.md`.
 
 Das Paket landet in jedem 2025.1-Image. Bei Herkunft ab 2022.1 (unsere Flotte)
 ändert es nichts außer der x86-Bindung (siehe Tests).

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Prueft die Pakete dieses Feeds gegen einen Gluon-Stand.
 
-    scripts/gluon-compat-check.py --gluon ~/projekte/freifunk/firmware/gluon --ref v2025.1.3
+    scripts/gluon-compat-check.py --gluon /pfad/zu/gluon --ref v2025.1.3
 
 Geprueft wird, was ein Paket von Gluon erwartet und was Gluon in dem Stand
 tatsaechlich mitbringt:

@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: BSD-3-Clause
 --
 -- Grosse Spruenge auf 2025.1, etwa bei der Uebernahme einer Community auf
--- Gluon 2016.2 (router-werkstatt docs/gluon-migrationspfade.md). Gluon hat die
+-- Gluon 2016.2. Gluon hat die
 -- alten Migrationen entfernt; ohne sie gehen WLAN (kein band), Mesh auf
 -- WAN/LAN, VPN-Schalter und preserve_channels verloren, und der Knoten haengt
 -- am fremden Autoupdater. Laeuft zwischen 020-interfaces und

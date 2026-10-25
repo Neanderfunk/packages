@@ -285,8 +285,7 @@ static long long read_flash_chip_from_klog(void) {
  * Startet respondd spaeter neu (Absturz, Paketupdate), kann sie verschwunden
  * sein, und der Wert fiele still auf das Partitionsende zurueck (Cudy: 128 ->
  * 70 MiB). Deshalb wird der gefundene Wert in /tmp (RAM, bis zum Reboot)
- * abgelegt und beim naechsten Laden zuerst dort nachgesehen. Vorschlag der
- * Firmware-Session.
+ * abgelegt und beim naechsten Laden zuerst dort nachgesehen.
  */
 #define FLASH_CHIP_CACHE "/tmp/neanderfunk-respondd-flash"
 
