@@ -121,7 +121,7 @@ Checks
 | `mesh_neighbours` | a wifi mesh radio that had >=2 neighbours now has none | wifi restart, reboot |
 | `mesh_unicast` | a wifi mesh radio has established peers, but none of up to three answers a unicast ping6 to its link-local address on that interface (seen on MT7986 after a scan: broadcast and batman OGMs keep working, unicast is dead on the scanned radio only, `wifi down; wifi up` fixes it). Armed after the first answer | wifi restart, reboot |
 | `no_gateway` | no batman gateway in range for 4 runs (`gateway.sh`) | reboot |
-| `ipv6_anycast` | the IPv6 anycast address unreachable for 3 runs of 20 pings (`gateway.sh`) | reboot |
+| `ipv6_anycast` | `::ac1` unreachable for 3 runs of 20 pings, in every public prefix and in the domain's ULA prefix (`gateway.sh`) | reboot |
 | `public_prefix` | br-client has lost its public IPv6 prefix, having had one (`gateway.sh`) | reboot |
 
 A wifi restart happens at most once per run, no matter how many checks reach
@@ -146,6 +146,16 @@ enough) and reboots after three consecutive failed runs, so after 16 to 24
 minutes without a single reply (until 14.10.2026: 10 pings, four runs). Both used to live
 in neanderfunk-hotfix; they ask whether the network still works, not whether
 this node is healthy, so they belong here.
+
+The anycast targets are `<prefix>::ac1` for every public /64 on br-client
+(learnt from the supernodes' router advertisements, one per supernode the node
+hears) and, last, `::ac1` in the domain's ULA prefix (`prefix6` from
+site.conf). A reply from any of them is enough. The supernodes carry the ULA
+address all alike (since 27.10.2026, not yet on every supernode), so it does
+not depend on which supernode currently announces its public prefix: after a
+switch, neighbour discovery finds the next one, while the old public prefix
+stays on the node until its lifetime runs out. It comes last so that it only
+costs time (up to 25 s) when no public `::ac1` answers.
 
 To test `mesh_unicast` without a scan, drop the outgoing echo requests on one
 mesh interface (there is no `nft` on the 2025.1 images):
