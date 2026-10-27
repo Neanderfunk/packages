@@ -18,7 +18,7 @@
 autoupdater_running && exit 0
 
 # Einzelinstanz-Lock. Dieses Skript kann laenger laufen als sein Cron-Intervall:
-# bis zu zwanzig Pings je oeffentlichem Prefix, und davon kann es mehrere geben. Ohne Lock
+# bis zu zwanzig Pings je Ziel (jedes oeffentliche Prefix, dazu das ULA). Ohne Lock
 # startet micrond den naechsten Lauf trotzdem, und zwei gleichzeitige Laeufe
 # zaehlen dieselbe Stoerung doppelt in die Strike-Dateien.
 #
@@ -88,6 +88,20 @@ anycast_prefixes() {
 			if (!seen[x]++) print x }'
 }
 
+# Dazu als letztes Ziel ::ac1 im ULA-Prefix der Domaene (site.conf prefix6).
+# Die Supernodes tragen dort dieselbe Adresse (nodad), sie haengt also nicht
+# davon ab, welcher Supernode gerade per RA sein oeffentliches Prefix verteilt:
+# Beim Wechsel findet die Neighbor Discovery den naechsten Supernode, das
+# oeffentliche Prefix des alten bleibt dagegen bis zum Ende seiner Lifetime
+# stehen. Als letztes Ziel, weil noch nicht jeder Supernode die Adresse traegt;
+# wo sie fehlt, kostet sie nur dann Zeit, wenn kein oeffentliches ::ac1
+# antwortet.
+site_ula() {
+	lua -e 'local p = require("gluon.site").prefix6(); if p then print(p) end' 2>/dev/null \
+		| awk '{ split($1, a, "/"); p = tolower(a[1]); if (p !~ /^f[cd]/) next;
+			split(p, g, ":"); print g[1] ":" g[2] ":" g[3] ":" g[4] }'
+}
+
 # --- oeffentliches Prefix ueberhaupt vorhanden? ---------------------------
 #
 # Ansage adorfer: faellt das oeffentliche Prefix weg, nachdem es einmal da war,
@@ -114,7 +128,7 @@ fi
 
 ipv6_subnet=""
 returnval=1
-for pfx in $prefixes ; do
+for pfx in $prefixes $(site_ula) ; do
 	[ -z "$ipv6_subnet" ] && ipv6_subnet="$pfx"   # nur fuer die Logmeldung
 	# 20 Pings, eine Antwort genuegt (adorfer 14.10.2026: 3 Strikes statt 4,
 	# dafuer 20 statt 10 Pings). Ein Lauf deckt so rund 20 s ab statt 10.
