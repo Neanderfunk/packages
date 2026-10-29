@@ -139,6 +139,36 @@ found, keeping“).
 
 `020a` läuft dauerhaft bei jedem Reconfigure auf jedem x86-Knoten.
 
+**Gluon 2026** (main ab PR #3832, Merge `183bb794`): Das Paket bleibt drin
+(adorfer 29.10.2026). Es beißt sich nicht mit den neuen Gluon-Skripten,
+sondern ergänzt sie (aus dem Code abgeleitet, noch nicht getestet):
+
+- Gluon benennt die Karten in `001-reset-uci` um (PCI `enpXsY`, USB mit
+  echter MAC `enx<6 Hex>`). `020-interfaces` behält die Rollen nur, wenn die
+  bisherigen Namen schon stabil sind (`keep_roles`). Beim ersten Sprung auf
+  2026 stehen in sysconfig noch `ethN`; dort greift nur Gluons Standard
+  (erste Karte LAN, zweite WAN nach Registrierreihenfolge).
+- `020a` läuft danach, findet die gebundenen Karten an der MAC und setzt ihre
+  neuen Namen. Ab dem nächsten Reconfigure behält `keep_roles` sie, beide
+  kommen auf dasselbe. Hat sich die Treiberreihenfolge beim Sprung geändert,
+  hält nur `020a` die Rollen auf ihren Karten.
+- Herkunft 2025.1: Gluons `019-migrate-interface-order` ist schon gelaufen
+  (`migrated_interface_order` bleibt in sysconfig) und tut nichts.
+  Herkunft 2022.1 bis 2023.2: `019` tauscht bei Bedarf die Rollen, `020a`
+  bindet den getauschten Stand. Herkunft vor 2022.1 (bei Gluon offiziell
+  nicht unterstützt, etwa 2019.1): `019` steigt ohne `gluon.iface_*`-Rollen
+  aus, `018z` baut die alte Aufzählung nach und setzt
+  `migrated_interface_order` selbst; Gluon allein hätte nur den Standard.
+- Die Umbenennung stört nicht: Gebunden und gesucht wird an MAC, Treiber und
+  Gerätepfad (bei USB der Port), nie am Interface-Namen.
+- Gemeinsame Grenzen: USB-Adapter mit gleicher MAC benennt Gluon nicht um,
+  `020a` findet dann für LAN und WAN dieselbe Karte und lässt Gluons
+  Zuordnung stehen. Bei Zufalls-MAC hält nur der Port. VLAN-Abschnitte wie
+  `eth0.8` zieht `020-interfaces` nach Registrierreihenfolge nach, nicht nach
+  Karte; das fasst `020a` nicht an.
+- Voraussetzung für Altknoten bleibt das MBR-Image mit ext4-Boot (siehe
+  Grenzen, Gluon #2967): main baut für x86 weiter nur `-squashfs-combined-efi`.
+
 **Falsche Bindung korrigieren** (am Knoten, danach `gluon-reconfigure` und
 Neustart). Rollen tauschen:
 

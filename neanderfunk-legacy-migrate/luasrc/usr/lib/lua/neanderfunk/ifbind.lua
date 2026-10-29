@@ -4,7 +4,8 @@
 -- x86: LAN/WAN dauerhaft an die Netzwerkkarte binden statt an ethN.
 --
 -- Auf x86 setzt Gluons 020-interfaces bei jedem Reconfigure lan=eth0 und
--- wan=eth1, also nach der Reihenfolge, in der die Treiber laden. Die aendert
+-- wan=eth1 (ab 2026: die erste und zweite Karte nach Registrierung, siehe
+-- unten), also nach der Reihenfolge, in der die Treiber laden. Die aendert
 -- sich zwischen Kernel-Versionen (Gluon 2025.1 hat dafuer
 -- 019-migrate-interface-order); im Feld sind die Ports bei groesseren
 -- Spruengen mehrfach zwischen LAN und WAN gesprungen (adorfer).
@@ -15,6 +16,26 @@
 --     (addr_assign_type 0; Gluon setzt im Betrieb eigene MACs, etwa fuer
 --     mesh_other - beim Reconfigure nach einem Update sind sie noch echt),
 --   - den Geraetepfad (PCI-Adresse), immer lesbar und unabhaengig von ethN.
+--
+-- Gluon 2026 (main ab PR #3832, Merge 183bb794): Das Paket bleibt drin
+-- (adorfer 29.10.2026), es beisst sich nicht mit den neuen Skripten, sondern
+-- ergaenzt sie. Gluon benennt die Karten in 001-reset-uci um (PCI enpXsY,
+-- USB mit echter MAC enx<6 Hex>); 020-interfaces behaelt Rollen nur, wenn die
+-- bisherigen Namen schon stabil sind (keep_roles). Beim ersten Sprung auf
+-- 2026 stehen in sysconfig noch ethN, dort greift nur Gluons Standard
+-- (Registrierreihenfolge). 020a laeuft danach (020- sortiert vor 020a),
+-- findet die Karten an der MAC und setzt die neuen Namen; ab dem naechsten
+-- Reconfigure behaelt keep_roles sie, und beide kommen auf dasselbe.
+--   - Herkunft 2025.1: 019-migrate-interface-order ist schon gelaufen
+--     (migrated_interface_order bleibt in sysconfig), tut also nichts.
+--   - Herkunft 2022.1 bis 2023.2: 019 tauscht bei Bedarf die Rollen, 020a
+--     bindet danach den getauschten Stand.
+--   - Herkunft vor 2022.1 (offiziell nicht unterstuetzt): 019 steigt ohne
+--     gluon.iface_*-Rollen aus; 018z baut die alte Aufzaehlung nach und setzt
+--     migrated_interface_order selbst. Gluon allein haette hier nur den
+--     Standard, der kippen kann.
+-- Die Umbenennung stoert nicht: Gebunden und gesucht wird an MAC, Treiber
+-- und Geraetepfad, nie am Interface-Namen.
 local M = {}
 
 local util = require 'gluon.util'
