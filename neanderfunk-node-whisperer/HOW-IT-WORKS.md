@@ -29,7 +29,7 @@ Sender: the node
    | 4 | domain (usually absent for us, see patch 0001) |
    | 5 | system load |
    | 6 | firmware version |
-   | 20 | batman-adv: byte 0 = VPN uplink yes/no, byte 1 = TQ of the selected gateway (patch 0002; before, it carried the TQ of the VPN neighbour) |
+   | 20 | batman-adv, 8 bytes: byte 0 = VPN uplink yes/no, byte 1 = TQ of the selected gateway (patch 0002; before, it carried the TQ of the VPN neighbour), bytes 2-3 = originators (patch 0004: each one once, not each route), bytes 4-5 = neighbours, bytes 6-7 = clients (local translation table of `bat0`, without NOPURGE entries, last seen within 60 s; same count as `clients.total` in respondd). 16-bit values are big endian |
 
    Which sources are active comes from `site.conf`
    (`node_whisperer.information`), stored in uci as
