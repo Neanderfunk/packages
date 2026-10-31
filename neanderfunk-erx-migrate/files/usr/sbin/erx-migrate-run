@@ -200,7 +200,7 @@ protokoll "Start. Board $(cat /tmp/sysinfo/board_name), Release $(cat /lib/gluon
 
 # Vorpruefung des Migrationsskripts, bevor irgendetwas geladen wird. Sie
 # schreibt nichts und sagt uns, ob Layout, Boot-Index und Waechter stimmen.
-if ! pruefung="$(sh "$MIGRATE" --check 2>&1)"; then
+if ! pruefung="$(STAGE2="$STAGE2" sh "$MIGRATE" --check 2>&1)"; then
 	protokoll "$pruefung"
 	endgueltig "Vorpruefung nicht bestanden."
 fi
