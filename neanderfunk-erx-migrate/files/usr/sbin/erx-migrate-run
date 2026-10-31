@@ -36,7 +36,9 @@ set -f
 
 ZIEL="/lib/gluon/erx-migrate/ziel.conf"
 MIGRATE="/lib/gluon/erx-migrate/erx-migrate.sh"
-STAGE2="/lib/gluon/erx-migrate/erx-migrate-stage2.sh"
+STAGE2_QUELLE="/lib/gluon/erx-migrate/erx-migrate-stage2.sh"
+# Stufe 2 laeuft aus dem RAM-Root, dorthin zieht nur /tmp mit um.
+STAGE2="/tmp/erx-migrate-stage2.sh"
 
 LOG="/tmp/erx-migrate.log"
 IMAGE="/tmp/erx-migrate-image.bin"
@@ -78,7 +80,7 @@ endgueltig() {
 }
 
 aufraeumen() {
-	rm -f "$IMAGE" "$MANIFEST" "$OBEN" "$UNTEN"
+	rm -f "$IMAGE" "$MANIFEST" "$OBEN" "$UNTEN" "$STAGE2"
 	rmdir "$LOCK" 2>/dev/null
 }
 
@@ -191,7 +193,7 @@ grep -q '"kernel1"' /proc/mtd 2>/dev/null || {
 mkdir "$LOCK" 2>/dev/null || exit 0
 
 [ -x "$MIGRATE" ] || endgueltig "$MIGRATE fehlt oder ist nicht ausfuehrbar."
-[ -r "$STAGE2" ]  || endgueltig "$STAGE2 fehlt."
+cp "$STAGE2_QUELLE" "$STAGE2" || endgueltig "$STAGE2_QUELLE liess sich nicht nach $STAGE2 kopieren."
 
 # --- Ab hier wird geredet ------------------------------------------------
 
