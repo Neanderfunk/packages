@@ -59,25 +59,41 @@ seine Konfiguration behaelt. `init.d`-Skripte liegen im squashfs.
 
 | | Beispiel | Folge |
 |---|---|---|
-| Aufschub | kein Uplink, Download abgebrochen | micron.d probiert in einer Stunde |
-| endgueltig | falsches Board, Pruefsumme falsch, Vorpruefung durchgefallen | Marker in `/tmp`, Ruhe bis zum Boot |
+| Aufschub | kein Uplink, zu wenige Signaturen, Mirror hinkt hinterher, Image fehlt oder ist kaputt | micron.d probiert in einer Stunde |
+| endgueltig | Vorpruefung durchgefallen, Migration nicht durchgefuehrt | Marker in `/tmp`, Ruhe bis zum Boot |
 
 ## Einrichten
 
-`/lib/gluon/erx-migrate/ziel.conf` wird **beim Bau des Zwischenimages**
-gefuellt, nicht von Hand. Solange dort nichts steht, tut das Paket nichts und
-beendet sich still — es darf also ausgeliefert werden, bevor die Daten
-feststehen.
+`/lib/gluon/erx-migrate/ziel.conf` nennt nur die Modelle, nach denen im
+Manifest gesucht wird. Beim Bau des Zwischenimages kommt hoechstens `LOG_TOKEN`
+dazu. Ohne Modell tut das Paket nichts und beendet sich still.
 
-    IMAGE_URL_ERX=""      IMAGE_SHA_ERX=""
-    IMAGE_URL_ERX_SFP=""  IMAGE_SHA_ERX_SFP=""
+    ZIEL_MODELL_ERX="ubiquiti-edgerouter-x-ka"
+    ZIEL_MODELL_ERX_SFP="ubiquiti-edgerouter-x-sfp-ka"
     LOG_TOKEN=""
 
-Die Pruefsumme reist eingebacken mit, statt zur Laufzeit geholt zu werden. Der
-Autoupdater taugt naemlich nicht als Downloader: sein `--no-action` greift erst
-**nach** `sysupgrade --test`, und genau das scheitert hier — die Datei ist dann
-schon geloescht. So haengt die Kette am vorhandenen Vertrauensanker, dem
-signierten Manifest des Zwischenimages, ohne Kryptografie im Skript.
+Das Ziel steht nicht im Image. `erx-migrate-run` liest Zweig, Mirrors, Schluessel
+und `good_signatures` aus der uci-Konfiguration des Autoupdaters, holt
+`<mirror>/<zweig>.manifest`, prueft die Signaturen mit `ecdsaverify` (Paket
+`ecdsautils`) und nimmt Version, Dateiname, Groesse und SHA256 aus der
+Modellzeile. Das Manifest muss also dieselbe Pruefung bestehen wie bei jedem
+Update. Das Paket laedt selbst, weil der Autoupdater als Downloader nicht taugt:
+sein `--no-action` greift erst **nach** `sysupgrade --test`, und genau das
+scheitert hier — die Datei ist dann schon geloescht.
+
+**Folge:** Jedes neue Release im Zweig ist ohne weiteren Schritt das Ziel der
+Migration. Solange unmigrierte ERX im Feld stehen, gehoert eine ERX-Migration
+vor jedes Release.
+
+## Die Uebergabe an Stufe 2
+
+`ubus call system sysupgrade` kehrt auch im Erfolgsfall sofort zurueck, mit
+Fehler 10, und Stufe 2 liest das Image erst rund 10 s spaeter. Der Exitcode sagt
+also nichts. `erx-migrate.sh` legt deshalb vorher
+`/tmp/erx-migrate.uebergabe` an und wartet, bis der Abbau es beendet.
+`erx-migrate-run` raeumt nicht auf, solange die Datei liegt. Lebt das Skript nach
+fuenf Minuten noch, ist Stufe 2 nicht gestartet: Es entfernt Datei und
+Watchdog-Marker und startet micrond wieder, der Knoten laeuft normal weiter.
 
 ## Wenn etwas schiefgeht
 

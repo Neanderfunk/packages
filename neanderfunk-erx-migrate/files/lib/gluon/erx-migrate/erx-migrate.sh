@@ -55,6 +55,7 @@ fehler() { rot "FEHLER: $*"; exit 1; }
 
 LOCK="/var/lock/autoupdater.lock"
 MARKER="/tmp/hotfix.autoupdater-flashing"
+UEBERGABE="/tmp/erx-migrate.uebergabe"
 
 # Den Lock halten, solange das Skript laeuft. Einmal wieder eintreten, damit
 # der ganze Ablauf darin steckt - auch die Uebergabe an Stufe 2.
@@ -77,6 +78,9 @@ fi
 # liefe der Knoten unbewacht weiter, ohne dass irgendwo etwas auffaellt.
 MARKER_VON_UNS=0
 aufraeumen() {
+    # Entpacktes Image und Konfigurationssicherung belegen RAM.
+    [ -n "${board_dir:-}" ] && rm -rf "/tmp/$board_dir"
+    [ -n "${CONF_TAR:-}" ] && rm -f "$CONF_TAR"
     [ "$MARKER_VON_UNS" = "1" ] || return 0
     rm -f "$MARKER"
     echo "  Watchdog-Marker wieder entfernt."
@@ -356,6 +360,11 @@ trap - EXIT INT TERM
 
 v "Uebergabe an Stufe 2, alle Sitzungen werden beendet."
 
+# Ab hier darf niemand mehr das Image anfassen, Stufe 2 braucht es noch.
+# sysupgrade beendet beim Abbau alle Prozesse, auch einen Aufrufer dieses
+# Skripts. Die Datei sagt ihm, dass er danach nicht mehr aufraeumen darf.
+: > "$UEBERGABE"
+
 json_init
 json_add_string prefix "/tmp/root"
 json_add_string path "$IMAGE"
@@ -365,3 +374,17 @@ json_add_object options
 json_add_int save_partitions 0
 json_close_object
 ubus call system sysupgrade "$(json_dump)"
+
+# Der Aufruf kehrt auch im Erfolgsfall sofort zurueck: procd exec't upgraded,
+# ubus meldet "Connection failed" (10), und Stufe 2 liest das Image erst rund
+# 10 s spaeter. Sein Exitcode sagt also nichts. Hier nur warten, bis der Abbau
+# uns beendet.
+sleep 300
+
+# Noch am Leben: Stufe 2 ist nicht gestartet. Der Knoten laeuft normal weiter,
+# aber micrond und Watchdog stehen. Ohne diesen Rueckbau bliebe er ohne
+# Waechter und ohne Neuversuch, bis ihn jemand neu startet.
+rm -f "$UEBERGABE"
+aufraeumen
+[ -x /etc/init.d/micrond ] && /etc/init.d/micrond start >/dev/null 2>&1
+fehler "Stufe 2 ist nicht gestartet, micrond laeuft wieder."

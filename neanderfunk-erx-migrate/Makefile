@@ -11,7 +11,7 @@ define Package/$(PKG_NAME)
   SECTION:=gluon
   CATEGORY:=Gluon
   TITLE:=EdgeRouter X: Flash-Layout unbeaufsichtigt migrieren
-  DEPENDS:=+gluon-core +micrond
+  DEPENDS:=+gluon-core +micrond +ecdsautils
 endef
 
 define Package/$(PKG_NAME)/description
@@ -25,9 +25,9 @@ define Package/$(PKG_NAME)/description
 
 	Dieses Paket reist in einem 2023.2-Zwischenimage mit, das der ganz normale
 	Autoupdater ausliefert (compat 1.x -> 1.x, funktioniert heute). Nach dem
-	Boot holt es das 2025.1-Image, prueft die eingebackene SHA256 und uebergibt
-	an erx-migrate.sh, das Kernel und Rootfs ueber die alte Slotgrenze schreibt
-	und den UBNT-Boot-Index umsetzt.
+	Boot holt es das 2025.1-Image aus dem Manifest des eigenen Zweigs, prueft
+	Signaturen und SHA256 und uebergibt an erx-migrate.sh, das Kernel und Rootfs
+	ueber die alte Slotgrenze schreibt und den UBNT-Boot-Index umsetzt.
 
 	Ohne Eintrag in /lib/gluon/erx-migrate/ziel.conf tut das Paket nichts. Es
 	schreibt nichts ins Flash, solange die Migration nicht wirklich laeuft; Log
