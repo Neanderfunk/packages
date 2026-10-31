@@ -1,47 +1,20 @@
 #!/bin/sh
 #
-# Gibt /tmp/erx-migrate.log aus, wenn das richtige Token mitkommt:
+# Gibt /tmp/erx-migrate.log aus:
 #
-#   http://[<knoten>]/cgi-bin/erx-migrate-log?t=<token>
+#   http://[<knoten>]/cgi-bin/erx-migrate-log
 #
-# Das Token steht in /lib/gluon/erx-migrate/ziel.conf, die beim Bau des
-# Zwischenimages gefuellt wird - nicht in diesem oeffentlichen Paketfeed. Ist
-# es leer, schweigt das CGI vollstaendig.
-#
-# Was das Token leistet und was nicht: Port 80 ist auf einem Gluon-Knoten aus
-# mesh und loc_client ohnehin offen, die Statusseite liegt dort. Wer im Netz
-# ist, kommt an die Seite. Das Token verhindert nur, dass das Log unter einem
-# geratenen Pfad herausfaellt. Im Log steht ohnehin nichts Vertrauliches -
-# Partitionslayout, Groessen, Pruefsummen, Fehlermeldungen.
+# Bewusst offen, wie die Statusseite daneben: Im Log steht nichts Vertrauliches -
+# Partitionslayout, Groessen, Pruefsummen, Mirrors, Fehlermeldungen.
 #
 # Warum ueberhaupt ueber HTTP: die Karte zeigt keine unbekannten
-# respondd-Felder an. Der Weg ist deshalb, in der Kartenstatistik die ERX ohne
-# "-ka" im Imagenamen zu suchen und dort nachzusehen. Das sind so wenige, dass
-# es von Hand geht.
+# respondd-Felder an, und auf vielen Knoten haben wir keinen SSH-Zugang. Der Weg
+# ist deshalb, in der Kartenstatistik die ERX ohne "-ka" im Imagenamen zu suchen
+# und dort nachzusehen. Das sind so wenige, dass es von Hand geht.
 
 set -u
 
-ZIEL="/lib/gluon/erx-migrate/ziel.conf"
 LOG="/tmp/erx-migrate.log"
-
-schweigen() {
-	printf 'Status: 404 Not Found\r\nContent-Type: text/plain\r\n\r\n'
-	exit 0
-}
-
-[ -r "$ZIEL" ] || schweigen
-# shellcheck source=/dev/null
-. "$ZIEL"
-
-[ -n "${LOG_TOKEN:-}" ] || schweigen
-
-# QUERY_STRING ist "t=<token>". Ohne Shell-Werkzeug zum Zerlegen: alles bis
-# zum ersten "=" weg, alles ab einem folgenden "&" weg.
-gefragt="${QUERY_STRING:-}"
-gefragt="${gefragt#t=}"
-gefragt="${gefragt%%&*}"
-
-[ "$gefragt" = "$LOG_TOKEN" ] || schweigen
 
 printf 'Content-Type: text/plain; charset=utf-8\r\n\r\n'
 

@@ -65,12 +65,11 @@ seine Konfiguration behaelt. `init.d`-Skripte liegen im squashfs.
 ## Einrichten
 
 `/lib/gluon/erx-migrate/ziel.conf` nennt nur die Modelle, nach denen im
-Manifest gesucht wird. Beim Bau des Zwischenimages kommt hoechstens `LOG_TOKEN`
-dazu. Ohne Modell tut das Paket nichts und beendet sich still.
+Manifest gesucht wird. Beim Bau wird nichts eingetragen. Ohne Modell tut das
+Paket nichts und beendet sich still.
 
     ZIEL_MODELL_ERX="ubiquiti-edgerouter-x-ka"
     ZIEL_MODELL_ERX_SFP="ubiquiti-edgerouter-x-sfp-ka"
-    LOG_TOKEN=""
 
 Das Ziel steht nicht im Image. `erx-migrate-run` liest Zweig, Mirrors, Schluessel
 und `good_signatures` aus der uci-Konfiguration des Autoupdaters, holt
@@ -97,13 +96,11 @@ Watchdog-Marker und startet micrond wieder, der Knoten laeuft normal weiter.
 
 ## Wenn etwas schiefgeht
 
-    http://[<knoten>]/cgi-bin/erx-migrate-log?t=<token>
+    http://[<knoten>]/cgi-bin/erx-migrate-log
 
-Ohne Token schweigt das CGI. Port 80 ist auf einem Gluon-Knoten aus `mesh` und
-`loc_client` ohnehin offen — die Statusseite liegt dort. Das Token schuetzt
-also nicht vor jemandem im Netz, es verhindert nur, dass ein Log unter einem
-geratenen Pfad herausfaellt. Im Log steht nichts Vertrauliches:
-Partitionslayout, Groessen, Pruefsummen, Fehlermeldungen.
+Die Seite ist bewusst offen, wie die Statusseite daneben. Im Log steht nichts
+Vertrauliches: Partitionslayout, Groessen, Pruefsummen, Mirrors,
+Fehlermeldungen. Es liegt nur im RAM und ist nach einem Neustart weg.
 
 Wer die Kandidaten sucht: in der Kartenstatistik die EdgeRouter X **ohne
 `-ka`** im Imagenamen. Das sind die, die die Migration noch vor sich haben.

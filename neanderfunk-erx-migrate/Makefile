@@ -34,8 +34,7 @@ define Package/$(PKG_NAME)/description
 	und Image liegen im RAM und werden bei jedem Fehlschlag weggeraeumt. Nach
 	einem Neustart faengt alles von vorn an.
 
-	Das Log ist ueber http://[<knoten>]/cgi-bin/erx-migrate-log?t=<token>
-	abrufbar, wenn in ziel.conf ein Token steht.
+	Das Log ist ueber http://[<knoten>]/cgi-bin/erx-migrate-log abrufbar.
 
 endef
 
@@ -53,9 +52,8 @@ endef
 # Anlegen einer Datei von Hand nachgezogen werden muss, wird irgendwann
 # unvollstaendig.
 #
-# ziel.conf ist absichtlich NICHT gestrippt - sie wird beim Bau des
-# Zwischenimages gefuellt, und wer sie auf dem Geraet liest, soll die
-# Erklaerung dazu finden.
+# ziel.conf ist absichtlich NICHT gestrippt - wer sie auf dem Geraet liest, soll
+# die Erklaerung dazu finden.
 define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
 	./gluonShellDiet.sh $(1)/usr/sbin/erx-migrate-run \
