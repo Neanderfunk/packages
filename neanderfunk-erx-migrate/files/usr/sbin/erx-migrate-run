@@ -4,8 +4,8 @@
 # erx-migrate.sh.
 #
 # Stufe 1 ist das Zwischenimage selbst. Das kommt ueber den ganz normalen
-# Autoupdater (2023.2 -> 2023.2, compat 1.x -> 1.x), bringt dieses Paket mit
-# und startet es beim Boot ueber /etc/init.d/erx-migrate.
+# Autoupdater (2023.2 -> 2023.2, compat 1.x -> 1.x) und bringt dieses Paket mit.
+# micron.d startet es stuendlich, frueh genug zaehlt erst eine Stunde Uptime.
 #
 #
 # Wovon nichts angefasst wird
@@ -43,6 +43,8 @@ STAGE2="/tmp/erx-migrate-stage2.sh"
 LOG="/tmp/erx-migrate.log"
 IMAGE="/tmp/erx-migrate-image.bin"
 LOCK="/tmp/erx-migrate.laeuft"
+AUTOUPDATER_LOCK="/var/lock/autoupdater.lock"
+MIN_UPTIME=3600
 AUFGEGEBEN="/tmp/erx-migrate.aufgegeben"
 UEBERGABE="/tmp/erx-migrate.uebergabe"
 MANIFEST="/tmp/erx-migrate.manifest"
@@ -188,6 +190,18 @@ grep -q '"kernel1"' /proc/mtd 2>/dev/null || {
 	: > "$AUFGEGEBEN"
 	exit 1
 }
+
+# Die Migration eilt nicht, der Knoten laeuft erst eine Stunde normal. Scheitert
+# Stufe 2, startet er neu, und dieser Abstand begrenzt, wie oft das passiert.
+[ "$(cut -d. -f1 /proc/uptime)" -ge "$MIN_UPTIME" ] || exit 0
+
+# Nie neben dem Autoupdater: Er sperrt dieselbe Datei und gibt auf, wenn sie
+# belegt ist. Haelt er sie gerade, faellt dieser Lauf aus, der naechste kommt in
+# einer Stunde. An ERX_HAT_LOCK erkennt auch erx-migrate.sh die gehaltene Sperre.
+if [ -z "${ERX_HAT_LOCK:-}" ]; then
+	export ERX_HAT_LOCK=1
+	exec flock -n "$AUTOUPDATER_LOCK" /bin/sh "$0"
+fi
 
 # mkdir als Lock: atomar auch auf tmpfs, anders als "test -e und dann touch".
 mkdir "$LOCK" 2>/dev/null || exit 0

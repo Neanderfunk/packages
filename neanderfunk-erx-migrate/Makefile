@@ -24,8 +24,8 @@ define Package/$(PKG_NAME)/description
 	jedem Autoupdater-Lauf dieselben 7 MB und bekommt dieselbe Absage.
 
 	Dieses Paket reist in einem 2023.2-Zwischenimage mit, das der ganz normale
-	Autoupdater ausliefert (compat 1.x -> 1.x, funktioniert heute). Nach dem
-	Boot holt es das 2025.1-Image aus dem Manifest des eigenen Zweigs, prueft
+	Autoupdater ausliefert (compat 1.x -> 1.x, funktioniert heute). Nach einer
+	Stunde Uptime holt es das 2025.1-Image aus dem Manifest des Zweigs, prueft
 	Signaturen und SHA256 und uebergibt an erx-migrate.sh, das Kernel und Rootfs
 	ueber die alte Slotgrenze schreibt und den UBNT-Boot-Index umsetzt.
 

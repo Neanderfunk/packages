@@ -31,16 +31,18 @@ und funktioniert heute.
 
 **Stufe 2** laeuft auf dem Knoten:
 
-    /etc/init.d/erx-migrate   START=99, erster Versuch 5 Minuten nach dem Boot
-    /usr/lib/micron.d/…       stuendlicher Neuversuch
+    /usr/lib/micron.d/…       einziger Start, stuendlich zur Minute 37
     /usr/sbin/erx-migrate-run Zustandsmodell, holt und prueft das Image
     …/erx-migrate.sh          schreibt Kernel und Rootfs, setzt den Boot-Index
     …/erx-migrate-stage2.sh   baut die UBI-Volumes neu auf, aus dem RAM-Root
 
-`/etc/rc.local` waere der falsche Haken: es steht in den conffiles von
-`base-files`, reist in `/sysupgrade.tgz` mit und ueberschreibt beim Upgrade die
-Fassung aus dem neuen Image. Ein Hook dort kaeme auf keinem Knoten an, der
-seine Konfiguration behaelt. `init.d`-Skripte liegen im squashfs.
+Vor einer Stunde Uptime passiert nichts. Scheitert Stufe 2, startet der Knoten
+neu, und ein Start kurz nach dem Boot wuerde daraus eine Schleife im
+Minutentakt machen, jetzt liegen mindestens 60 Minuten dazwischen.
+
+Der ganze Lauf haelt `/var/lock/autoupdater.lock`, wie der Autoupdater selbst.
+Ist die Sperre belegt, faellt der Lauf aus, ein Autoupdater neben der Migration
+gibt seinerseits auf.
 
 ## Was das Paket nicht anfasst
 
