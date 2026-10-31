@@ -75,8 +75,9 @@ Das Ziel steht nicht im Image. `erx-migrate-run` liest Zweig, Mirrors, Schluesse
 und `good_signatures` aus der uci-Konfiguration des Autoupdaters, holt
 `<mirror>/<zweig>.manifest`, prueft die Signaturen mit `ecdsaverify` (Paket
 `ecdsautils`) und nimmt Version, Dateiname, Groesse und SHA256 aus der
-Modellzeile. Das Manifest muss also dieselbe Pruefung bestehen wie bei jedem
-Update. Das Paket laedt selbst, weil der Autoupdater als Downloader nicht taugt:
+Modellzeile. Die Pruefung ist die eines normalen Updates, nur die Schwelle ist
+gedeckelt: `ZIEL_SIGNATUREN` in `ziel.conf` (2), ein Zweig mit weniger behaelt
+seinen Wert. Das Paket laedt selbst, weil der Autoupdater als Downloader nicht taugt:
 sein `--no-action` greift erst **nach** `sysupgrade --test`, und genau das
 scheitert hier — die Datei ist dann schon geloescht.
 

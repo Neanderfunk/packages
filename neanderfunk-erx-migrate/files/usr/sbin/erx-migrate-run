@@ -228,6 +228,7 @@ SCHWELLE="$(uci -q get "autoupdater.$ZWEIG.good_signatures")"
 if [ -z "$NAME" ] || [ -z "$MIRRORS" ] || [ -z "$SCHLUESSEL" ] || [ -z "$SCHWELLE" ]; then
 	spaeter "Autoupdater-Zweig $ZWEIG ist unvollstaendig."
 fi
+[ "$SCHWELLE" -gt "${ZIEL_SIGNATUREN:-$SCHWELLE}" ] && SCHWELLE="$ZIEL_SIGNATUREN"
 
 SHA=""
 geladen=0
