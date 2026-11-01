@@ -10,29 +10,29 @@ include $(TOPDIR)/../package/gluon.mk
 define Package/$(PKG_NAME)
   SECTION:=gluon
   CATEGORY:=Gluon
-  TITLE:=EdgeRouter X: Flash-Layout unbeaufsichtigt migrieren
+  TITLE:=EdgeRouter X: Flash-Layout unattended migrieren
   DEPENDS:=+gluon-core +micrond +ecdsautils
 endef
 
 define Package/$(PKG_NAME)/description
-	Stufe 2 der ERX-Migration auf Gluon 2025.1.
+	Stage 2 der ERX-Migration auf Gluon 2025.1.
 
 	Der Kernel 6.6 aus OpenWrt 24.10 passt um 27 KB nicht mehr in einen der
-	beiden alten 3-MB-Slots. OpenWrt riegelt den Wechsel ueber compat_version
-	1.x -> 2.0 ab, und dieser Riegel greift erst in "sysupgrade --test", also
-	nach dem vollstaendigen Download: ein nicht migrierter Knoten zieht bei
-	jedem Autoupdater-Lauf dieselben 7 MB und bekommt dieselbe Absage.
+	beiden alten 3-MB-Slots. OpenWrt gatet den Wechsel ueber compat_version
+	1.x -> 2.0, und dieses Gate greift erst in "sysupgrade --test", also nach
+	dem kompletten Download: ein nicht migrierter Knoten zieht bei jedem
+	Autoupdater-Run dieselben 7 MB und bekommt denselben Reject.
 
-	Dieses Paket reist in einem 2023.2-Zwischenimage mit, das der ganz normale
-	Autoupdater ausliefert (compat 1.x -> 1.x, funktioniert heute). Nach einer
-	Stunde Uptime holt es das 2025.1-Image aus dem Manifest des Zweigs, prueft
-	Signaturen und SHA256 und uebergibt an erx-migrate.sh, das Kernel und Rootfs
-	ueber die alte Slotgrenze schreibt und den UBNT-Boot-Index umsetzt.
+	Dieses Paket reist in einem 2023.2-Intermediate-Image mit, das der ganz
+	normale Autoupdater ausliefert (compat 1.x -> 1.x, funktioniert heute). Nach
+	einer Stunde Uptime holt es das 2025.1-Image aus dem Manifest des Branches,
+	prueft Signaturen und SHA256 und uebergibt an erx-migrate.sh, das Kernel und
+	Rootfs ueber das alte Slot-Limit schreibt und den UBNT-Boot-Index umsetzt.
 
-	Ohne Eintrag in /lib/gluon/erx-migrate/ziel.conf tut das Paket nichts. Es
-	schreibt nichts ins Flash, solange die Migration nicht wirklich laeuft; Log
-	und Image liegen im RAM und werden bei jedem Fehlschlag weggeraeumt. Nach
-	einem Neustart faengt alles von vorn an.
+	Ohne Eintrag in /lib/gluon/erx-migrate/ziel.conf tut das Paket nichts. Kein
+	Flash-Write, solange die Migration nicht wirklich laeuft; Log und Image
+	liegen im RAM und werden bei jedem Failure weggeraeumt. Nach einem Reboot
+	faengt alles von vorn an.
 
 	Das Log ist ueber http://[<knoten>]/cgi-bin/erx-migrate-log abrufbar.
 
