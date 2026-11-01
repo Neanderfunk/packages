@@ -193,7 +193,11 @@ grep -q '"kernel1"' /proc/mtd 2>/dev/null || {
 
 # Die Migration eilt nicht, der Knoten laeuft erst eine Stunde normal. Scheitert
 # Stufe 2, startet er neu, und dieser Abstand begrenzt, wie oft das passiert.
-[ "$(cut -d. -f1 /proc/uptime)" -ge "$MIN_UPTIME" ] || exit 0
+# Die Meldung gilt nur dem, der das Skript von Hand aufruft.
+if [ "$(cut -d. -f1 /proc/uptime)" -lt "$MIN_UPTIME" ]; then
+	[ -t 1 ] && echo "Noch zu wenig Uptime: Die Migration startet ab $MIN_UPTIME Sekunden zur Minute 37."
+	exit 0
+fi
 
 # Nie neben dem Autoupdater: Er sperrt dieselbe Datei und gibt auf, wenn sie
 # belegt ist. Haelt er sie gerade, faellt dieser Lauf aus, der naechste kommt in
