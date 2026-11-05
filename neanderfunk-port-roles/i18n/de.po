@@ -64,8 +64,8 @@ msgstr "Gebridged, nicht isoliert"
 msgid "VLANs"
 msgstr "VLANs"
 
-msgid "Tagged VLANs on a single port, entered as VLAN IDs (1-4094). After saving, each VLAN appears as its own line under \"Roles\" (for example \"lan3.5\") and gets its roles there; a VLAN without a role is not used. The same VLAN ID can have different roles on different ports."
-msgstr "Getaggte VLANs auf einem einzelnen Port, als VLAN-ID (1–4094). Nach dem Speichern erscheint jedes VLAN als eigene Zeile unter „Rollen“ (zum Beispiel „lan3.5“) und bekommt dort seine Rollen; ein VLAN ohne Rolle wird nicht verwendet. Dieselbe VLAN-ID kann auf verschiedenen Ports verschiedene Rollen haben."
+msgid "Tagged VLANs on a single port, entered as VLAN IDs (1-4094). After saving, each VLAN appears as its own line under \"Roles\" (for example \"lan3.5\") and gets its role there; a VLAN without a role is not used. The same VLAN ID can have different roles on different ports."
+msgstr "Getaggte VLANs auf einem einzelnen Port, als VLAN-ID (1–4094). Nach dem Speichern erscheint jedes VLAN als eigene Zeile unter „Rollen“ (zum Beispiel „lan3.5“) und bekommt dort seine Rolle; ein VLAN ohne Rolle wird nicht verwendet. Dieselbe VLAN-ID kann auf verschiedenen Ports verschiedene Rollen haben."
 
 msgid "Ports behind a switch without per-port access"
 msgstr "Ports hinter einem Switch ohne Einzelzugriff"
