@@ -57,6 +57,16 @@ Seite zeigt dann eine Zeile je Gruppe („LAN (eth0.1)") und einen Hinweis.
 Gluon baut aus den Sektionen wie immer `br-client`, `br-wan` und das Mesh. Ein
 Port ohne Rolle wird nicht verwendet.
 
+Die Seite bietet je Zeile **genau eine Rolle** (Radio-Buttons). Uplink und Mesh
+zusammen (Mesh-on-WAN) gibt es bewusst nicht: Der Heimrouter strahlt die
+batman-Frames sonst als Broadcast ins Heim-WLAN ab und legt es lahm. Wer das
+wirklich will, setzt es per SSH (`uci add_list gluon.iface_wan.role=mesh`,
+dann `gluon-reconfigure`). Stehen in uci mehrere Rollen, ist die erste aus
+Uplink, Mesh, Client gewählt; geschrieben wird nur, wenn jemand eine andere
+wählt, die Kombination bleibt sonst stehen. Eine Zeile ohne Rolle zeigt keine
+Wahl und bleibt beim Speichern, wie sie ist. Dieselbe Regel gilt per Patch auf
+Gluons Seite „Netzwerk“ (gluon-patches-packages, `config-mode/network-one-role`).
+
 Von Hand, ohne Oberfläche: `portrole lan2 client` (zurück: `portrole lan2 lan`),
 danach `reconf`.
 

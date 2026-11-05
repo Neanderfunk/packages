@@ -49,7 +49,7 @@ msgstr ""
 msgid "Roles"
 msgstr ""
 
-msgid "Tagged VLANs on a single port, entered as VLAN IDs (1-4094). After saving, each VLAN appears as its own line under \"Roles\" (for example \"lan3.5\") and gets its roles there; a VLAN without a role is not used. The same VLAN ID can have different roles on different ports."
+msgid "Tagged VLANs on a single port, entered as VLAN IDs (1-4094). After saving, each VLAN appears as its own line under \"Roles\" (for example \"lan3.5\") and gets its role there; a VLAN without a role is not used. The same VLAN ID can have different roles on different ports."
 msgstr ""
 
 msgid "VLANs"

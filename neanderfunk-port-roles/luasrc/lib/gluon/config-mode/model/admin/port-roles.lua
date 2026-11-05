@@ -32,15 +32,39 @@ local f = Form(translate('Ports'), translate(
 
 local s = f:section(Section, translate('Roles'))
 
+-- Genau eine Rolle je Zeile, als Radio-Buttons: Uplink und Mesh zusammen
+-- (Mesh-on-WAN) laesst die Seite nicht zu - am Heimrouter landen die
+-- batman-Frames sonst als Broadcast im Heim-WLAN. Wer das wirklich will, setzt
+-- es per SSH. Steht in uci mehr als eine Rolle, zeigt die Zeile die erste aus
+-- ROLES; geschrieben wird nur, wenn jemand eine andere waehlt, die Kombination
+-- bleibt sonst stehen. Ohne Rolle ist nichts gewaehlt, und die Zeile bleibt,
+-- wie sie ist.
+local ROLES = {'uplink', 'mesh', 'client'}
+
+local function shown_role(roles)
+	for _, role in ipairs(ROLES) do
+		for _, r in ipairs(roles) do
+			if r == role then
+				return role
+			end
+		end
+	end
+	return nil
+end
+
 local function role_option(id, title, default)
-	local o = s:option(MultiListValue, id, title)
+	local o = s:option(ListValue, id, title)
+	o.widget = 'radio'
 	o.orientation = 'horizontal'
+	o.optional = true
 	o:value('uplink', 'Uplink')
 	o:value('mesh', 'Mesh')
 	o:value('client', 'Client')
-	o:exclusive('uplink', 'client')
-	o:exclusive('mesh', 'client')
-	o.default = default
+	-- ohne den leeren Eintrag, den ListValue fuer optional/nil voranstellt
+	function o:entries()
+		return {unpack(self.entry_list)}
+	end
+	o.default = shown_role(default)
 	return o
 end
 
@@ -74,8 +98,8 @@ for _, row in ipairs(portroles.rows(uci)) do
 		local shown = row.section and uci:get_list('gluon', row.section, 'role') or {}
 		local o = role_option('port_' .. port:gsub('[^%w]', '_'), title, shown)
 		function o:write(data)
-			if list_key(data) ~= list_key(shown) then
-				desired[port] = data or {}
+			if data and data ~= shown_role(shown) then
+				desired[port] = {data}
 			end
 		end
 	else
@@ -83,8 +107,8 @@ for _, row in ipairs(portroles.rows(uci)) do
 		local shown = uci:get_list('gluon', section_name, 'role')
 		local o = role_option(section_name, table.concat(row.ports, ' '), shown)
 		function o:write(data)
-			if list_key(data) ~= list_key(shown) then
-				group_roles[section_name] = data or {}
+			if data and data ~= shown_role(shown) then
+				group_roles[section_name] = {data}
 			end
 		end
 	end
@@ -106,7 +130,7 @@ if #physical > 0 then
 	local v = f:section(Section, translate('VLANs'), translate(
 		'Tagged VLANs on a single port, entered as VLAN IDs (1-4094). After saving, '
 		.. 'each VLAN appears as its own line under "Roles" (for example "lan3.5") '
-		.. 'and gets its roles there; a VLAN without a role is not used. The same '
+		.. 'and gets its role there; a VLAN without a role is not used. The same '
 		.. 'VLAN ID can have different roles on different ports.'))
 	for _, port in ipairs(physical) do
 		local o = v:option(DynamicList, 'vlans_' .. port:gsub('[^%w]', '_'), port)
