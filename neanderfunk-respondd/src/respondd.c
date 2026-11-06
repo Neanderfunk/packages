@@ -52,9 +52,11 @@
 #include <sys/ioctl.h>
 #include <sys/klog.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
 
+#include <arpa/inet.h>
 #include <linux/ethtool.h>
 #include <linux/sockios.h>
 
@@ -828,6 +830,373 @@ static struct json_object * get_temperature(void) {
 }
 
 
+/* --- statistics: ddhcpd und IPv4 der Clients ------------------------------ */
+
+/*
+ * ddhcpd (Paket neanderfunk-ddhcpd) ueber seinen Control-Socket: ein Byte
+ * DDHCPCTL_SUMMARY, zurueck kommen Zeilen "Schluessel Wert" und je vergebener
+ * Lease "leased <mac>" (Neanderfunk/ddhcpd, ddhcpdctl -m). Kein Prozessstart.
+ *
+ * Ohne Paket fehlt "ddhcpd" ganz. Antwortet der Daemon nicht (aus, Domain
+ * ohne ddhcpd, Neustart), steht dort nur "running": false - keine Nullen,
+ * die wie Messwerte aussaehen (Absprache mit der Karte, 06.11.2026).
+ *
+ * leases.away: eigene LEASED-Leases, deren Client gerade nicht lokal haengt,
+ * also nicht in der Forwarding-Tabelle von br-client an einem anderen Port als
+ * bat0 steht. Momentaufnahme. Die Tabelle vergisst einen Client nach 300 s
+ * Stille (Bridge-Ageing); ein stiller Client zaehlt dann auch als "away".
+ *
+ * DDHCPD_TTL Sekunden gecacht: die Statusseite fragt alle 3 s, der Daemon
+ * ist single-threaded und soll DHCP beantworten.
+ */
+#define DDHCPD_TTL 10
+#define DDHCPD_SUMMARY_CMD 8
+
+#ifndef DDHCPD_BIN
+#define DDHCPD_BIN "/usr/sbin/ddhcpd"
+#endif
+#ifndef DDHCPD_CTL
+#define DDHCPD_CTL "/tmp/ddhcpd_ctl"
+#endif
+#ifndef NF_BR_CLIENT
+#define NF_BR_CLIENT "br-client"
+#endif
+#ifndef NF_BAT_IF
+#define NF_BAT_IF "bat0"
+#endif
+
+#define MAX_LEASED 1024
+
+struct ddhcpd_summary {
+	long long v[25];
+	bool have[25];
+	unsigned char leased[MAX_LEASED][6];
+	int n_leased;
+};
+
+static const char *const ddhcpd_keys[] = {
+	"learning",
+	"blocks_total", "blocks_free", "blocks_ours", "blocks_claiming", "blocks_foreign",
+	"leases_total", "leases_leased", "leases_offered", "leases_free",
+	"roaming_in", "roaming_out", "roaming_ack_sent", "roaming_ack_received",
+	"roaming_nak_sent", "roaming_nak_received",
+	"dhcp_discover", "dhcp_offer", "dhcp_request", "dhcp_ack", "dhcp_nak",
+	"dhcp_release", "dhcp_inform",
+	NULL,
+};
+
+static int ddhcpd_key(const char *key) {
+	for (int i = 0; ddhcpd_keys[i]; i++)
+		if (!strcmp(ddhcpd_keys[i], key))
+			return i;
+	return -1;
+}
+
+static bool ddhcpd_query(struct ddhcpd_summary *sum) {
+	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	if (fd < 0)
+		return false;
+
+	struct timeval tv = { .tv_sec = 1 };
+	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+	struct sockaddr_un addr = { .sun_family = AF_UNIX };
+	strncpy(addr.sun_path, DDHCPD_CTL, sizeof(addr.sun_path) - 1);
+
+	unsigned char cmd = DDHCPD_SUMMARY_CMD;
+	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0 ||
+	    send(fd, &cmd, 1, MSG_NOSIGNAL) != 1) {
+		close(fd);
+		return false;
+	}
+
+	FILE *f = fdopen(fd, "r");
+	if (!f) {
+		close(fd);
+		return false;
+	}
+
+	memset(sum, 0, sizeof(*sum));
+	bool any = false;
+	char line[128], key[64], val[64];
+	while (fgets(line, sizeof(line), f)) {
+		if (sscanf(line, "%63s %63s", key, val) != 2)
+			continue;
+		if (!strcmp(key, "leased")) {
+			unsigned int m[6];
+			if (sum->n_leased < MAX_LEASED &&
+			    sscanf(val, "%x:%x:%x:%x:%x:%x", &m[0], &m[1], &m[2], &m[3], &m[4], &m[5]) == 6) {
+				for (int i = 0; i < 6; i++)
+					sum->leased[sum->n_leased][i] = (unsigned char)m[i];
+				sum->n_leased++;
+			}
+			continue;
+		}
+		int k = ddhcpd_key(key);
+		if (k < 0)
+			continue;
+		sum->v[k] = strtoll(val, NULL, 10);
+		sum->have[k] = true;
+		any = true;
+	}
+	fclose(f);
+	return any;
+}
+
+/* Bridge-Port von bat0 in br-client, -1 ohne. sysfs schreibt ihn hex ("0x2"). */
+static int bat_port_no(void) {
+	char buf[32];
+	if (!read_line("/sys/class/net/" NF_BAT_IF "/brport/port_no", buf, sizeof(buf)))
+		return -1;
+	char *end;
+	errno = 0;
+	long port = strtol(buf, &end, 0);
+	if (errno || end == buf)
+		return -1;
+	return (int)port;
+}
+
+/*
+ * Wie viele der vergebenen MACs stehen nicht lokal in br-client: brforward
+ * liefert struct __fdb_entry (linux/if_bridge.h), 16 Byte je Eintrag.
+ */
+static long long ddhcpd_away(const struct ddhcpd_summary *sum) {
+	if (!sum->n_leased)
+		return 0;
+
+	bool local[MAX_LEASED] = { false };
+	int bat = bat_port_no();
+
+	FILE *f = fopen("/sys/class/net/" NF_BR_CLIENT "/brforward", "rb");
+	if (f) {
+		unsigned char e[16];
+		while (fread(e, sizeof(e), 1, f) == 1) {
+			int port = e[6] | (e[12] << 8);
+			if (e[7] /* is_local */ || port == bat)
+				continue;
+			for (int i = 0; i < sum->n_leased; i++)
+				if (!memcmp(sum->leased[i], e, 6))
+					local[i] = true;
+		}
+		fclose(f);
+	}
+
+	long long away = 0;
+	for (int i = 0; i < sum->n_leased; i++)
+		if (!local[i])
+			away++;
+	return away;
+}
+
+static void ddhcpd_add(struct json_object *obj, const struct ddhcpd_summary *sum,
+		       const char *name, const char *key) {
+	int k = ddhcpd_key(key);
+	if (k >= 0 && sum->have[k])
+		json_object_object_add(obj, name, json_object_new_int64(sum->v[k]));
+}
+
+static struct json_object * collect_ddhcpd(void) {
+	static struct ddhcpd_summary sum;
+	struct json_object *ret = json_object_new_object();
+
+	if (!ddhcpd_query(&sum)) {
+		json_object_object_add(ret, "running", json_object_new_boolean(false));
+		return ret;
+	}
+
+	json_object_object_add(ret, "running", json_object_new_boolean(true));
+	int k = ddhcpd_key("learning");
+	if (sum.have[k])
+		json_object_object_add(ret, "learning", json_object_new_boolean(sum.v[k] != 0));
+
+	struct json_object *blocks = json_object_new_object();
+	ddhcpd_add(blocks, &sum, "total", "blocks_total");
+	ddhcpd_add(blocks, &sum, "free", "blocks_free");
+	ddhcpd_add(blocks, &sum, "ours", "blocks_ours");
+	ddhcpd_add(blocks, &sum, "claiming", "blocks_claiming");
+	ddhcpd_add(blocks, &sum, "foreign", "blocks_foreign");
+	json_object_object_add(ret, "blocks", blocks);
+
+	struct json_object *leases = json_object_new_object();
+	ddhcpd_add(leases, &sum, "total", "leases_total");
+	ddhcpd_add(leases, &sum, "leased", "leases_leased");
+	ddhcpd_add(leases, &sum, "offered", "leases_offered");
+	ddhcpd_add(leases, &sum, "free", "leases_free");
+	json_object_object_add(leases, "away", json_object_new_int64(ddhcpd_away(&sum)));
+	json_object_object_add(ret, "leases", leases);
+
+	/* Zaehler gibt es nur, wenn ddhcpd mit DDHCPD_STATISTICS gebaut ist */
+	if (sum.have[ddhcpd_key("roaming_in")]) {
+		struct json_object *roaming = json_object_new_object();
+		ddhcpd_add(roaming, &sum, "in", "roaming_in");
+		ddhcpd_add(roaming, &sum, "out", "roaming_out");
+		ddhcpd_add(roaming, &sum, "ack_sent", "roaming_ack_sent");
+		ddhcpd_add(roaming, &sum, "ack_received", "roaming_ack_received");
+		ddhcpd_add(roaming, &sum, "nak_sent", "roaming_nak_sent");
+		ddhcpd_add(roaming, &sum, "nak_received", "roaming_nak_received");
+		json_object_object_add(ret, "roaming", roaming);
+
+		struct json_object *dhcp = json_object_new_object();
+		ddhcpd_add(dhcp, &sum, "discover", "dhcp_discover");
+		ddhcpd_add(dhcp, &sum, "offer", "dhcp_offer");
+		ddhcpd_add(dhcp, &sum, "request", "dhcp_request");
+		ddhcpd_add(dhcp, &sum, "ack", "dhcp_ack");
+		ddhcpd_add(dhcp, &sum, "nak", "dhcp_nak");
+		ddhcpd_add(dhcp, &sum, "release", "dhcp_release");
+		ddhcpd_add(dhcp, &sum, "inform", "dhcp_inform");
+		json_object_object_add(ret, "dhcp", dhcp);
+	}
+
+	return ret;
+}
+
+/* NULL, wenn das Paket nicht installiert ist */
+static struct json_object * get_ddhcpd(void) {
+	static struct json_object *cache;
+	static time_t stamp;
+
+	if (!exists(DDHCPD_BIN))
+		return NULL;
+
+	time_t now = now_monotonic();
+	if (!cache || now - stamp >= DDHCPD_TTL) {
+		if (cache)
+			json_object_put(cache);
+		cache = collect_ddhcpd();
+		stamp = now;
+	}
+
+	struct json_object *ret = NULL;
+	if (json_object_deep_copy(cache, &ret, NULL))
+		return NULL;
+	return ret;
+}
+
+
+/*
+ * IPv4 der lokalen Clients, auch ohne ddhcpd: die ARP-Tabelle an local-node
+ * (Clients fragen den next_node als DNS-Server). "ddhcpd" zaehlt die
+ * Adressen in ddhcpd.range der aktiven Domain, der Rest kommt vom DHCP-Server
+ * des Supernodes. Ohne ddhcpd.range ist ddhcpd 0.
+ *
+ * Die Domain kommt per "uci -q get gluon.core.domain" aus einem eigenen
+ * Prozess, nicht ueber libuci/libgluonutil: die laden das ganze Paket gluon
+ * samt gluon.wireless.private_key (siehe preserve_channels). Gelesen nur alle
+ * RANGE_TTL Sekunden; die Domain wechselt nur mit einem Reconfigure.
+ */
+#define RANGE_TTL 600
+
+#ifndef NF_PROC_ARP
+#define NF_PROC_ARP "/proc/net/arp"
+#endif
+#ifndef NF_LOCAL_NODE
+#define NF_LOCAL_NODE "local-node"
+#endif
+#ifndef NF_SITE_JSON
+#define NF_SITE_JSON "/lib/gluon/site.json"
+#endif
+#ifndef NF_DOMAINS_DIR
+#define NF_DOMAINS_DIR "/lib/gluon/domains"
+#endif
+
+static const char * json_range(struct json_object *conf) {
+	struct json_object *d, *r;
+	if (conf && json_object_object_get_ex(conf, "ddhcpd", &d) &&
+	    json_object_object_get_ex(d, "range", &r) &&
+	    json_object_is_type(r, json_type_string))
+		return json_object_get_string(r);
+	return NULL;
+}
+
+/* false ohne Bereich */
+static bool load_ddhcpd_range(uint32_t *net, uint32_t *mask) {
+	char range[64] = "";
+	struct json_object *site = json_object_from_file(NF_SITE_JSON);
+	struct json_object *domain = NULL;
+
+	if (exists(NF_DOMAINS_DIR "/")) {
+		char code[64] = "";
+		FILE *f = popen("uci -q get gluon.core.domain", "r");
+		if (f) {
+			if (!fgets(code, sizeof(code), f))
+				code[0] = 0;
+			pclose(f);
+		}
+		code[strcspn(code, "\n")] = 0;
+		if (code[0] && !strchr(code, '/')) {
+			char path[PATH_MAX];
+			snprintf(path, sizeof(path), NF_DOMAINS_DIR "/%s.json", code);
+			domain = json_object_from_file(path);
+		}
+	}
+
+	/* die Domain geht vor, wie in Gluons merge */
+	const char *r = json_range(domain);
+	if (!r)
+		r = json_range(site);
+	if (r)
+		snprintf(range, sizeof(range), "%s", r);
+
+	if (domain)
+		json_object_put(domain);
+	if (site)
+		json_object_put(site);
+
+	char *slash = strchr(range, '/');
+	if (!slash)
+		return false;
+	*slash = 0;
+	int len = atoi(slash + 1);
+	struct in_addr a;
+	if (len < 0 || len > 32 || inet_pton(AF_INET, range, &a) != 1)
+		return false;
+
+	*mask = len ? htonl(0xffffffffu << (32 - len)) : 0;
+	*net = a.s_addr & *mask;
+	return true;
+}
+
+static struct json_object * get_clients_ipv4(void) {
+	static time_t stamp;
+	static bool loaded, have_range;
+	static uint32_t net, mask;
+	time_t now = now_monotonic();
+
+	if (!loaded || now - stamp >= RANGE_TTL) {
+		have_range = load_ddhcpd_range(&net, &mask);
+		stamp = now;
+		loaded = true;
+	}
+
+	long long total = 0, in_range = 0;
+	FILE *f = fopen(NF_PROC_ARP, "r");
+	if (f) {
+		char line[256], ip[64], dev[IFNAMSIZ + 1];
+		unsigned int flags;
+		while (fgets(line, sizeof(line), f)) {
+			/* IP address  HW type  Flags  HW address  Mask  Device */
+			if (sscanf(line, "%63s %*s %x %*s %*s %16s", ip, &flags, dev) != 3)
+				continue;
+			if (strcmp(dev, NF_LOCAL_NODE) || !(flags & 0x2 /* ATF_COM */))
+				continue;
+			struct in_addr a;
+			if (inet_pton(AF_INET, ip, &a) != 1)
+				continue;
+			total++;
+			if (have_range && (a.s_addr & mask) == net)
+				in_range++;
+		}
+		fclose(f);
+	}
+
+	struct json_object *ret = json_object_new_object();
+	json_object_object_add(ret, "total", json_object_new_int64(total));
+	json_object_object_add(ret, "ddhcpd", json_object_new_int64(in_range));
+	return ret;
+}
+
+
 /* --- statistics: Ethernet ------------------------------------------------- */
 
 /*
@@ -1114,6 +1483,12 @@ static struct json_object * respondd_provider_statistics(void) {
 	struct json_object *temp = get_temperature();
 	if (temp)
 		json_object_object_add(nf, "temperature", temp);
+
+	struct json_object *ddhcpd = get_ddhcpd();
+	if (ddhcpd)
+		json_object_object_add(nf, "ddhcpd", ddhcpd);
+
+	json_object_object_add(nf, "clients_ipv4", get_clients_ipv4());
 
 	struct json_object *ret = json_object_new_object();
 	json_object_object_add(ret, "neanderfunk", nf);

@@ -9,7 +9,7 @@ PKG_LICENSE:=BSD-3-Clause
 include $(TOPDIR)/../package/gluon.mk
 
 define Package/$(PKG_NAME)
-  TITLE:=respondd module: hardware, radios, offline SSID, ethernet links, memory pressure, temperatures
+  TITLE:=respondd module: hardware, radios, offline SSID, ethernet links, memory pressure, temperatures, ddhcpd
   DEPENDS:=+gluon-respondd +libiwinfo +libjson-c
 endef
 
@@ -20,8 +20,11 @@ define Package/$(PKG_NAME)/description
   neanderfunk-ssid-changer; link, speed, duplex and a damaged-cable hint per
   ethernet port; memory pressure: MemAvailable, page-cache refaults, forks
   and zram, cached for 60 s; SoC and wifi chip temperatures where the
-  hardware has sensors, cached for 10 s). Written in C to stay cheap: the
-  status page polls statistics every 3 seconds.
+  hardware has sensors, cached for 10 s; blocks, leases and counters of
+  neanderfunk-ddhcpd via its control socket, cached for 10 s; local IPv4
+  clients from the ARP table on local-node, split by the domain's ddhcpd
+  range). Written in C to stay cheap: the status page polls statistics every
+  3 seconds.
 endef
 
 $(eval $(call BuildPackageGluon,$(PKG_NAME)))
