@@ -223,7 +223,11 @@ aussehen (Absprache mit der Karte, 06.11.2026).
 ```
 - `blocks`: die Blocktabelle, auf allen Knoten der Domain gleich.
   `total = free + ours + claiming + foreign`; `claiming` = gerade im Claim,
-  `foreign` = von anderen Knoten belegt.
+  `foreign` = von anderen Knoten belegt. In der Lernphase
+  (`learning: true`) fehlen `free`, `claiming` und `foreign`, weil die
+  Tabelle dann noch unvollständig ist.
+- Alle Werte sind ganze JSON-Zahlen bzw. Booleans, nie Strings, nie
+  Kommazahlen (also auch kein NaN).
 - `leases`: nur in den eigenen Blöcken, `total` = eigene Blöcke ×
   Blockgröße. `away` ist eine **Momentaufnahme**: vergebene Leases, deren
   Client gerade nicht lokal hängt (nicht in der Forwarding-Tabelle von
