@@ -966,13 +966,10 @@ static int bat_port_no(void) {
  * Forwarding-Tabelle (brforward, struct __fdb_entry aus linux/if_bridge.h,
  * 16 Byte je Eintrag) ohne eigene Adressen und ohne den Port bat0. Ein
  * Client faellt nach 300 s Stille heraus (Bridge-Ageing).
- *
- * max_age: nur Eintraege, die hoechstens so viele Sekunden still sind, 0 fuer
- * alle. ageing_timer_value (Byte 8-11) zaehlt in USER_HZ = 100 je Sekunde.
  */
 #define MAX_LOCAL 512
 
-static int local_macs(unsigned char (*macs)[6], int max, unsigned int max_age) {
+static int local_macs(unsigned char (*macs)[6], int max) {
 	int n = 0, bat = bat_port_no();
 
 	FILE *f = fopen("/sys/class/net/" NF_BR_CLIENT "/brforward", "rb");
@@ -983,10 +980,6 @@ static int local_macs(unsigned char (*macs)[6], int max, unsigned int max_age) {
 	while (n < max && fread(e, sizeof(e), 1, f) == 1) {
 		int port = e[6] | (e[12] << 8);
 		if (e[7] /* is_local */ || port == bat || (e[0] & 1) /* Multicast */)
-			continue;
-		uint32_t age;
-		memcpy(&age, e + 8, sizeof(age));
-		if (max_age && age > max_age * 100u)
 			continue;
 		bool dup = false;
 		for (int i = 0; i < n && !dup; i++)
@@ -1011,7 +1004,7 @@ static long long ddhcpd_away(const struct ddhcpd_summary *sum) {
 		return 0;
 
 	static unsigned char macs[MAX_LOCAL][6];
-	int n = local_macs(macs, MAX_LOCAL, 0);
+	int n = local_macs(macs, MAX_LOCAL);
 
 	long long away = 0;
 	for (int i = 0; i < sum->n_leased; i++)
@@ -1130,9 +1123,13 @@ static struct json_object * get_ddhcpd(void) {
 
 
 /*
- * Lokale Clients mit IPv4. "Lokal" heisst: die MAC steht in br-client an
- * einem anderen Port als bat0 (siehe local_macs) und war in den letzten 60 s
- * aktiv, wie bei clients.total von Gluon. Die IPv4 dazu kommt aus
+ * Lokale Clients mit IPv4. "Lokal" heisst dasselbe wie bei clients.total von
+ * Gluon (gluon-mesh-batman-adv, respondd-statistics.c): Eintrag in der
+ * lokalen Uebersetzungstabelle von batman-adv, ohne NOPURGE (eigene
+ * Adressen), last_seen hoechstens 60 s. clients_ipv4 ist damit eine
+ * Teilmenge von clients.total. (Die Bridge-Tabelle waere grosszuegiger: sie
+ * frischt auch bei Verkehr nur mit dem Knoten auf, etwa DHCP-Renew an
+ * local-node, der nie in bat0 geht.) Die IPv4 dazu kommt aus
  *  - dem DAT-Cache von batman-adv: bat0 liest die ARP-Pakete der Clients mit,
  *    auch die an den Supernode als Router; Eintraege leben 5 Minuten. Der
  *    Cache enthaelt auch fremde Clients (verteilte Tabelle), daher der Filter
@@ -1222,8 +1219,8 @@ static bool load_ddhcpd_range(uint32_t *net, uint32_t *mask) {
 }
 
 #define CLIENTS4_TTL 10
-/* wie clients.total in gluon-mesh-batman-adv (MAX_INACTIVITY 60000 ms) */
-#define CLIENTS4_ACTIVE 60
+/* ms, wie MAX_INACTIVITY in gluon-mesh-batman-adv */
+#define CLIENTS4_ACTIVE 60000
 
 struct client4 {
 	unsigned char mac[6];
@@ -1248,6 +1245,46 @@ static void client4_mark(struct client4_set *set, const unsigned char *mac, uint
 			set->c[i].ddhcpd = true;
 		return;
 	}
+}
+
+static int client4_parse_tt(struct nl_msg *msg, void *arg) {
+	static const enum batadv_nl_attrs mandatory[] = {
+		BATADV_ATTR_TT_ADDRESS,
+		BATADV_ATTR_TT_FLAGS,
+		/* fehlt nur bei NOPURGE-Eintraegen, die ohnehin wegfallen */
+		BATADV_ATTR_LAST_SEEN_MSECS,
+	};
+	struct nlattr *attrs[BATADV_ATTR_MAX + 1];
+	struct nlmsghdr *nlh = nlmsg_hdr(msg);
+	struct batadv_nlquery_opts *query_opts = arg;
+	struct client4_set *set = batadv_container_of(query_opts, struct client4_set, query_opts);
+
+	if (!genlmsg_valid_hdr(nlh, 0))
+		return NL_OK;
+
+	struct genlmsghdr *ghdr = nlmsg_data(nlh);
+	if (ghdr->cmd != BATADV_CMD_GET_TRANSTABLE_LOCAL)
+		return NL_OK;
+
+	if (nla_parse(attrs, BATADV_ATTR_MAX, genlmsg_attrdata(ghdr, 0),
+		      genlmsg_len(ghdr), batadv_genl_policy))
+		return NL_OK;
+
+	if (batadv_genl_missing_attrs(attrs, mandatory, BATADV_ARRAY_SIZE(mandatory)))
+		return NL_OK;
+
+	if (nla_get_u32(attrs[BATADV_ATTR_TT_FLAGS]) & BATADV_TT_CLIENT_NOPURGE)
+		return NL_OK;
+	if (nla_get_u32(attrs[BATADV_ATTR_LAST_SEEN_MSECS]) > CLIENTS4_ACTIVE)
+		return NL_OK;
+
+	const unsigned char *mac = nla_data(attrs[BATADV_ATTR_TT_ADDRESS]);
+	for (int i = 0; i < set->n; i++)
+		if (!memcmp(set->c[i].mac, mac, 6))
+			return NL_OK; /* je VLAN ein Eintrag */
+	if (set->n < MAX_LOCAL)
+		memcpy(set->c[set->n++].mac, mac, 6);
+	return NL_OK;
 }
 
 static int client4_parse_dat(struct nl_msg *msg, void *arg) {
@@ -1319,15 +1356,12 @@ static struct json_object * get_clients_ipv4(void) {
 	}
 
 	if (!counted || now - stamp >= CLIENTS4_TTL) {
-		static unsigned char macs[MAX_LOCAL][6];
-
 		memset(&set, 0, sizeof(set));
 		set.have_range = have_range;
 		set.net = net;
 		set.mask = mask;
-		set.n = local_macs(macs, MAX_LOCAL, CLIENTS4_ACTIVE);
-		for (int i = 0; i < set.n; i++)
-			memcpy(set.c[i].mac, macs[i], 6);
+		batadv_genl_query(NF_BAT_IF, BATADV_CMD_GET_TRANSTABLE_LOCAL,
+				  client4_parse_tt, NLM_F_DUMP, &set.query_opts);
 
 		if (set.n) {
 			batadv_genl_query(NF_BAT_IF, BATADV_CMD_GET_DAT_CACHE,

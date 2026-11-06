@@ -22,9 +22,9 @@ define Package/$(PKG_NAME)/description
   and zram, cached for 60 s; SoC and wifi chip temperatures where the
   hardware has sensors, cached for 10 s; blocks, leases and counters of
   neanderfunk-ddhcpd via its control socket, cached for 10 s; local IPv4
-  clients: local MACs of br-client with an address from the batman-adv DAT
-  cache, the ARP table or an own ddhcpd lease, split by the domain's ddhcpd
-  range, cached for 10 s). Written in C to stay cheap: the status page polls
+  clients: active local batman-adv clients as in clients.total with an
+  address from the DAT cache, the ARP table or an own ddhcpd lease, split by
+  the domain's ddhcpd range, cached for 10 s). Written in C to stay cheap: the status page polls
   statistics every 3 seconds.
 endef
 

@@ -254,10 +254,14 @@ aussehen (Absprache mit der Karte, 06.11.2026).
   dann nicht neu, bevor die Lease des Verlierers abgelaufen ist.
 
 **clients_ipv4** - lokale Clients mit IPv4, auch ohne ddhcpd.
-`{ "total": 14, "ddhcpd": 9 }`. Lokal heißt: die MAC steht in der
-Forwarding-Tabelle von `br-client` an einem anderen Port als `bat0` (wie bei
-`leases.away`) und war in den letzten 60 s aktiv, wie bei `clients.total`
-von Gluon (`leases.away` nimmt die ganze Tabelle, 300 s). Die IPv4 dazu kommt aus dem DAT-Cache von batman-adv (bat0
+`{ "total": 14, "ddhcpd": 9 }`. Lokal heißt dasselbe wie bei
+`clients.total` von Gluon: Eintrag in der lokalen Übersetzungstabelle von
+batman-adv, ohne eigene Adressen, in den letzten 60 s aktiv.
+`clients_ipv4.total` ist damit eine Teilmenge von `clients.total`. Die
+Bridge-Tabelle (wie bei `leases.away`) wäre großzügiger: sie frischt auch bei
+Verkehr nur mit dem Knoten auf (DHCP-Renew an `local-node`, ARP, DNS), der
+nie ins Mesh geht; im Labor zählte sie so mehr Clients als
+`clients.total`. Die IPv4 dazu kommt aus dem DAT-Cache von batman-adv (bat0
 liest die ARP-Pakete der Clients mit, auch die an den Supernode als Router),
 aus der ARP-Tabelle des Knotens oder aus einer eigenen ddhcpd-Lease. `ddhcpd`
 zählt davon die mit einer Adresse in `ddhcpd.range` der aktiven Domain oder
@@ -265,10 +269,9 @@ mit eigener Lease, der Rest kommt vom DHCP-Server des Supernodes; ohne
 `ddhcpd.range` und ohne Daemon ist es 0. Die Domain kommt per
 `uci -q get gluon.core.domain` aus einem eigenen Prozess (alle 10 Minuten),
 aus demselben Grund wie bei `preserve_channels`. 10 s gecacht.
-Liegt höchstens bei `clients.total`: Clients ohne IPv4 fehlen, und wer 5
-Minuten kein ARP schickt und keine eigene Lease hat, fällt aus dem
-DAT-Cache. (Gluon zählt aus der Übersetzungstabelle von batman-adv, hier
-aus der Bridge; beide mit 60 s, kleine Abweichungen bleiben möglich.)
+Liegt höchstens bei `clients.total` (bis auf den Zeitpunkt der Abfrage):
+Clients ohne IPv4 fehlen, und wer 5 Minuten kein ARP schickt und keine eigene
+Lease hat, fällt aus dem DAT-Cache.
 
 Bis 11/2026 zählte `clients_ipv4` nur die ARP-Tabelle an `local-node`. Das
 verfehlte Clients, die den next_node nicht ansprechen (im Labor `total` 0
