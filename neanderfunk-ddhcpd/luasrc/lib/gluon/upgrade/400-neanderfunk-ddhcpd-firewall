@@ -1,0 +1,40 @@
+#!/usr/bin/lua
+
+-- Nach ffgraz-ddhcpd 400-ddhcpd-firewall. Ohne die mmfd-Regel: wir haben kein
+-- mmfd, die Knoten reden ueber br-client (Zone mesh) miteinander.
+
+local uci = require('simple-uci').cursor()
+
+-- Abstimmung der Knoten untereinander (Multicast ff02::1234 und direkt)
+uci:section('firewall', 'rule', 'mesh_ddhcpd', {
+	name = 'mesh_ddhcpd',
+	src = 'mesh',
+	family = 'ipv6',
+	dest_port = '1234',
+	proto = 'udp',
+	target = 'ACCEPT',
+})
+
+uci:section('firewall', 'rule', 'mesh_d2d', {
+	name = 'mesh_d2d',
+	src = 'mesh',
+	family = 'ipv6',
+	dest_port = '1235',
+	proto = 'udp',
+	target = 'ACCEPT',
+})
+
+uci:delete('firewall', 'mmfd_ddhcpd')
+
+-- DHCP von den Clients: ddhcpd hoert an local-node (Zone loc_client); an
+-- br-client (Zone mesh) bliebe UDP 67 zu.
+uci:section('firewall', 'rule', 'client_dhcp', {
+	name = 'client_dhcp',
+	src = 'loc_client',
+	family = 'ipv4',
+	dest_port = '67',
+	proto = 'udp',
+	target = 'ACCEPT',
+})
+
+uci:save('firewall')

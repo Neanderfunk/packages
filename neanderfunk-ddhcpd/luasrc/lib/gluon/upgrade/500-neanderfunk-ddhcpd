@@ -1,0 +1,93 @@
+#!/usr/bin/lua
+
+-- /etc/config/ddhcpd aus der Domain. Nach ffgraz-ddhcpd 500-ddhcpd, mit diesen
+-- Unterschieden:
+--  * alles je Domain (site.* liefert die Werte der aktiven Domain),
+--  * enabled kommt bei jedem Lauf aus der Domain (ab Werk aus), damit ein
+--    Domainwechsel es mitnimmt; von Hand nur disabled_local,
+--  * Netzmaske aus ddhcpd.client_prefix4, nicht aus prefix4 oder range,
+--  * Router (3) und DNS (6) aus der Domain, Lease-Zeit (51) aus
+--    dhcp_lease_time statt fest,
+--  * ddhcpd hoert an local-node und spricht mit den anderen Knoten ueber
+--    br-client.
+
+local site = require('gluon.site')
+local uci = require('simple-uci').cursor()
+
+-- Mehrere IPv4-Adressen in einer Option: Laenge 4 je Adresse, Bytes mit
+-- Punkten aneinander (-o 6:8:a.b.c.d.e.f.g.h)
+local function ip4_payload(list)
+	return #list * 4, table.concat(list, '.')
+end
+
+local function netmask(prefix)
+	local len = tonumber(prefix:match('/(%d+)$'))
+	local parts = {}
+	for _ = 1, 4 do
+		local bits = math.min(8, math.max(0, len))
+		table.insert(parts, 256 - 2 ^ (8 - bits))
+		len = len - bits
+	end
+	return string.format('%d.%d.%d.%d', parts[1], parts[2], parts[3], parts[4])
+end
+
+local function u32_payload(n)
+	return string.format('%d.%d.%d.%d',
+		math.floor(n / 16777216) % 256, math.floor(n / 65536) % 256,
+		math.floor(n / 256) % 256, n % 256)
+end
+
+local function set_option(name, code, len, payload)
+	if payload then
+		uci:section('ddhcpd', 'dhcp_option', name, {
+			code = code,
+			len = len,
+			payload = payload,
+		})
+	else
+		uci:delete('ddhcpd', name)
+	end
+end
+
+local d = site.ddhcpd
+local range = d.range()
+local client_prefix = d.client_prefix4()
+local enabled = d.enabled(false) and range ~= nil and client_prefix ~= nil
+
+if d.enabled(false) and not enabled then
+	io.stderr:write('neanderfunk-ddhcpd: ddhcpd.range oder ddhcpd.client_prefix4 fehlt, ddhcpd bleibt aus\n')
+end
+
+local lease_time = d.dhcp_lease_time(300)
+
+uci:section('ddhcpd', 'ddhcpd', 'settings', {
+	enabled = enabled,
+	block_network = range,
+	block_size_pow = d.block_size(2),
+	block_timeout = d.block_timeout(300),
+	learning_time = d.learning_time(30),
+	spare_leases = d.spare_leases(8),
+	tentative_timeout = d.tentative_timeout(15),
+	dhcp_lease_time = lease_time,
+	dhcp_interface = 'local-node',
+	server_interface = 'br-client',
+})
+
+-- Frueher ab Werk mitgelieferte Sektionen
+uci:delete('ddhcpd', 'broadcast')
+
+set_option('lease_time', 51, 4, u32_payload(lease_time))
+set_option('server_identify', 54, 4, site.next_node.ip4())
+set_option('netmask', 1, 4, client_prefix and netmask(client_prefix))
+
+local router = d.router()
+set_option('router', 3, 4, router)
+
+local dns = d.dns({})
+if #dns > 0 then
+	set_option('dns', 6, ip4_payload(dns))
+else
+	set_option('dns')
+end
+
+uci:save('ddhcpd')

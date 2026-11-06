@@ -1,0 +1,6 @@
+# Wird bei jedem gluon-reconfigure aus der Domain neu geschrieben
+# (/lib/gluon/upgrade/500-neanderfunk-ddhcpd). Von Hand bleibt nur
+# disabled_local: '1' schaltet ddhcpd auf diesem Knoten ab, gleich was die
+# Domain sagt.
+config ddhcpd 'settings'
+	option enabled '0'

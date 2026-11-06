@@ -152,6 +152,17 @@ and the IPv6 anycast address gone unreachable. Escalates from a wifi restart to
 a reboot; each check is individually switchable.
 See [](neanderfunk-linkcheck/README.md)
 
+### neanderfunk-ddhcpd
+
+Distributed DHCP server on the nodes: the nodes of a domain share an IPv4 range
+in blocks and hand out addresses to their own clients. Daemon from our fork
+https://github.com/Neanderfunk/ddhcpd (node id, one lease per client, NAK for
+other clients' leases, shorter learning phase), package after `ffgraz-ddhcpd`
+from the Gluon community packages. Everything per domain (`ddhcpd = { ... }`:
+range, client prefix for the netmask, router, DNS), off unless the domain
+enables it. Experimental, for the 2025.1-next line.
+See [](neanderfunk-ddhcpd/README.md)
+
 ### neanderfunk-port-roles
 
 One role per network port instead of per port group: Gluon's multi-port
