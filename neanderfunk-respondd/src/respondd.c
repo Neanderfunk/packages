@@ -1007,15 +1007,24 @@ static struct json_object * collect_ddhcpd(void) {
 
 	json_object_object_add(ret, "running", json_object_new_boolean(true));
 	int k = ddhcpd_key("learning");
+	bool learning = sum.have[k] && sum.v[k] != 0;
 	if (sum.have[k])
-		json_object_object_add(ret, "learning", json_object_new_boolean(sum.v[k] != 0));
+		json_object_object_add(ret, "learning", json_object_new_boolean(learning));
 
+	/*
+	 * In der Lernphase ist die Blocktabelle noch unvollstaendig: frei, im
+	 * Claim und fremd sind dann unbekannt und fehlen, statt die Domain kurz
+	 * leer aussehen zu lassen (Wunsch der Karte, 06.11.2026). total und ours
+	 * weiss der Knoten auch dann.
+	 */
 	struct json_object *blocks = json_object_new_object();
 	ddhcpd_add(blocks, &sum, "total", "blocks_total");
-	ddhcpd_add(blocks, &sum, "free", "blocks_free");
 	ddhcpd_add(blocks, &sum, "ours", "blocks_ours");
-	ddhcpd_add(blocks, &sum, "claiming", "blocks_claiming");
-	ddhcpd_add(blocks, &sum, "foreign", "blocks_foreign");
+	if (!learning) {
+		ddhcpd_add(blocks, &sum, "free", "blocks_free");
+		ddhcpd_add(blocks, &sum, "claiming", "blocks_claiming");
+		ddhcpd_add(blocks, &sum, "foreign", "blocks_foreign");
+	}
 	json_object_object_add(ret, "blocks", blocks);
 
 	struct json_object *leases = json_object_new_object();
