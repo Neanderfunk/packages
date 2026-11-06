@@ -34,6 +34,7 @@ ddhcpd = {
   -- dhcp_lease_time = 300,   -- Option 51
   -- spare_leases = 8,        -- so viele freie Adressen hält der Knoten vor
   -- tentative_timeout = 15,  -- Sekunden vom Ankündigen bis zum Besitz eines Blocks
+  -- foreign_prefix4 = { '10.51.64.0/20' }, -- Netze anderer DHCP-Server, Vorgabe client_prefix4
 },
 ```
 
@@ -43,6 +44,13 @@ ddhcpd = {
   (bei uns site-weit `/8`, die Clients bekämen `/8`) und nicht aus `range`
   (bei `/21` läge der Router nicht mehr im Netz des Clients).
 * Option 54 (Server-Identifier) ist `next_node.ip4`.
+* Für Adressen außerhalb von `range`, die in `foreign_prefix4` liegen,
+  antwortet ddhcpd nicht (Daemon `-F`, höchstens 8 Netze). Die gehören dem
+  DHCP-Server des Supernodes, ein NAK von ddhcpd käme vor dessen ACK an und
+  nähme dem Client seine Adresse. Ohne Angabe ist das `client_prefix4`;
+  Adressen außerhalb des Client-Netzes bekommen weiter ein NAK. `{}` schaltet
+  das ab (dann NAK für alles außerhalb von `range`). Ebenso schweigt ddhcpd
+  bei einem REQUEST mit der Server-ID eines anderen Servers.
 * `range` darf sich nicht mit dem Bereich überschneiden, den der
   DHCP-Server des Supernodes vergibt, und der darf Anfragen für Adressen aus
   `range` nicht bestätigen.

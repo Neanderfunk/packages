@@ -9,7 +9,9 @@
 --  * Router (3) und DNS (6) aus der Domain, Lease-Zeit (51) aus
 --    dhcp_lease_time statt fest,
 --  * ddhcpd hoert an local-node und spricht mit den anderen Knoten ueber
---    br-client.
+--    br-client,
+--  * Netze anderer DHCP-Server (-F, kein NAK fuer Adressen daraus) aus
+--    ddhcpd.foreign_prefix4, ohne Angabe client_prefix4.
 
 local site = require('gluon.site')
 local uci = require('simple-uci').cursor()
@@ -60,6 +62,14 @@ end
 
 local lease_time = d.dhcp_lease_time(300)
 
+-- Nach dem Adressplan gehoert im Client-Netz alles ausserhalb von range dem
+-- Kea der Gateways; Adressen ganz ausserhalb bekommen weiter ein NAK.
+local foreign = d.foreign_prefix4({client_prefix})
+if #foreign > 8 then
+	io.stderr:write('neanderfunk-ddhcpd: ddhcpd.foreign_prefix4 hat mehr als 8 Eintraege, nur die ersten 8 gelten\n')
+	foreign = {unpack(foreign, 1, 8)}
+end
+
 uci:section('ddhcpd', 'ddhcpd', 'settings', {
 	enabled = enabled,
 	block_network = range,
@@ -72,6 +82,11 @@ uci:section('ddhcpd', 'ddhcpd', 'settings', {
 	dhcp_interface = 'local-node',
 	server_interface = 'br-client',
 })
+if #foreign > 0 then
+	uci:set('ddhcpd', 'settings', 'foreign_network', foreign)
+else
+	uci:delete('ddhcpd', 'settings', 'foreign_network')
+end
 
 -- Frueher ab Werk mitgelieferte Sektionen
 uci:delete('ddhcpd', 'broadcast')

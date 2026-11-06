@@ -4,7 +4,7 @@
 # shellcheck shell="busybox sh"
 #
 # Nach ffgraz-ddhcpd (community-packages). Neu: Lernphase (-l), Ausfuehrlichkeit
-# (-v), disabled_local, stdout ins Log, ab Werk aus.
+# (-v), disabled_local, stdout ins Log, ab Werk aus, Netze anderer DHCP-Server (-F).
 
 START=90
 USE_PROCD=1
@@ -22,6 +22,7 @@ validate_section_ddhcpd() {
 	'spare_leases:uinteger:8' \
 	'tentative_timeout:uinteger:15' \
 	'block_network:cidr4' \
+	'foreign_network:list(cidr4)' \
 	'verbosity:uinteger:0' \
 	'enabled:uinteger:0' \
 	'disabled_local:uinteger:0'
@@ -54,6 +55,9 @@ start_service() {
 	procd_append_param command -c "$dhcp_interface"
 	procd_append_param command -i "$server_interface"
 	procd_append_param command -N "$block_network"
+	for net in $foreign_network; do
+		procd_append_param command -F "$net"
+	done
 	procd_append_param command -t "$tentative_timeout"
 	procd_append_param command -H "/etc/ddhcpd.hook"
 	while [ "$verbosity" -gt 0 ]; do

@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-ddhcpd
 PKG_VERSION:=1
-PKG_RELEASE:=5
+PKG_RELEASE:=6
 
 # Daemon aus unserem Fork, Zweig neanderfunk (siehe dort NEANDERFUNK.md).
 # Die Paketdateien stammen aus ffgraz-ddhcpd der Gluon-community-packages
@@ -10,7 +10,7 @@ PKG_RELEASE:=5
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/Neanderfunk/ddhcpd.git
 PKG_SOURCE_DATE:=2026-11-06
-PKG_SOURCE_VERSION:=300e5ecf19d897f3210a1f36fd1e26c5f6af897f
+PKG_SOURCE_VERSION:=5c5759241f089a5b9139e650c460e48a1007d1ef
 
 PKG_MAINTAINER:=Freifunk im Neanderland <projekt@neanderfunk.de>
 PKG_LICENSE:=GPL-3.0 MIT

@@ -23,7 +23,17 @@ local function run(site_data, initial)
 					store[name][k] = tostring(v)
 				end
 			end,
-			delete = function(_, _, name) store[name] = nil end,
+			set = function(_, _, name, option, value)
+				store[name] = store[name] or {}
+				store[name][option] = type(value) == 'table' and table.concat(value, ' ') or tostring(value)
+			end,
+			delete = function(_, _, name, option)
+				if option then
+					if store[name] then store[name][option] = nil end
+				else
+					store[name] = nil
+				end
+			end,
 			save = function() end,
 		}
 	end}
@@ -58,6 +68,20 @@ check('dns len', s.dns.len, '8')
 check('dns', s.dns.payload, '10.51.64.1.10.51.64.2')
 check('lease', s.lease_time.payload, '0.0.2.88')
 check('server id', s.server_identify.payload, '10.51.64.1')
+check('foreign default', s.settings.foreign_network, '10.51.64.0/20')
+
+-- eigene Liste; {} schaltet -F ab
+s = run({next_node = {ip4 = '10.51.64.1'}, ddhcpd = {enabled = true, range = '10.51.72.0/21',
+	client_prefix4 = '10.51.64.0/20', foreign_prefix4 = {'10.51.64.0/21', '10.200.0.0/24'}}}, s)
+check('foreign liste', s.settings.foreign_network, '10.51.64.0/21 10.200.0.0/24')
+s = run({next_node = {ip4 = '10.51.64.1'}, ddhcpd = {enabled = true, range = '10.51.72.0/21',
+	client_prefix4 = '10.51.64.0/20', foreign_prefix4 = {}}}, s)
+check('foreign aus', s.settings.foreign_network, nil)
+local nine = {}
+for i = 1, 9 do nine[i] = '10.' .. i .. '.0.0/16' end
+s = run({next_node = {ip4 = '10.51.64.1'}, ddhcpd = {enabled = true, range = '10.51.72.0/21',
+	client_prefix4 = '10.51.64.0/20', foreign_prefix4 = nine}}, s)
+check('foreign max 8', select(2, s.settings.foreign_network:gsub(' ', '')) + 1, 8)
 
 -- ohne client_prefix4: bleibt aus, keine Netzmaske; Domainwechsel nimmt
 -- Router und DNS der alten Domain weg
@@ -66,6 +90,7 @@ check('aus ohne prefix', s.settings.enabled, '0')
 check('netmask weg', s.netmask, nil)
 check('router weg', s.router, nil)
 check('dns weg', s.dns, nil)
+check('foreign weg', s.settings.foreign_network, nil)
 
 -- Domain ohne ddhcpd
 s = run({next_node = {ip4 = '10.51.64.1'}})

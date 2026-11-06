@@ -14,6 +14,10 @@ need_string_match(in_domain({'ddhcpd', 'client_prefix4'}), cidr4, false)
 -- Option 3 und 6
 need_string_match(in_domain({'ddhcpd', 'router'}), ipv4, false)
 need_string_array_match(in_domain({'ddhcpd', 'dns'}), ipv4, false)
+-- Netze anderer DHCP-Server (Kea auf den Gateways): kein NAK fuer Adressen
+-- daraus. Ohne Angabe client_prefix4; {} schaltet das ab. Der Daemon nimmt
+-- hoechstens 8, 500-neanderfunk-ddhcpd schneidet ab.
+need_string_array_match(in_domain({'ddhcpd', 'foreign_prefix4'}), cidr4, false)
 
 -- Zweierpotenz der Blockgroesse; der Daemon speichert die Groesse in 8 Bit
 need_number_range(in_domain({'ddhcpd', 'block_size'}), 0, 7, false)
