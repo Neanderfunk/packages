@@ -66,3 +66,60 @@ msgstr ""
 
 msgid "all ports"
 msgstr ""
+
+msgid "Status"
+msgstr ""
+
+msgid "running"
+msgstr ""
+
+msgid "learning phase"
+msgstr ""
+
+msgid "not running"
+msgstr ""
+
+msgid "Blocks"
+msgstr ""
+
+msgid "free"
+msgstr ""
+
+msgid "own"
+msgstr ""
+
+msgid "foreign"
+msgstr ""
+
+msgid "Leases"
+msgstr ""
+
+msgid "leased"
+msgstr ""
+
+msgid "offered"
+msgstr ""
+
+msgid "not local"
+msgstr ""
+
+msgid "leased, but the client is not connected here right now"
+msgstr ""
+
+msgid "Roaming since start"
+msgstr ""
+
+msgid "in"
+msgstr ""
+
+msgid "out"
+msgstr ""
+
+msgid "in: clients with an address of another node came here; out: another node asked for a client of this node"
+msgstr ""
+
+msgid "IPv4 clients"
+msgstr ""
+
+msgid "of them from ddhcpd"
+msgstr ""

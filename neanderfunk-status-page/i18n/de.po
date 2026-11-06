@@ -72,3 +72,60 @@ msgstr "Uplink/VPN"
 
 msgid "all ports"
 msgstr "alle Ports"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "running"
+msgstr "läuft"
+
+msgid "learning phase"
+msgstr "Lernphase"
+
+msgid "not running"
+msgstr "aus"
+
+msgid "Blocks"
+msgstr "Blöcke"
+
+msgid "free"
+msgstr "frei"
+
+msgid "own"
+msgstr "eigene"
+
+msgid "foreign"
+msgstr "fremd"
+
+msgid "Leases"
+msgstr "Leases"
+
+msgid "leased"
+msgstr "vergeben"
+
+msgid "offered"
+msgstr "angeboten"
+
+msgid "not local"
+msgstr "nicht lokal"
+
+msgid "leased, but the client is not connected here right now"
+msgstr "vergeben, aber der Client hängt gerade nicht hier"
+
+msgid "Roaming since start"
+msgstr "Roaming seit Start"
+
+msgid "in"
+msgstr "rein"
+
+msgid "out"
+msgstr "raus"
+
+msgid "in: clients with an address of another node came here; out: another node asked for a client of this node"
+msgstr "rein: Clients mit Adresse eines anderen Knotens sind hierher gekommen; raus: ein anderer Knoten hat für einen Client dieses Knotens gefragt"
+
+msgid "IPv4 clients"
+msgstr "IPv4-Clients"
+
+msgid "of them from ddhcpd"
+msgstr "davon ddhcpd"
