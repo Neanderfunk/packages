@@ -66,6 +66,9 @@ Unterschiede zu ffgraz-ddhcpd
 * Mehr Log: `uci set ddhcpd.settings.verbosity=2` (je Stufe ein `-v`), Ausgabe
   im `logread`.
 * `check_site.lua` läuft beim Bau (`BuildPackageGluon`).
+* Gebaut mit `DDHCPD_STATISTICS`: Zähler für Roaming und DHCP
+  (`ddhcpdctl -s`, `ddhcpdctl -m`); `neanderfunk-respondd` liest daraus
+  `statistics.neanderfunk.ddhcpd`.
 * `CONFLICTS:=ffgraz-ddhcpd`: beide installieren dieselben Dateien.
 
 Test
