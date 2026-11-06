@@ -242,10 +242,16 @@ aussehen (Absprache mit der Karte, 06.11.2026).
   einen Client dieses Knotens; `ack_*`/`nak_*` die Antworten darauf. `dhcp`:
   discover, request, release, inform empfangen, offer, ack, nak gesendet.
 - `conflicts`: **Zähler** für Blockkonflikte nach Inselbetrieb (zwei Knoten
-  claimen denselben Block, etwa nach einem Supernode-Schwenk): `won`,
-  `lost`; `handover_ack`/`handover_nak` = Leases eines verlorenen Blocks,
-  die der Gewinner übernommen bzw. abgelehnt hat. Ein NAK heißt: dieselbe
-  Adresse war auf beiden Inseln vergeben.
+  claimen denselben Block, etwa nach einem Supernode-Schwenk): `lost` =
+  Blöcke, die dieser Knoten abgeben musste, genau einmal je Block und
+  Konflikt; **die Zahl der Konflikte ist die Summe von `lost`**. `won` ist
+  nur eine Untergrenze: Gibt der andere Knoten nach, bevor sein Claim hier
+  ankommt, erfährt dieser Knoten nichts davon (ab Daemon 300e5ec je Block
+  und Konflikt höchstens einmal, vorher je Claim des anderen).
+  `handover_ack`/`handover_nak` = Leases eines verlorenen Blocks, die der
+  Gewinner übernommen bzw. abgelehnt hat, je Lease einmal. Ein NAK heißt:
+  dieselbe Adresse war auf beiden Inseln vergeben; der Gewinner vergibt sie
+  dann nicht neu, bevor die Lease des Verlierers abgelaufen ist.
 
 **clients_ipv4** - lokale Clients mit IPv4, auch ohne ddhcpd.
 `{ "total": 14, "ddhcpd": 9 }`. Lokal heißt: die MAC steht in der
