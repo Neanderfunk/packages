@@ -27,6 +27,8 @@ ab, wie schnell er sich ändert:
 | Konfiguration | `preserve_channels` | `nodeinfo` | bei jeder nodeinfo-Abfrage (die kommt selten) |
 | mittel | je Radio Kanal, HT-Modus, SSID, TX-Leistung, Land, Mesh | `statistics` | 10 s gecacht; ändert sich durch ACS, ssid-changer, Eingriffe |
 | mittel | Temperaturen: SoC, WLAN-Chips | `statistics` | 10 s gecacht; mt76 fragt dafür bei jedem Lesen die WLAN-Firmware |
+| mittel | ddhcpd: Blöcke, Leases, Zähler | `statistics` | 10 s gecacht; der Daemon ist single-threaded und soll DHCP beantworten |
+| schnell | IPv4 der Clients aus der ARP-Tabelle; der ddhcpd-Bereich der Domain alle 10 min | `statistics` | bei jeder Abfrage aus `/proc` |
 | langsam | Speicherdruck: MemAvailable, Refaults, Forks, zram | `statistics` | 60 s gecacht; Zähler für Raten über Minuten, dafür reicht das |
 | schnell | je Ethernet-Port Link, Geschwindigkeit, Duplex; ssid-changer-Zähler | `statistics` | bei jeder Abfrage aus sysfs bzw. `/tmp`; das ioctl für `possible` nur, wenn sich die Geschwindigkeit des Ports geändert hat |
 
@@ -36,9 +38,11 @@ Datenvertrag
 In `statistics` sind **alle Felder immer vorhanden**, notfalls `0`, `false`
 oder `""` - die Statusseite schreibt Werte per `data-statistics`
 unverändert ins Element, ein fehlender Schlüssel käme dort als `undefined`
-an. Zwei Ausnahmen: `ssid_changer` fehlt ganz, wenn eine seiner Dateien
-fehlt (Paket nicht installiert), und `temperature` fehlt ganz, wenn die
-Hardware keinen Sensor hat bzw. keiner einen gültigen Wert liefert. Auch
+an. Ausnahmen: `ssid_changer` fehlt ganz, wenn eine seiner Dateien
+fehlt (Paket nicht installiert), `temperature` fehlt ganz, wenn die
+Hardware keinen Sensor hat bzw. keiner einen gültigen Wert liefert, und
+`ddhcpd` fehlt ohne das Paket; läuft der Daemon nicht, enthält es nur
+`running`. Auch
 innerhalb von `temperature` kann ein Sensor von Abfrage zu Abfrage fehlen.
 
 ### nodeinfo
@@ -200,6 +204,45 @@ Welche Hardware was liefert (Testknoten, 14.09.2026):
 | mpc85xx | Extreme WS-AP3825i | nichts |
 | x86 | FUTRO S550 (`k8temp`) | nichts: der Sempron meldet 4294918296 = −49 °C, verworfen |
 | x86 | QEMU-VM | nichts |
+
+**ddhcpd** - der verteilte DHCP-Server (`neanderfunk-ddhcpd`), über seinen
+Control-Socket (`ddhcpdctl -m`, Fork Neanderfunk/ddhcpd), höchstens alle 10 s.
+**Fehlt ganz**, wenn das Paket nicht installiert ist. Antwortet der Daemon
+nicht (aus, Domain ohne ddhcpd), steht nur `"running": false` da, ohne
+die übrigen Gruppen und ohne `learning`: keine Nullen, die wie Messwerte
+aussehen (Absprache mit der Karte, 06.11.2026).
+
+```json
+"ddhcpd": {
+  "running": true, "learning": false,
+  "blocks":  { "total": 64, "free": 62, "ours": 1, "claiming": 1, "foreign": 0 },
+  "leases":  { "total": 4, "leased": 2, "offered": 0, "free": 2, "away": 1 },
+  "roaming": { "in": 0, "out": 0, "ack_sent": 0, "ack_received": 0, "nak_sent": 0, "nak_received": 0 },
+  "dhcp":    { "discover": 2, "offer": 2, "request": 2, "ack": 2, "nak": 0, "release": 0, "inform": 0 }
+}
+```
+- `blocks`: die Blocktabelle, auf allen Knoten der Domain gleich.
+  `total = free + ours + claiming + foreign`; `claiming` = gerade im Claim,
+  `foreign` = von anderen Knoten belegt.
+- `leases`: nur in den eigenen Blöcken, `total` = eigene Blöcke ×
+  Blockgröße. `away` ist eine **Momentaufnahme**: vergebene Leases, deren
+  Client gerade nicht lokal hängt (nicht in der Forwarding-Tabelle von
+  `br-client` an einem anderen Port als `bat0`). Die Bridge vergisst einen
+  stillen Client nach 300 s; der zählt dann auch als `away`.
+- `roaming` und `dhcp`: **Zähler** seit dem Start des Daemons (Neustart =
+  Reset). `roaming.in`: ein Client mit fremder Adresse ist hierher geroamt,
+  der Knoten fragt den Eigner; `roaming.out`: ein anderer Knoten fragt für
+  einen Client dieses Knotens; `ack_*`/`nak_*` die Antworten darauf. `dhcp`:
+  discover, request, release, inform empfangen, offer, ack, nak gesendet.
+
+**clients_ipv4** - lokale Clients mit IPv4 laut ARP-Tabelle an `local-node`
+(die Clients fragen den next_node als DNS-Server), auch ohne ddhcpd.
+`{ "total": 14, "ddhcpd": 9 }`: `ddhcpd` zählt die Adressen in
+`ddhcpd.range` der aktiven Domain, der Rest kommt vom DHCP-Server des
+Supernodes; ohne `ddhcpd.range` ist es 0. Die Domain kommt per
+`uci -q get gluon.core.domain` aus einem eigenen Prozess (alle 10 Minuten),
+aus demselben Grund wie bei `preserve_channels`. Weicht von `clients.total`
+ab (ARP statt Übersetzungstabelle; Clients ohne IPv4 fehlen).
 
 Auf **swconfig-Geräten** (TL-WDR3600, Archer C7 …) bleibt `ethernet` leer,
 die echten Ports kennt nur der Switch. Eine zweite Stufe per libsw wäre
