@@ -63,6 +63,8 @@
 #include <iwinfo.h>
 #include <json-c/json.h>
 
+#include <batadv-genl.h>
+
 
 /* --- Helfer ---------------------------------------------------------------- */
 
@@ -960,33 +962,53 @@ static int bat_port_no(void) {
 }
 
 /*
- * Wie viele der vergebenen MACs stehen nicht lokal in br-client: brforward
- * liefert struct __fdb_entry (linux/if_bridge.h), 16 Byte je Eintrag.
+ * MACs der Geraete, die gerade lokal an br-client haengen: die
+ * Forwarding-Tabelle (brforward, struct __fdb_entry aus linux/if_bridge.h,
+ * 16 Byte je Eintrag) ohne eigene Adressen und ohne den Port bat0. Ein
+ * Client faellt nach 300 s Stille heraus (Bridge-Ageing).
  */
+#define MAX_LOCAL 512
+
+static int local_macs(unsigned char (*macs)[6], int max) {
+	int n = 0, bat = bat_port_no();
+
+	FILE *f = fopen("/sys/class/net/" NF_BR_CLIENT "/brforward", "rb");
+	if (!f)
+		return 0;
+
+	unsigned char e[16];
+	while (n < max && fread(e, sizeof(e), 1, f) == 1) {
+		int port = e[6] | (e[12] << 8);
+		if (e[7] /* is_local */ || port == bat || (e[0] & 1) /* Multicast */)
+			continue;
+		bool dup = false;
+		for (int i = 0; i < n && !dup; i++)
+			dup = !memcmp(macs[i], e, 6);
+		if (!dup)
+			memcpy(macs[n++], e, 6);
+	}
+	fclose(f);
+	return n;
+}
+
+static bool mac_in(const unsigned char (*macs)[6], int n, const unsigned char *mac) {
+	for (int i = 0; i < n; i++)
+		if (!memcmp(macs[i], mac, 6))
+			return true;
+	return false;
+}
+
+/* Wie viele der vergebenen MACs stehen nicht lokal in br-client. */
 static long long ddhcpd_away(const struct ddhcpd_summary *sum) {
 	if (!sum->n_leased)
 		return 0;
 
-	bool local[MAX_LEASED] = { false };
-	int bat = bat_port_no();
-
-	FILE *f = fopen("/sys/class/net/" NF_BR_CLIENT "/brforward", "rb");
-	if (f) {
-		unsigned char e[16];
-		while (fread(e, sizeof(e), 1, f) == 1) {
-			int port = e[6] | (e[12] << 8);
-			if (e[7] /* is_local */ || port == bat)
-				continue;
-			for (int i = 0; i < sum->n_leased; i++)
-				if (!memcmp(sum->leased[i], e, 6))
-					local[i] = true;
-		}
-		fclose(f);
-	}
+	static unsigned char macs[MAX_LOCAL][6];
+	int n = local_macs(macs, MAX_LOCAL);
 
 	long long away = 0;
 	for (int i = 0; i < sum->n_leased; i++)
-		if (!local[i])
+		if (!mac_in((const unsigned char (*)[6])macs, n, sum->leased[i]))
 			away++;
 	return away;
 }
@@ -998,19 +1020,23 @@ static void ddhcpd_add(struct json_object *obj, const struct ddhcpd_summary *sum
 		json_object_object_add(obj, name, json_object_new_int64(sum->v[k]));
 }
 
+/* letzte Antwort des Daemons, auch fuer clients_ipv4 (eigene Leases) */
+static struct ddhcpd_summary ddhcpd_sum;
+static bool ddhcpd_sum_ok;
+
 static struct json_object * collect_ddhcpd(void) {
-	static struct ddhcpd_summary sum;
 	struct json_object *ret = json_object_new_object();
 
-	if (!ddhcpd_query(&sum)) {
+	ddhcpd_sum_ok = ddhcpd_query(&ddhcpd_sum);
+	if (!ddhcpd_sum_ok) {
 		json_object_object_add(ret, "running", json_object_new_boolean(false));
 		return ret;
 	}
 
 	json_object_object_add(ret, "running", json_object_new_boolean(true));
 	int k = ddhcpd_key("learning");
-	bool learning = sum.have[k] && sum.v[k] != 0;
-	if (sum.have[k])
+	bool learning = ddhcpd_sum.have[k] && ddhcpd_sum.v[k] != 0;
+	if (ddhcpd_sum.have[k])
 		json_object_object_add(ret, "learning", json_object_new_boolean(learning));
 
 	/*
@@ -1020,53 +1046,53 @@ static struct json_object * collect_ddhcpd(void) {
 	 * weiss der Knoten auch dann.
 	 */
 	struct json_object *blocks = json_object_new_object();
-	ddhcpd_add(blocks, &sum, "total", "blocks_total");
-	ddhcpd_add(blocks, &sum, "ours", "blocks_ours");
+	ddhcpd_add(blocks, &ddhcpd_sum, "total", "blocks_total");
+	ddhcpd_add(blocks, &ddhcpd_sum, "ours", "blocks_ours");
 	if (!learning) {
-		ddhcpd_add(blocks, &sum, "free", "blocks_free");
-		ddhcpd_add(blocks, &sum, "claiming", "blocks_claiming");
-		ddhcpd_add(blocks, &sum, "foreign", "blocks_foreign");
-		ddhcpd_add(blocks, &sum, "releasing", "blocks_releasing");
+		ddhcpd_add(blocks, &ddhcpd_sum, "free", "blocks_free");
+		ddhcpd_add(blocks, &ddhcpd_sum, "claiming", "blocks_claiming");
+		ddhcpd_add(blocks, &ddhcpd_sum, "foreign", "blocks_foreign");
+		ddhcpd_add(blocks, &ddhcpd_sum, "releasing", "blocks_releasing");
 	}
 	json_object_object_add(ret, "blocks", blocks);
 
 	struct json_object *leases = json_object_new_object();
-	ddhcpd_add(leases, &sum, "total", "leases_total");
-	ddhcpd_add(leases, &sum, "leased", "leases_leased");
-	ddhcpd_add(leases, &sum, "offered", "leases_offered");
-	ddhcpd_add(leases, &sum, "free", "leases_free");
-	json_object_object_add(leases, "away", json_object_new_int64(ddhcpd_away(&sum)));
+	ddhcpd_add(leases, &ddhcpd_sum, "total", "leases_total");
+	ddhcpd_add(leases, &ddhcpd_sum, "leased", "leases_leased");
+	ddhcpd_add(leases, &ddhcpd_sum, "offered", "leases_offered");
+	ddhcpd_add(leases, &ddhcpd_sum, "free", "leases_free");
+	json_object_object_add(leases, "away", json_object_new_int64(ddhcpd_away(&ddhcpd_sum)));
 	json_object_object_add(ret, "leases", leases);
 
 	/* Zaehler gibt es nur, wenn ddhcpd mit DDHCPD_STATISTICS gebaut ist */
-	if (sum.have[ddhcpd_key("roaming_in")]) {
+	if (ddhcpd_sum.have[ddhcpd_key("roaming_in")]) {
 		struct json_object *roaming = json_object_new_object();
-		ddhcpd_add(roaming, &sum, "in", "roaming_in");
-		ddhcpd_add(roaming, &sum, "out", "roaming_out");
-		ddhcpd_add(roaming, &sum, "ack_sent", "roaming_ack_sent");
-		ddhcpd_add(roaming, &sum, "ack_received", "roaming_ack_received");
-		ddhcpd_add(roaming, &sum, "nak_sent", "roaming_nak_sent");
-		ddhcpd_add(roaming, &sum, "nak_received", "roaming_nak_received");
+		ddhcpd_add(roaming, &ddhcpd_sum, "in", "roaming_in");
+		ddhcpd_add(roaming, &ddhcpd_sum, "out", "roaming_out");
+		ddhcpd_add(roaming, &ddhcpd_sum, "ack_sent", "roaming_ack_sent");
+		ddhcpd_add(roaming, &ddhcpd_sum, "ack_received", "roaming_ack_received");
+		ddhcpd_add(roaming, &ddhcpd_sum, "nak_sent", "roaming_nak_sent");
+		ddhcpd_add(roaming, &ddhcpd_sum, "nak_received", "roaming_nak_received");
 		json_object_object_add(ret, "roaming", roaming);
 
 		struct json_object *dhcp = json_object_new_object();
-		ddhcpd_add(dhcp, &sum, "discover", "dhcp_discover");
-		ddhcpd_add(dhcp, &sum, "offer", "dhcp_offer");
-		ddhcpd_add(dhcp, &sum, "request", "dhcp_request");
-		ddhcpd_add(dhcp, &sum, "ack", "dhcp_ack");
-		ddhcpd_add(dhcp, &sum, "nak", "dhcp_nak");
-		ddhcpd_add(dhcp, &sum, "release", "dhcp_release");
-		ddhcpd_add(dhcp, &sum, "inform", "dhcp_inform");
+		ddhcpd_add(dhcp, &ddhcpd_sum, "discover", "dhcp_discover");
+		ddhcpd_add(dhcp, &ddhcpd_sum, "offer", "dhcp_offer");
+		ddhcpd_add(dhcp, &ddhcpd_sum, "request", "dhcp_request");
+		ddhcpd_add(dhcp, &ddhcpd_sum, "ack", "dhcp_ack");
+		ddhcpd_add(dhcp, &ddhcpd_sum, "nak", "dhcp_nak");
+		ddhcpd_add(dhcp, &ddhcpd_sum, "release", "dhcp_release");
+		ddhcpd_add(dhcp, &ddhcpd_sum, "inform", "dhcp_inform");
 		json_object_object_add(ret, "dhcp", dhcp);
 	}
 
 	/* Blockkonflikte nach Inselbetrieb, Zaehler (Neanderfunk/ddhcpd ab 5f3090a) */
-	if (sum.have[ddhcpd_key("conflicts_won")]) {
+	if (ddhcpd_sum.have[ddhcpd_key("conflicts_won")]) {
 		struct json_object *conflicts = json_object_new_object();
-		ddhcpd_add(conflicts, &sum, "won", "conflicts_won");
-		ddhcpd_add(conflicts, &sum, "lost", "conflicts_lost");
-		ddhcpd_add(conflicts, &sum, "handover_ack", "conflicts_handover_ack");
-		ddhcpd_add(conflicts, &sum, "handover_nak", "conflicts_handover_nak");
+		ddhcpd_add(conflicts, &ddhcpd_sum, "won", "conflicts_won");
+		ddhcpd_add(conflicts, &ddhcpd_sum, "lost", "conflicts_lost");
+		ddhcpd_add(conflicts, &ddhcpd_sum, "handover_ack", "conflicts_handover_ack");
+		ddhcpd_add(conflicts, &ddhcpd_sum, "handover_nak", "conflicts_handover_nak");
 		json_object_object_add(ret, "conflicts", conflicts);
 	}
 
@@ -1097,10 +1123,21 @@ static struct json_object * get_ddhcpd(void) {
 
 
 /*
- * IPv4 der lokalen Clients, auch ohne ddhcpd: die ARP-Tabelle an local-node
- * (Clients fragen den next_node als DNS-Server). "ddhcpd" zaehlt die
- * Adressen in ddhcpd.range der aktiven Domain, der Rest kommt vom DHCP-Server
- * des Supernodes. Ohne ddhcpd.range ist ddhcpd 0.
+ * Lokale Clients mit IPv4. "Lokal" heisst: die MAC steht in br-client an
+ * einem anderen Port als bat0 (siehe local_macs). Die IPv4 dazu kommt aus
+ *  - dem DAT-Cache von batman-adv: bat0 liest die ARP-Pakete der Clients mit,
+ *    auch die an den Supernode als Router; Eintraege leben 5 Minuten. Der
+ *    Cache enthaelt auch fremde Clients (verteilte Tabelle), daher der Filter
+ *    auf lokale MACs;
+ *  - der ARP-Tabelle des Knotens (Clients, die den next_node ansprechen);
+ *  - den eigenen ddhcpd-Leases ("leased <mac>"), auch ohne ARP-Verkehr.
+ * Bis 11/2026 zaehlte hier nur die ARP-Tabelle an local-node: das verfehlte
+ * Clients, die den next_node nicht ansprechen, und zaehlte fremde Eintraege
+ * mit.
+ *
+ * "ddhcpd": davon mit einer Adresse in ddhcpd.range der aktiven Domain oder
+ * mit einer eigenen Lease, der Rest kommt vom DHCP-Server des Supernodes.
+ * Ohne ddhcpd.range und ohne Daemon ist ddhcpd 0.
  *
  * Die Domain kommt per "uci -q get gluon.core.domain" aus einem eigenen
  * Prozess, nicht ueber libuci/libgluonutil: die laden das ganze Paket gluon
@@ -1111,9 +1148,6 @@ static struct json_object * get_ddhcpd(void) {
 
 #ifndef NF_PROC_ARP
 #define NF_PROC_ARP "/proc/net/arp"
-#endif
-#ifndef NF_LOCAL_NODE
-#define NF_LOCAL_NODE "local-node"
 #endif
 #ifndef NF_SITE_JSON
 #define NF_SITE_JSON "/lib/gluon/site.json"
@@ -1179,42 +1213,135 @@ static bool load_ddhcpd_range(uint32_t *net, uint32_t *mask) {
 	return true;
 }
 
+#define CLIENTS4_TTL 10
+
+struct client4 {
+	unsigned char mac[6];
+	bool ipv4, ddhcpd;
+};
+
+struct client4_set {
+	struct batadv_nlquery_opts query_opts;
+	struct client4 c[MAX_LOCAL];
+	int n;
+	bool have_range;
+	uint32_t net, mask;
+};
+
+/* ip in Netzwerk-Byteordnung */
+static void client4_mark(struct client4_set *set, const unsigned char *mac, uint32_t ip) {
+	for (int i = 0; i < set->n; i++) {
+		if (memcmp(set->c[i].mac, mac, 6))
+			continue;
+		set->c[i].ipv4 = true;
+		if (set->have_range && (ip & set->mask) == set->net)
+			set->c[i].ddhcpd = true;
+		return;
+	}
+}
+
+static int client4_parse_dat(struct nl_msg *msg, void *arg) {
+	static const enum batadv_nl_attrs mandatory[] = {
+		BATADV_ATTR_DAT_CACHE_IP4ADDRESS,
+		BATADV_ATTR_DAT_CACHE_HWADDRESS,
+	};
+	struct nlattr *attrs[BATADV_ATTR_MAX + 1];
+	struct nlmsghdr *nlh = nlmsg_hdr(msg);
+	struct batadv_nlquery_opts *query_opts = arg;
+	struct client4_set *set = batadv_container_of(query_opts, struct client4_set, query_opts);
+
+	if (!genlmsg_valid_hdr(nlh, 0))
+		return NL_OK;
+
+	struct genlmsghdr *ghdr = nlmsg_data(nlh);
+	if (ghdr->cmd != BATADV_CMD_GET_DAT_CACHE)
+		return NL_OK;
+
+	if (nla_parse(attrs, BATADV_ATTR_MAX, genlmsg_attrdata(ghdr, 0),
+		      genlmsg_len(ghdr), batadv_genl_policy))
+		return NL_OK;
+
+	if (batadv_genl_missing_attrs(attrs, mandatory, BATADV_ARRAY_SIZE(mandatory)))
+		return NL_OK;
+
+	/* wie batctl dc: der Wert ist schon in Netzwerk-Byteordnung */
+	client4_mark(set, nla_data(attrs[BATADV_ATTR_DAT_CACHE_HWADDRESS]),
+		     nla_get_u32(attrs[BATADV_ATTR_DAT_CACHE_IP4ADDRESS]));
+	return NL_OK;
+}
+
+static void client4_arp(struct client4_set *set) {
+	FILE *f = fopen(NF_PROC_ARP, "r");
+	if (!f)
+		return;
+
+	char line[256], ip[64], hw[64];
+	unsigned int flags, m[6];
+	while (fgets(line, sizeof(line), f)) {
+		/* IP address  HW type  Flags  HW address  Mask  Device */
+		if (sscanf(line, "%63s %*s %x %63s", ip, &flags, hw) != 3 ||
+		    !(flags & 0x2 /* ATF_COM */) ||
+		    sscanf(hw, "%x:%x:%x:%x:%x:%x", &m[0], &m[1], &m[2], &m[3], &m[4], &m[5]) != 6)
+			continue;
+		struct in_addr a;
+		if (inet_pton(AF_INET, ip, &a) != 1)
+			continue;
+		unsigned char mac[6];
+		for (int i = 0; i < 6; i++)
+			mac[i] = (unsigned char)m[i];
+		client4_mark(set, mac, a.s_addr);
+	}
+	fclose(f);
+}
+
 static struct json_object * get_clients_ipv4(void) {
-	static time_t stamp;
-	static bool loaded, have_range;
+	static time_t range_stamp, stamp;
+	static bool range_loaded, have_range, counted;
 	static uint32_t net, mask;
+	static long long total, in_ddhcpd;
+	static struct client4_set set;
 	time_t now = now_monotonic();
 
-	if (!loaded || now - stamp >= RANGE_TTL) {
+	if (!range_loaded || now - range_stamp >= RANGE_TTL) {
 		have_range = load_ddhcpd_range(&net, &mask);
-		stamp = now;
-		loaded = true;
+		range_stamp = now;
+		range_loaded = true;
 	}
 
-	long long total = 0, in_range = 0;
-	FILE *f = fopen(NF_PROC_ARP, "r");
-	if (f) {
-		char line[256], ip[64], dev[IFNAMSIZ + 1];
-		unsigned int flags;
-		while (fgets(line, sizeof(line), f)) {
-			/* IP address  HW type  Flags  HW address  Mask  Device */
-			if (sscanf(line, "%63s %*s %x %*s %*s %16s", ip, &flags, dev) != 3)
-				continue;
-			if (strcmp(dev, NF_LOCAL_NODE) || !(flags & 0x2 /* ATF_COM */))
-				continue;
-			struct in_addr a;
-			if (inet_pton(AF_INET, ip, &a) != 1)
-				continue;
-			total++;
-			if (have_range && (a.s_addr & mask) == net)
-				in_range++;
+	if (!counted || now - stamp >= CLIENTS4_TTL) {
+		static unsigned char macs[MAX_LOCAL][6];
+
+		memset(&set, 0, sizeof(set));
+		set.have_range = have_range;
+		set.net = net;
+		set.mask = mask;
+		set.n = local_macs(macs, MAX_LOCAL);
+		for (int i = 0; i < set.n; i++)
+			memcpy(set.c[i].mac, macs[i], 6);
+
+		if (set.n) {
+			batadv_genl_query(NF_BAT_IF, BATADV_CMD_GET_DAT_CACHE,
+					  client4_parse_dat, NLM_F_DUMP, &set.query_opts);
+			client4_arp(&set);
+
+			for (int k = 0; ddhcpd_sum_ok && k < ddhcpd_sum.n_leased; k++)
+				for (int i = 0; i < set.n; i++)
+					if (!memcmp(set.c[i].mac, ddhcpd_sum.leased[k], 6))
+						set.c[i].ipv4 = set.c[i].ddhcpd = true;
 		}
-		fclose(f);
+
+		total = in_ddhcpd = 0;
+		for (int i = 0; i < set.n; i++) {
+			total += set.c[i].ipv4;
+			in_ddhcpd += set.c[i].ddhcpd;
+		}
+		stamp = now;
+		counted = true;
 	}
 
 	struct json_object *ret = json_object_new_object();
 	json_object_object_add(ret, "total", json_object_new_int64(total));
-	json_object_object_add(ret, "ddhcpd", json_object_new_int64(in_range));
+	json_object_object_add(ret, "ddhcpd", json_object_new_int64(in_ddhcpd));
 	return ret;
 }
 
