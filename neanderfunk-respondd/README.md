@@ -28,7 +28,7 @@ ab, wie schnell er sich ändert:
 | mittel | je Radio Kanal, HT-Modus, SSID, TX-Leistung, Land, Mesh | `statistics` | 10 s gecacht; ändert sich durch ACS, ssid-changer, Eingriffe |
 | mittel | Temperaturen: SoC, WLAN-Chips | `statistics` | 10 s gecacht; mt76 fragt dafür bei jedem Lesen die WLAN-Firmware |
 | mittel | ddhcpd: Blöcke, Leases, Zähler | `statistics` | 10 s gecacht; der Daemon ist single-threaded und soll DHCP beantworten |
-| schnell | IPv4 der Clients aus der ARP-Tabelle; der ddhcpd-Bereich der Domain alle 10 min | `statistics` | bei jeder Abfrage aus `/proc` |
+| mittel | IPv4 der lokalen Clients (DAT-Cache, ARP, eigene Leases); der ddhcpd-Bereich der Domain alle 10 min | `statistics` | 10 s gecacht; der DAT-Cache kommt per Netlink-Dump von batman-adv |
 | langsam | Speicherdruck: MemAvailable, Refaults, Forks, zram | `statistics` | 60 s gecacht; Zähler für Raten über Minuten, dafür reicht das |
 | schnell | je Ethernet-Port Link, Geschwindigkeit, Duplex; ssid-changer-Zähler | `statistics` | bei jeder Abfrage aus sysfs bzw. `/tmp`; das ioctl für `possible` nur, wenn sich die Geschwindigkeit des Ports geändert hat |
 
@@ -247,14 +247,24 @@ aussehen (Absprache mit der Karte, 06.11.2026).
   die der Gewinner übernommen bzw. abgelehnt hat. Ein NAK heißt: dieselbe
   Adresse war auf beiden Inseln vergeben.
 
-**clients_ipv4** - lokale Clients mit IPv4 laut ARP-Tabelle an `local-node`
-(die Clients fragen den next_node als DNS-Server), auch ohne ddhcpd.
-`{ "total": 14, "ddhcpd": 9 }`: `ddhcpd` zählt die Adressen in
-`ddhcpd.range` der aktiven Domain, der Rest kommt vom DHCP-Server des
-Supernodes; ohne `ddhcpd.range` ist es 0. Die Domain kommt per
+**clients_ipv4** - lokale Clients mit IPv4, auch ohne ddhcpd.
+`{ "total": 14, "ddhcpd": 9 }`. Lokal heißt: die MAC steht in der
+Forwarding-Tabelle von `br-client` an einem anderen Port als `bat0` (wie bei
+`leases.away`). Die IPv4 dazu kommt aus dem DAT-Cache von batman-adv (bat0
+liest die ARP-Pakete der Clients mit, auch die an den Supernode als Router),
+aus der ARP-Tabelle des Knotens oder aus einer eigenen ddhcpd-Lease. `ddhcpd`
+zählt davon die mit einer Adresse in `ddhcpd.range` der aktiven Domain oder
+mit eigener Lease, der Rest kommt vom DHCP-Server des Supernodes; ohne
+`ddhcpd.range` und ohne Daemon ist es 0. Die Domain kommt per
 `uci -q get gluon.core.domain` aus einem eigenen Prozess (alle 10 Minuten),
-aus demselben Grund wie bei `preserve_channels`. Weicht von `clients.total`
-ab (ARP statt Übersetzungstabelle; Clients ohne IPv4 fehlen).
+aus demselben Grund wie bei `preserve_channels`. 10 s gecacht.
+Weicht von `clients.total` ab: Clients ohne IPv4 fehlen, und wer 5 Minuten
+kein ARP schickt und keine eigene Lease hat, fällt aus dem DAT-Cache.
+
+Bis 11/2026 zählte `clients_ipv4` nur die ARP-Tabelle an `local-node`. Das
+verfehlte Clients, die den next_node nicht ansprechen (im Labor `total` 0
+bei zwei Clients), und zählte fremde Einträge mit (an Testknoten ohne
+eigene Clients je einer).
 
 Auf **swconfig-Geräten** (TL-WDR3600, Archer C7 …) bleibt `ethernet` leer,
 die echten Ports kennt nur der Switch. Eine zweite Stufe per libsw wäre

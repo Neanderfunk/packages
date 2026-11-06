@@ -10,7 +10,7 @@ include $(TOPDIR)/../package/gluon.mk
 
 define Package/$(PKG_NAME)
   TITLE:=respondd module: hardware, radios, offline SSID, ethernet links, memory pressure, temperatures, ddhcpd
-  DEPENDS:=+gluon-respondd +libiwinfo +libjson-c
+  DEPENDS:=+gluon-respondd +libiwinfo +libjson-c +libbatadv +libnl-tiny
 endef
 
 define Package/$(PKG_NAME)/description
@@ -22,9 +22,10 @@ define Package/$(PKG_NAME)/description
   and zram, cached for 60 s; SoC and wifi chip temperatures where the
   hardware has sensors, cached for 10 s; blocks, leases and counters of
   neanderfunk-ddhcpd via its control socket, cached for 10 s; local IPv4
-  clients from the ARP table on local-node, split by the domain's ddhcpd
-  range). Written in C to stay cheap: the status page polls statistics every
-  3 seconds.
+  clients: local MACs of br-client with an address from the batman-adv DAT
+  cache, the ARP table or an own ddhcpd lease, split by the domain's ddhcpd
+  range, cached for 10 s). Written in C to stay cheap: the status page polls
+  statistics every 3 seconds.
 endef
 
 $(eval $(call BuildPackageGluon,$(PKG_NAME)))
