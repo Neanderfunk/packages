@@ -966,10 +966,13 @@ static int bat_port_no(void) {
  * Forwarding-Tabelle (brforward, struct __fdb_entry aus linux/if_bridge.h,
  * 16 Byte je Eintrag) ohne eigene Adressen und ohne den Port bat0. Ein
  * Client faellt nach 300 s Stille heraus (Bridge-Ageing).
+ *
+ * max_age: nur Eintraege, die hoechstens so viele Sekunden still sind, 0 fuer
+ * alle. ageing_timer_value (Byte 8-11) zaehlt in USER_HZ = 100 je Sekunde.
  */
 #define MAX_LOCAL 512
 
-static int local_macs(unsigned char (*macs)[6], int max) {
+static int local_macs(unsigned char (*macs)[6], int max, unsigned int max_age) {
 	int n = 0, bat = bat_port_no();
 
 	FILE *f = fopen("/sys/class/net/" NF_BR_CLIENT "/brforward", "rb");
@@ -980,6 +983,10 @@ static int local_macs(unsigned char (*macs)[6], int max) {
 	while (n < max && fread(e, sizeof(e), 1, f) == 1) {
 		int port = e[6] | (e[12] << 8);
 		if (e[7] /* is_local */ || port == bat || (e[0] & 1) /* Multicast */)
+			continue;
+		uint32_t age;
+		memcpy(&age, e + 8, sizeof(age));
+		if (max_age && age > max_age * 100u)
 			continue;
 		bool dup = false;
 		for (int i = 0; i < n && !dup; i++)
@@ -1004,7 +1011,7 @@ static long long ddhcpd_away(const struct ddhcpd_summary *sum) {
 		return 0;
 
 	static unsigned char macs[MAX_LOCAL][6];
-	int n = local_macs(macs, MAX_LOCAL);
+	int n = local_macs(macs, MAX_LOCAL, 0);
 
 	long long away = 0;
 	for (int i = 0; i < sum->n_leased; i++)
@@ -1124,7 +1131,8 @@ static struct json_object * get_ddhcpd(void) {
 
 /*
  * Lokale Clients mit IPv4. "Lokal" heisst: die MAC steht in br-client an
- * einem anderen Port als bat0 (siehe local_macs). Die IPv4 dazu kommt aus
+ * einem anderen Port als bat0 (siehe local_macs) und war in den letzten 60 s
+ * aktiv, wie bei clients.total von Gluon. Die IPv4 dazu kommt aus
  *  - dem DAT-Cache von batman-adv: bat0 liest die ARP-Pakete der Clients mit,
  *    auch die an den Supernode als Router; Eintraege leben 5 Minuten. Der
  *    Cache enthaelt auch fremde Clients (verteilte Tabelle), daher der Filter
@@ -1214,6 +1222,8 @@ static bool load_ddhcpd_range(uint32_t *net, uint32_t *mask) {
 }
 
 #define CLIENTS4_TTL 10
+/* wie clients.total in gluon-mesh-batman-adv (MAX_INACTIVITY 60000 ms) */
+#define CLIENTS4_ACTIVE 60
 
 struct client4 {
 	unsigned char mac[6];
@@ -1315,7 +1325,7 @@ static struct json_object * get_clients_ipv4(void) {
 		set.have_range = have_range;
 		set.net = net;
 		set.mask = mask;
-		set.n = local_macs(macs, MAX_LOCAL);
+		set.n = local_macs(macs, MAX_LOCAL, CLIENTS4_ACTIVE);
 		for (int i = 0; i < set.n; i++)
 			memcpy(set.c[i].mac, macs[i], 6);
 
