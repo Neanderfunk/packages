@@ -43,7 +43,7 @@ end
 local s = run({
 	next_node = {ip4 = '10.51.64.1'},
 	ddhcpd = {
-		enabled = true, range = '10.51.72.0/21', client_prefix4 = '10.51.64.0/18',
+		enabled = true, range = '10.51.72.0/21', client_prefix4 = '10.51.64.0/20',
 		router = '10.51.64.2', dns = {'10.51.64.1', '10.51.64.2'}, dhcp_lease_time = 600,
 	},
 })
@@ -52,7 +52,7 @@ check('range', s.settings.block_network, '10.51.72.0/21')
 check('spare', s.settings.spare_leases, '8')
 check('learning', s.settings.learning_time, '30')
 check('if', s.settings.dhcp_interface, 'local-node')
-check('netmask', s.netmask.payload, '255.255.192.0')
+check('netmask', s.netmask.payload, '255.255.240.0')
 check('router', s.router.payload, '10.51.64.2')
 check('dns len', s.dns.len, '8')
 check('dns', s.dns.payload, '10.51.64.1.10.51.64.2')

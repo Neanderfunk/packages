@@ -215,17 +215,20 @@ aussehen (Absprache mit der Karte, 06.11.2026).
 ```json
 "ddhcpd": {
   "running": true, "learning": false,
-  "blocks":  { "total": 64, "free": 62, "ours": 1, "claiming": 1, "foreign": 0 },
+  "blocks":  { "total": 64, "free": 62, "ours": 1, "claiming": 1, "foreign": 0, "releasing": 0 },
   "leases":  { "total": 4, "leased": 2, "offered": 0, "free": 2, "away": 1 },
   "roaming": { "in": 0, "out": 0, "ack_sent": 0, "ack_received": 0, "nak_sent": 0, "nak_received": 0 },
-  "dhcp":    { "discover": 2, "offer": 2, "request": 2, "ack": 2, "nak": 0, "release": 0, "inform": 0 }
+  "dhcp":    { "discover": 2, "offer": 2, "request": 2, "ack": 2, "nak": 0, "release": 0, "inform": 0 },
+  "conflicts": { "won": 0, "lost": 0, "handover_ack": 0, "handover_nak": 0 }
 }
 ```
 - `blocks`: die Blocktabelle, auf allen Knoten der Domain gleich.
-  `total = free + ours + claiming + foreign`; `claiming` = gerade im Claim,
-  `foreign` = von anderen Knoten belegt. In der Lernphase
-  (`learning: true`) fehlen `free`, `claiming` und `foreign`, weil die
-  Tabelle dann noch unvollständig ist.
+  `total = free + ours + claiming + foreign + releasing`; `claiming` =
+  gerade im Claim, `foreign` = von anderen Knoten belegt, `releasing` =
+  Blöcke, die der Knoten in einem Konflikt verloren hat und deren Leases
+  er noch an den Gewinner übergibt. In der Lernphase (`learning: true`)
+  fehlen `free`, `claiming`, `foreign` und `releasing`, weil die Tabelle
+  dann noch unvollständig ist.
 - Alle Werte sind ganze JSON-Zahlen bzw. Booleans, nie Strings, nie
   Kommazahlen (also auch kein NaN).
 - `leases`: nur in den eigenen Blöcken, `total` = eigene Blöcke ×
@@ -238,6 +241,11 @@ aussehen (Absprache mit der Karte, 06.11.2026).
   der Knoten fragt den Eigner; `roaming.out`: ein anderer Knoten fragt für
   einen Client dieses Knotens; `ack_*`/`nak_*` die Antworten darauf. `dhcp`:
   discover, request, release, inform empfangen, offer, ack, nak gesendet.
+- `conflicts`: **Zähler** für Blockkonflikte nach Inselbetrieb (zwei Knoten
+  claimen denselben Block, etwa nach einem Supernode-Schwenk): `won`,
+  `lost`; `handover_ack`/`handover_nak` = Leases eines verlorenen Blocks,
+  die der Gewinner übernommen bzw. abgelehnt hat. Ein NAK heißt: dieselbe
+  Adresse war auf beiden Inseln vergeben.
 
 **clients_ipv4** - lokale Clients mit IPv4 laut ARP-Tabelle an `local-node`
 (die Clients fragen den next_node als DNS-Server), auch ohne ddhcpd.

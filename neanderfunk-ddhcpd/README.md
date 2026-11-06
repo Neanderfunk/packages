@@ -22,8 +22,9 @@ Ohne `enabled = true` läuft der Daemon nicht.
 ```lua
 ddhcpd = {
   enabled = true,
+  -- Platzhalter, die echten Werte kommen aus dem Adressplan je Domain
   range = '10.51.72.0/21',           -- Bereich, den ddhcpd in Blöcken vergibt
-  client_prefix4 = '10.51.64.0/18',  -- Client-Netz: daraus die Netzmaske (Option 1)
+  client_prefix4 = '10.51.64.0/20',  -- Client-Netz der Domain: daraus die Netzmaske (Option 1)
   router = '10.51.64.2',             -- Option 3
   dns = { '10.51.64.1', '10.51.64.2' }, -- Option 6
   -- optional, mit Vorgabe:
