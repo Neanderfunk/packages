@@ -868,8 +868,8 @@ static struct json_object * get_temperature(void) {
 #define MAX_LEASED 1024
 
 struct ddhcpd_summary {
-	long long v[25];
-	bool have[25];
+	long long v[32];
+	bool have[32];
 	unsigned char leased[MAX_LEASED][6];
 	int n_leased;
 };
@@ -877,11 +877,13 @@ struct ddhcpd_summary {
 static const char *const ddhcpd_keys[] = {
 	"learning",
 	"blocks_total", "blocks_free", "blocks_ours", "blocks_claiming", "blocks_foreign",
+	"blocks_releasing",
 	"leases_total", "leases_leased", "leases_offered", "leases_free",
 	"roaming_in", "roaming_out", "roaming_ack_sent", "roaming_ack_received",
 	"roaming_nak_sent", "roaming_nak_received",
 	"dhcp_discover", "dhcp_offer", "dhcp_request", "dhcp_ack", "dhcp_nak",
 	"dhcp_release", "dhcp_inform",
+	"conflicts_won", "conflicts_lost", "conflicts_handover_ack", "conflicts_handover_nak",
 	NULL,
 };
 
@@ -1024,6 +1026,7 @@ static struct json_object * collect_ddhcpd(void) {
 		ddhcpd_add(blocks, &sum, "free", "blocks_free");
 		ddhcpd_add(blocks, &sum, "claiming", "blocks_claiming");
 		ddhcpd_add(blocks, &sum, "foreign", "blocks_foreign");
+		ddhcpd_add(blocks, &sum, "releasing", "blocks_releasing");
 	}
 	json_object_object_add(ret, "blocks", blocks);
 
@@ -1055,6 +1058,16 @@ static struct json_object * collect_ddhcpd(void) {
 		ddhcpd_add(dhcp, &sum, "release", "dhcp_release");
 		ddhcpd_add(dhcp, &sum, "inform", "dhcp_inform");
 		json_object_object_add(ret, "dhcp", dhcp);
+	}
+
+	/* Blockkonflikte nach Inselbetrieb, Zaehler (Neanderfunk/ddhcpd ab 5f3090a) */
+	if (sum.have[ddhcpd_key("conflicts_won")]) {
+		struct json_object *conflicts = json_object_new_object();
+		ddhcpd_add(conflicts, &sum, "won", "conflicts_won");
+		ddhcpd_add(conflicts, &sum, "lost", "conflicts_lost");
+		ddhcpd_add(conflicts, &sum, "handover_ack", "conflicts_handover_ack");
+		ddhcpd_add(conflicts, &sum, "handover_nak", "conflicts_handover_nak");
+		json_object_object_add(ret, "conflicts", conflicts);
 	}
 
 	return ret;
