@@ -30,6 +30,12 @@
 -- sind sie mehrdeutig, und die IPv4 entscheidet. Die IPv4 ist erst seit der
 -- Umnummerierung 04-05/2023 je Domain eindeutig, aeltere Werte gehoeren nicht
 -- in neanderfunk_legacy (Auswertung Buildsystem, Simulation 18.10.2026).
+--
+-- Feste Zuordnung (adorfer 14.11.2026): Mit dem Adressplan 10.NN.0.1 sind
+-- zwei alte next_node-Adressen heute die einer anderen Domain (10.31.0.1:
+-- frueher 17_wip, heute 31_lvrno; 10.40.0.1: frueher 01_vel, heute 40_sim).
+-- Eine Adresse in neanderfunk_legacy.next_node_ip4_fest gehoert genau dieser
+-- Domain, auch wenn sie anderswo als next_node.ip4 oder Altwert steht.
 
 local unistd = require 'posix.unistd'
 local stat = require 'posix.sys.stat'
@@ -99,7 +105,7 @@ if not old_ip4 and #meshes == 0 then
 end
 
 -- Domains im Image
-local cand = { ip4 = {}, mesh = {} }
+local cand = { ip4 = {}, ip4_fest = {}, mesh = {} }
 
 local function add(kind, value, code)
 	if type(value) ~= 'string' then
@@ -121,6 +127,7 @@ for name in dirent.files(DOMAINS) do
 			add('mesh', ((d[w] or {}).mesh or {}).id, code)
 		end
 		for _, v in ipairs(as_list(legacy.next_node_ip4)) do add('ip4', v, code) end
+		for _, v in ipairs(as_list(legacy.next_node_ip4_fest)) do add('ip4_fest', v, code) end
 		for _, v in ipairs(as_list(legacy.mesh_id)) do add('mesh', v, code) end
 	end
 end
@@ -160,9 +167,15 @@ by_mesh = by_mesh or nil
 local by_ip4
 if old_ip4 then
 	local ambiguous
-	by_ip4, ambiguous = single(cand.ip4[old_ip4])
+	by_ip4, ambiguous = single(cand.ip4_fest[old_ip4])
 	if ambiguous then
-		log(string.format('next_node %s passt auf mehrere Domains, zaehlt nicht', old_ip4))
+		-- Datenfehler: dieselbe Adresse in zwei Domains als fest
+		log(string.format('next_node %s ist in mehreren Domains fest zugeordnet, zaehlt nicht', old_ip4))
+	elseif not by_ip4 then
+		by_ip4, ambiguous = single(cand.ip4[old_ip4])
+		if ambiguous then
+			log(string.format('next_node %s passt auf mehrere Domains, zaehlt nicht', old_ip4))
+		end
 	end
 end
 

@@ -61,8 +61,20 @@ durch:
 neanderfunk_legacy = {
 	mesh_id = { 'ffnef-wlf-mesh' },
 	-- next_node_ip4 = { ... },  -- nur Werte ab 05/2023
+	-- next_node_ip4_fest = { ... },  -- gehoert genau dieser Domain
 },
 ```
+
+`next_node_ip4_fest` (adorfer 14.11.2026): Mit dem Adressplan 10.NN.0.1 sind
+zwei alte next_node-Adressen heute die einer anderen Domain. Sie sind fest
+zugeordnet und gewinnen gegen `next_node.ip4` und `next_node_ip4` anderer
+Domains: `10.31.0.1` gehört zu 17_wip (heute auch 31_lvrno), `10.40.0.1` zu
+01_vel (heute auch 40_sim). Die Mesh-ID entscheidet weiter vorher; fest
+zählt nur bei Knoten ohne WLAN-Mesh oder mit mehrdeutiger Mesh-ID. Steht
+eine Adresse in zwei Domains als fest, zählt sie nicht (Datenfehler).
+
+Offline-Test ohne Gluon: `lua5.1 test/offline.lua
+luasrc/lib/gluon/upgrade/004-neanderfunk-domain-from-legacy` (11 Fälle).
 
 Regeln für die Liste (Simulation über alle 380 historischen Stände 2016-2026,
 18.10.2026):

@@ -37,6 +37,11 @@ old 10.40.144.1 "";                    run "7 ohne WLAN -> IPv4" 10_wlf
 old 10.99.0.1 gibtsnicht-mesh;         run "8 nichts passt -> default" ""
 old 10.40.144.1 wlf-mesh lvrno-mesh;   run "9 zwei Mesh-IDs, zwei Domains -> IPv4" 10_wlf
 old "" "";                             run "10 Neuinstallation -> still" ""
+# feste Zuordnung (adorfer 14.11.2026): 10.31.0.1 gehoert 17_wip, obwohl 31_lvrno sie heute hat
+dom 17_wip wip-mesh 10.17.0.1 '{"next_node_ip4":["10.31.0.1"],"next_node_ip4_fest":["10.31.0.1"]}'
+dom 31_lvrno lvrno-mesh 10.31.0.1
+old 10.31.0.1 "";                      run "10a ohne WLAN, 10.31.0.1 fest -> 17" 17_wip
+old 10.31.0.1 lvrno-mesh;              run "10b Mesh 31 gewinnt gegen fest" 31_lvrno
 old 10.40.144.1 wlf-mesh; uci set gluon.core.domain=17_wip; uci commit gluon; lua "${SKRIPT:-/tmp/s.lua}" 2>/tmp/err; echo "11 Domain schon gesetzt | erwartet 17_wip | bekommen $(uci -q get gluon.core.domain) | $(cat /tmp/err)"
 rm -rf $DOM /etc/config/network_gluon-old /etc/config/wireless_gluon-old; uci -q delete gluon.core.domain; uci commit gluon
 old 10.40.144.1 wlf-mesh; lua "${SKRIPT:-/tmp/s.lua}" 2>/tmp/err; echo "12 kein domains-Verzeichnis | erwartet - | bekommen $(uci -q get gluon.core.domain || echo -) | $(cat /tmp/err)"
