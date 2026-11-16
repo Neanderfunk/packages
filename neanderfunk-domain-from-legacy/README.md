@@ -124,8 +124,8 @@ Dauerhaft steht das Ergebnis in uci und bleibt auch über spätere Upgrades:
 uci show gluon.domain_from_legacy
 gluon.domain_from_legacy=neanderfunk
 gluon.domain_from_legacy.source='next_node:10.51.64.1'
-gluon.domain_from_legacy.domain='nef-21_dias'
-gluon.domain_from_legacy.log='Domain nef-21_dias erkannt an next_node 10.51.64.1'
+gluon.domain_from_legacy.domain='21_dias'
+gluon.domain_from_legacy.log='Domain 21_dias erkannt an next_node 10.51.64.1'
 ```
 
 `source` ist `mesh_id:<IDs>`, `next_node:<IPv4>` oder `none` (dann
