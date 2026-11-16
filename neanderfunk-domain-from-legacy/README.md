@@ -74,7 +74,7 @@ zählt nur bei Knoten ohne WLAN-Mesh oder mit mehrdeutiger Mesh-ID. Steht
 eine Adresse in zwei Domains als fest, zählt sie nicht (Datenfehler).
 
 Offline-Test ohne Gluon: `lua5.1 test/offline.lua
-luasrc/lib/gluon/upgrade/004-neanderfunk-domain-from-legacy` (11 Fälle).
+luasrc/lib/gluon/upgrade/004-neanderfunk-domain-from-legacy` (12 Fälle, mit uci-Eintrag und kmsg-Zeilen).
 
 Regeln für die Liste (Simulation über alle 380 historischen Stände 2016-2026,
 18.10.2026):
@@ -109,10 +109,30 @@ jeweils aktuelle ID):
 Log
 ---
 
-Jede Entscheidung geht nach stderr (Ausgabe von `gluon-reconfigure`) und per
-`logger -t neanderfunk-domain` ins Syslog, etwa
-`Domain 32_lvrnw erkannt an next_node 10.51.240.1` oder
+Jede Entscheidung geht nach stderr (Ausgabe von `gluon-reconfigure`) und nach
+`/dev/kmsg`, etwa `Domain 32_lvrnw erkannt an next_node 10.51.240.1` oder
 `keine Domain erkannt (Mesh-ID -, next_node 10.99.0.1), default_domain greift`.
+
+Nach einem sysupgrade läuft das Skript beim ersten Start, bevor logd läuft;
+`logger` ging dort verloren (Labor Buildsystem 16.11.2026). Den Kernelpuffer
+übernimmt logd beim Start, die Zeilen stehen also bis zum nächsten Neustart im
+`logread` (als `kern.notice`, `logread | grep neanderfunk-domain`).
+
+Dauerhaft steht das Ergebnis in uci und bleibt auch über spätere Upgrades:
+
+```
+uci show gluon.domain_from_legacy
+gluon.domain_from_legacy=neanderfunk
+gluon.domain_from_legacy.source='next_node:10.51.64.1'
+gluon.domain_from_legacy.domain='nef-21_dias'
+gluon.domain_from_legacy.log='Domain nef-21_dias erkannt an next_node 10.51.64.1'
+```
+
+`source` ist `mesh_id:<IDs>`, `next_node:<IPv4>` oder `none` (dann
+`domain='default_domain'`, gesetzt hat sie Gluons `005-set-domain`). `log`
+enthält alle Logzeilen des Laufs, auch Hinweise auf mehrdeutige Merkmale. Bei
+einer Neuinstallation und wenn schon eine Domain gesetzt war, entsteht kein
+Eintrag.
 
 Test
 ----

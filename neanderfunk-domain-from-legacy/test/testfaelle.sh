@@ -24,8 +24,10 @@ old() { # ip4 mesh1 [mesh2]
 	return 0
 }
 run() { # name erwartet
-	uci -q revert gluon; uci -q delete gluon.core.domain; uci commit gluon
-	lua "${SKRIPT:-/tmp/s.lua}" 2>/tmp/err; got=$(uci -q get gluon.core.domain); echo "$1 | erwartet ${2:--} | bekommen ${got:--} | $(cat /tmp/err | tr '\n' ' ')"
+	uci -q revert gluon; uci -q delete gluon.core.domain; uci -q delete gluon.domain_from_legacy; uci commit gluon
+	lua "${SKRIPT:-/tmp/s.lua}" 2>/tmp/err; got=$(uci -q get gluon.core.domain)
+	src=$(uci -q get gluon.domain_from_legacy.source)
+	echo "$1 | erwartet ${2:--} | bekommen ${got:--} | uci ${src:--} | $(tr '\n' ' ' < /tmp/err)"
 }
 old 10.40.144.1 wlf-mesh;              run "1 Mesh eindeutig" 10_wlf
 old 10.40.144.1 ffnef-wlf-mesh;        run "2 alte Mesh-ID (legacy)" 10_wlf
@@ -46,5 +48,7 @@ old 10.40.144.1 wlf-mesh; uci set gluon.core.domain=17_wip; uci commit gluon; lu
 rm -rf $DOM /etc/config/network_gluon-old /etc/config/wireless_gluon-old; uci -q delete gluon.core.domain; uci commit gluon
 old 10.40.144.1 wlf-mesh; lua "${SKRIPT:-/tmp/s.lua}" 2>/tmp/err; echo "12 kein domains-Verzeichnis | erwartet - | bekommen $(uci -q get gluon.core.domain || echo -) | $(cat /tmp/err)"
 rm -f /etc/config/network_gluon-old /etc/config/wireless_gluon-old
+uci -q delete gluon.domain_from_legacy; uci commit gluon
+# Log ueber /dev/kmsg: im logread als Kernelzeile
 logread | grep neanderfunk-domain | tail -3
 echo TESTENDE

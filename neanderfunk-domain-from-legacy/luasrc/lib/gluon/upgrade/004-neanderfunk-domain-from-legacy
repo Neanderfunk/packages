@@ -54,15 +54,33 @@ if uci:get('gluon', 'core', 'domain') then
 	return
 end
 
+-- Beim ersten Start nach dem Upgrade laeuft das Skript, bevor logd laeuft;
+-- logger verpufft dort (Labor Buildsystem 16.11.2026). /dev/kmsg dagegen
+-- uebernimmt logd beim Start, die Zeilen stehen bis zum Neustart im logread.
+-- Dauerhaft steht das Ergebnis in uci gluon.domain_from_legacy (record()).
+local notes = {}
+
 local function log(msg)
+	-- Werte aus der alten Konfiguration: keine Steuerzeichen ins Log
+	msg = msg:gsub('%c', '?')
+	table.insert(notes, msg)
 	io.stderr:write('neanderfunk-domain-from-legacy: ' .. msg .. '\n')
-	-- logger ueber stdin: die Werte stammen aus der alten Konfiguration und
-	-- gehoeren nicht in eine Shell-Kommandozeile
-	local p = io.popen('logger -t neanderfunk-domain', 'w')
-	if p then
-		p:write(msg .. '\n')
-		p:close()
+	local f = io.open('/dev/kmsg', 'w')
+	if f then
+		f:write('<5>neanderfunk-domain: ' .. msg .. '\n')
+		f:close()
 	end
+end
+
+-- Ergebnis dauerhaft, abfragbar mit `uci show gluon.domain_from_legacy`.
+-- Bleibt bei spaeteren Upgrades stehen (dann ist gluon.core.domain gesetzt
+-- und das Skript endet vorher).
+local function record(source, code)
+	uci:section('gluon', 'neanderfunk', 'domain_from_legacy', {
+		source = (source:gsub('%c', '?')),
+		domain = code or 'default_domain',
+		log = notes,
+	})
 end
 
 local function strip_plen(addr)
@@ -179,9 +197,10 @@ if old_ip4 then
 	end
 end
 
-local code, via
+local code, via, source
 if by_mesh then
 	code, via = by_mesh, 'Mesh-ID ' .. table.concat(meshes, ',')
+	source = 'mesh_id:' .. table.concat(meshes, ',')
 	if by_ip4 and by_ip4 ~= by_mesh then
 		-- nur zur Nachverfolgung: die IPv4 kann aus der Zeit vor der
 		-- Umnummerierung 2023 stammen und heute einer anderen Domain gehoeren
@@ -189,14 +208,18 @@ if by_mesh then
 	end
 elseif by_ip4 then
 	code, via = by_ip4, 'next_node ' .. old_ip4
+	source = 'next_node:' .. old_ip4
 end
 
 if not code then
 	log(string.format('keine Domain erkannt (Mesh-ID %s, next_node %s), default_domain greift',
 		#meshes > 0 and table.concat(meshes, ',') or '-', old_ip4 or '-'))
+	record('none')
+	uci:save('gluon')
 	return
 end
 
 log(string.format('Domain %s erkannt an %s', code, via))
+record(source, code)
 uci:set('gluon', 'core', 'domain', code)
 uci:save('gluon')
