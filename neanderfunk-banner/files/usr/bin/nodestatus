@@ -277,12 +277,17 @@ for k, v in (readfile('/etc/openwrt_release') or ''):gmatch("(DISTRIB_[%u_]+)='(
 end
 
 local site_code, site_name = '?', ''
+local domain = uci:get('gluon', 'core', 'domain')
 pcall(function()
 	local site = require('gluon.site')
 	site_code = site.site_code()
 	site_name = site.site_name() or ''
+	-- Multi-Domain: site_name gilt fuer alle Domains, der Name der Domain
+	-- steht in domain_names (wie auf der Statusseite)
+	if domain then
+		site_name = site.domain_names[domain]() or site_name
+	end
 end)
-local domain = uci:get('gluon', 'core', 'domain')
 
 local node_id = nodeinfo.node_id or ''
 
