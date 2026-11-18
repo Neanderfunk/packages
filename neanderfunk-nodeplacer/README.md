@@ -43,6 +43,12 @@ value left out defaults to the autoupdater branch the node is running - its
 mirrors (the manifest then sits next to the firmware manifest,
 `<autoupdater-mirror>/nodeplacer.manifest`), its keys and its threshold.
 
+On a multi-domain firmware `mirrors` belongs in the domain configurations
+(`domains/<code>.conf`, each domain with its full list, e.g. its own ULA
+first), not in site.conf; Gluon's check_site rejects it there. The other keys
+stay site-wide. `510-nodeplacer` reads the merged site and active domain on
+every `gluon-reconfigure`, so a domain switch brings the new domain's mirrors.
+
 ```lua
 nodeplacer = {
   -- optional; default: the mirrors of the autoupdater branch

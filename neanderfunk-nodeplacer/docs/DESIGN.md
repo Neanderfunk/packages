@@ -303,8 +303,8 @@ nodeplacer = {
 
 `check_site.lua` prueft: `mirrors` Array von `^http://` (spaeter auch
 `https://`/`//` wie 2025.1), und falls die Overrides gesetzt sind,
-`good_signatures` als Zahl sowie `<= #pubkeys`. Alles `in_site`, nicht in
-Domains (Multidomain: gleiche Mirrors fuer alle Domains einer Firmware).
+`good_signatures` als Zahl sowie `<= #pubkeys`. `mirrors` ist seit
+18.11.2026 `in_domain` (D-044), alles andere `in_site`.
 
 ## 9. UCI und Zustand auf dem Knoten
 
