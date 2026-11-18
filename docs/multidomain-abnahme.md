@@ -70,6 +70,29 @@ Gluon-Feature `config-mode-domain-select`, dazu Patch
 - [ ] Knoten mit erkannter Altdomain: diese ist vorbelegt.
 - [ ] Speichern ohne Änderung lässt die Domain, wie sie ist.
 
+Karte im Wizard, Patch `config-mode/geo-location-domain-map`
+(gluon-patches-packages `5d52c40`), Domain-Schlüssel `neanderfunk_map`
+(`in_domain`; ohne Eintrag gilt der Site-Ausschnitt):
+
+- [x] Offline-Test der Domainwerte (10 Prüfungen), check_site mit Gluons
+      check-site, JS-Logik simuliert (18.11.2026).
+- [ ] Im Browser: Karte startet auf der aktuellen Domain; Umschalten der
+      Domain-Auswahl verschiebt den Ausschnitt.
+- [ ] Nach Klick in die Karte oder eingetippten Koordinaten, und bei einem
+      Knoten mit Position: Umschalten verschiebt nichts, Koordinaten bleiben.
+
+Vorgabe-Hostname (`neanderfunk-default-hostname`, Präfix je Domain):
+
+- [ ] a) frischer Knoten: Vorgabename mit dem Präfix von `25_hvb`, Domain
+      umschalten, Präfix im Namensfeld tauscht, gespeicherter Name trägt das
+      neue Präfix.
+- [ ] b) dasselbe ohne JavaScript, Tausch beim Speichern.
+- [ ] c) selbst gewählter Name ohne bekanntes Präfix bleibt.
+- [ ] d) Setup-Modus später erneut (`configured=1`), Domain wechseln, Name
+      bleibt.
+- [ ] e) Knoten aus der Single-Firmware (erkannte Altdomain) behält seinen
+      Namen.
+
 ### 3. Anzeige der Domain
 
 - Statusseite: Zeile „Domain“ zeigt `Anzeigename (Code)`, Patch
@@ -89,7 +112,8 @@ Gluon-Feature `config-mode-domain-select`, dazu Patch
 | --- | --- | --- | --- | --- |
 | `ddhcpd.*` | neanderfunk-ddhcpd | `in_domain` | `gluon.site`, bei jedem reconfigure | in allen 48 Domains an |
 | `next_node.ip4` | neanderfunk-ddhcpd, Statusseite | `in_domain` | `gluon.site` | |
-| `neanderfunk_hostname_prefix` | neanderfunk-default-hostname | `in_domain` | site.json + Domain-Datei selbst zusammengeführt | |
+| `neanderfunk_hostname_prefix` | neanderfunk-default-hostname | `in_domain` | site.json + Domain-Datei selbst zusammengeführt | in allen 48 Domains |
+| `neanderfunk_map` | Patch geo-location-domain-map | `in_domain` | Domain-Dateien direkt (Auswahl), `gluon.site` (Start) | |
 | `nodeplacer.mirrors` | neanderfunk-nodeplacer | `in_domain` seit Feed `b32a1b4` | `gluon.site` in `510-nodeplacer` | in allen 48 Domains mit ULA-Mirror |
 | `neanderfunk_legacy.*` | neanderfunk-domain-from-legacy | keins | Domain-Dateien direkt | |
 | `prefix6` | neanderfunk-hotfix (`br_client_ipv6`) | - | **`site.json` direkt** | **offen, siehe 5.** |
@@ -159,6 +183,6 @@ Mit `in_site` abgesichert: `setup_mode.*` (setup-mode, setup-wifi),
 Stand der Punkte
 ----------------
 
-Offen bei Anlage: 1 (echtes Image), 2 (Browser), 3, 4 (Gerät), 5
+Offen bei Anlage: 1 (echtes Image), 2 (Browser: Auswahl, Karte, Hostname), 3, 4 (Gerät), 5
 (`br_client_ipv6`), 6 (App), 8. Bestanden: Offline-Tests zu 1 und 2,
 check_site-Probe zu `nodeplacer.mirrors` mit Gluons check-site.
