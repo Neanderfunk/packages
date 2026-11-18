@@ -91,4 +91,8 @@ Alias-Code, `configured=1` lässt den Namen in Ruhe). Nicht getestet: der
 echte Wizard mit `gluon-config-mode-domain-select` in einem
 Multi-Domain-Image.
 
-Nicht in den Bauten, adorfer evaluiert separat.
+Im Image beider 2025.1-Linien (FirmwareConfigs `templates/common`, mit dem
+Gluon-Patch `hostname/default-hostname` aus gluon-patches-packages). Im
+Multi-Domain-Image steht `neanderfunk_hostname_prefix` in allen 48 Domains
+(Stand 18.11.2026). Der Test des echten Wizards mit Domain-Auswahl steht mit
+dem ersten Multi-Image an, das die Domain-Auswahl enthält.
