@@ -12,15 +12,17 @@ Assoziierung, Android-API der App: [HOW-IT-WORKS.md](HOW-IT-WORKS.md)
 Fork von `ffda-node-whisperer` aus den
 [community-packages](https://github.com/freifunk-gluon/community-packages),
 Branch `v2023.2.x`, Stand `91e5fa8a`. Der eigentliche Quelltext kommt
-unveraendert von <https://github.com/blocktrron/node-whisperer> (GPL-2.0-or-later,
-© David Bauer und Matthias Schiffer); unsere Aenderungen liegen als Patches
-unter `patches/`.
+unveraendert von <https://github.com/fnsh/node-whisperer> (frueher
+`blocktrron/node-whisperer`, GitHub leitet um; GPL-2.0-or-later, © David Bauer
+und Matthias Schiffer), gepinnt auf `c2d410d` (12.11.2026, derselbe Stand wie
+`ffda-node-whisperer` in den community-packages); unsere Aenderungen liegen als
+Patches unter `patches/`.
 
 Warum ein Fork
 --------------
 
-Zwei Fehler, beide am Geraet belegt, beide auch im aktuellen Upstream-`main`
-noch vorhanden:
+Zwei Fehler, beide am Geraet belegt, beide auch in Upstream `c2d410d`
+(12.11.2026) noch vorhanden:
 
 **1. Syslog-Spam auf Single-Domain-Firmware.** `gluonutil_get_domain()` liefert
 auf einer Firmware ohne Multidomain nichts. Der Sammler meldete dafuer `-1`,
@@ -72,27 +74,20 @@ Next-Hop und Interface. Ein Knoten, den man ueber mehrere Nachbarn auf 2,4 GHz,
 5 GHz und ueber das VPN hoert, zaehlte mehrfach. Am Archer C25 (9 Nachbarn,
 15.09.2026): 338 Eintraege, 91 verschiedene Originatoren, die App zeigte 338.
 
-`patches/0004` zaehlt nur den Eintrag mit `BATADV_ATTR_FLAG_BEST` - genau einen
-je Originator, die Zeile, die `batctl o` mit `*` markiert (am C25: 91 von 338).
+Behoben: Gezaehlt wird nur der Eintrag mit `BATADV_ATTR_FLAG_BEST` - genau
+einen je Originator, die Zeile, die `batctl o` mit `*` markiert (am C25: 91 von
+338). Bis 18.11.2026 war das unser `patches/0004`, seit dem Pin `c2d410d` macht
+es Upstream selbst (`e194120`, gleiche Logik).
 Die Nachbarzahl (Bytes 4-5) bleibt, wie sie ist: direkte Links, einer je
 Nachbar und Interface, wie `batctl n`. Drahtformat und App unveraendert.
 
-`patches/0005`: Das init-Skript verglich `settings.disabled` numerisch
-(`-gt 0`). Bei `true` oder `yes` scheiterte der Test, und der Daemon startete,
-obwohl er abgeschaltet war. Jetzt `get_bool` aus `/lib/functions.sh`, also
-jede Schreibweise, die OpenWrt fuer einen Wahrheitswert kennt.
+`patches/0004` (bis 18.11.2026 `0005`): Das init-Skript verglich
+`settings.disabled` numerisch (`-gt 0`). Bei `true` oder `yes` scheiterte der
+Test, und der Daemon startete, obwohl er abgeschaltet war. Jetzt `get_bool` aus
+`/lib/functions.sh`, also jede Schreibweise, die OpenWrt fuer einen
+Wahrheitswert kennt.
 
-`patches/0006`-`0009` sind unveraenderte Cherry-Picks aus Upstream
-(`freifunk-darmstadt/node-whisperer`, Autor Grische, je mit Zeile
-`cherry picked from commit`), uebernommen am 16.10.2026:
-
-* `0006` = `f291cb0`: `mesh-vpn`-Vergleich mit exakter Grenze statt
-  `strlen(ifname)`.
-* `0007` = `b7ca4dd`: ubus-Fehler als Text ins Log.
-* `0008` = `1c41339`: bei ubus-Timeout die Vendor-Elemente nicht
-  zuruecksetzen (tritt laut Upstream beim fruehen Start auf).
-* `0009` = `aa409ee`: `sys/sysinfo.h` statt Linux-Header, noetig erst mit
-  musl in OpenWrt 25.12, unter 24.10 ohne Wirkung.
+`patches/0003` benennt den Dienst nach dem Paket (siehe Namensraum).
 
 Namensraum
 ----------
@@ -147,14 +142,12 @@ Der Quelltext ist gepinnt und unveraendert, unsere Aenderungen sind Patches.
 Ein Update laeuft damit so:
 
 1. Im Makefile `PKG_SOURCE_VERSION` und `PKG_SOURCE_DATE` auf den neuen
-   Upstream-Commit setzen. **Achtung:** das Quell-Repo ist inzwischen von
-   `blocktrron/node-whisperer` nach
-   `freifunk-darmstadt/node-whisperer` umgezogen - dann auch
-   `PKG_SOURCE_URL` mitziehen.
+   Upstream-Commit setzen. Das Quell-Repo heisst heute `fnsh/node-whisperer`
+   (`blocktrron/` und `freifunk-darmstadt/` leiten dorthin um).
 2. Patches gegen den neuen Stand pruefen:
 
    ```
-   git clone https://github.com/freifunk-darmstadt/node-whisperer.git
+   git clone https://github.com/fnsh/node-whisperer.git
    cd node-whisperer && git checkout <neuer-commit>
    for p in .../neanderfunk-node-whisperer/patches/*.patch; do
        patch -p1 --dry-run < "$p" || echo "KONFLIKT: $p"
@@ -165,20 +158,20 @@ Ein Update laeuft damit so:
    ueberfluessig geworden ist und der Patch entfallen kann), oder der Kontext
    hat sich verschoben (dann neu erzeugen).
 
-Stand der Pruefung (2026-09-06): zwischen unserem Pin und Upstream-`main`
-(`43d1a90`, 2026-07-26) liegen 14 Commits. Keiner davon behebt einen der beiden
-obigen Punkte. Vier betreffen neuere OpenWrt-Versionen (24.10/25.12, musl),
-vier die CI, drei das separate `monitor`-Werkzeug, das dieses Paket gar nicht
-installiert. Bleiben zwei echte Logikfixes:
+Upstream baut in der CI gegen Gluon `v2025.1.x` (OpenWrt 24.10) und `main`
+(OpenWrt 25.12). Ein Stand, der dort gruen ist, passt also zu unserer
+2025.1-Linie.
 
-* `f291cb0` korrigiert die `strncmp`-Grenze beim `mesh-vpn`-Vergleich. Betrifft
-  nur Interfaces, deren Name ein *Praefix* von `mesh-vpn` ist (`mesh`, `mesh-`);
-  unsere heissen `mesh0`, `mesh1`, `eth0`, `primary0`, also ohne Wirkung.
-  Sollte beim naechsten Bump trotzdem mitkommen.
-* `1c41339` bricht beim ubus-Timeout ab, statt die Vendor-Elemente
-  zurueckzusetzen. An fuenf Knoten gemessen: null solche Fehler im Log, also
-  aktuell ohne Wirkung fuer uns.
-
-Seit 16.10.2026 sind beide als `patches/0006` und `0008` drin (dazu `0007`,
-auf dem `0008` aufsetzt, und `0009`), auf Wunsch adorfer, ohne den Pin zu
-bewegen. Beim naechsten Bump auf Upstream entfallen diese vier Patches.
+Letzter Bump am 18.11.2026 (Wunsch adorfer), von `8f1e5560` (2024-11-09) auf
+`c2d410d` (2026-11-12), rund 60 Upstream-Commits, vor allem Haertung von
+Grische: unausgerichtete Lesezugriffe im batman-Parser (`4af77e6`, betrifft
+MIPS), `va_list`-Wiederverwendung im Log (`6d8e671`), Freigabe eines nicht
+initialisierten Zeigers (`376ecd5`), `calloc`-Argumente (`09653dd`),
+Puffer- und `fread`-Pruefungen, und Hex-Umwandlung nur noch bei Debug-Log
+(`c2d410d`, weniger CPU je Runde). Damit entfielen unsere alten Patches
+`0004` (Originator-Zaehlung, Upstream `e194120`) und die Cherry-Picks
+`0006`-`0009` (`f291cb0`, `b7ca4dd`, `1c41339`, `aa409ee`). `0001` und `0002`
+passten wegen geaenderten Kontexts (bereinigte Leerzeichen, neue Debug-Pruefung)
+nicht mehr und sind inhaltlich unveraendert neu erzeugt; die alte `0005` heisst jetzt `0004`.
+Upstream baut inzwischen auch `node-monitor` mit; das Paket installiert ihn
+weiterhin nicht. Gebaut mit der x86_64-Toolchain von Gluon 2025.1 (`-Werror`).

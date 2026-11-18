@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Neanderfunk <projekt@neanderfunk.de>
 Date: Sun, 6 Sep 2026 17:50:54 +0200
-Subject: [PATCH] batadv: report the TQ of the selected gateway, not of the VPN
- neighbour
+Subject: [PATCH 2/4] batadv: report the TQ of the selected gateway, not of the
+ VPN neighbour
 
 Byte 1 of the batman_adv information element is what the NodeMonitor app shows
 as "Gateway". It carried stats.vpn.tq, which batadv.c only sets inside
@@ -25,7 +25,7 @@ gateway byte simply starts telling the truth.
  3 files changed, 92 insertions(+), 1 deletion(-)
 
 diff --git a/src/batadv.c b/src/batadv.c
-index bcc1a09..4e3ddcc 100644
+index c221e57..2a81091 100644
 --- a/src/batadv.c
 +++ b/src/batadv.c
 @@ -26,6 +26,11 @@ struct clients_netlink_opts {
@@ -52,7 +52,7 @@ index bcc1a09..4e3ddcc 100644
  static const enum batadv_nl_attrs clients_mandatory[] = {
  	BATADV_ATTR_TT_FLAGS,
  	BATADV_ATTR_LAST_SEEN_MSECS,
-@@ -110,6 +120,67 @@ int nw_get_batadv_neighbor_stats(struct nw_batadv_neighbor_stats *stats) {
+@@ -111,6 +121,67 @@ int nw_get_batadv_neighbor_stats(struct nw_batadv_neighbor_stats *stats) {
  }
  
  
@@ -141,22 +141,22 @@ index 34a3c03..86e339d 100644
 +int nw_get_batadv_gateway(struct nw_batadv_neighbor_stats *stats);
  int nw_get_batadv_clients();
 diff --git a/src/information.c b/src/information.c
-index c6e3ca5..3a82164 100644
+index 7ec0efd..098f4d5 100644
 --- a/src/information.c
 +++ b/src/information.c
 @@ -90,6 +90,10 @@ int node_whisperer_information_batman_adv_collect(uint8_t *buffer, size_t buffer
- 	ret = nw_get_batadv_neighbor_stats(&stats);
  	if (ret)
  		return -1;
-+
+ 
 +	/* Ask for the selected gateway separately. Failing that is not fatal:
 +	 * a node without a gateway then reports 0, exactly as before. */
 +	nw_get_batadv_gateway(&stats);
- 	
++
  	ret = nw_get_batadv_clients();
  	if (ret < 0) {
-@@ -99,7 +103,15 @@ int node_whisperer_information_batman_adv_collect(uint8_t *buffer, size_t buffer
- 	}	
+ 		num_clients = 0;
+@@ -98,7 +102,15 @@ int node_whisperer_information_batman_adv_collect(uint8_t *buffer, size_t buffer
+ 	}
  
  	buffer[0] = stats.vpn.connected ? 1 : 0;
 -	buffer[1] = stats.vpn.tq;
@@ -172,3 +172,6 @@ index c6e3ca5..3a82164 100644
  
  	tmp = htons(stats.originator_count);
  	memcpy(&buffer[2], &tmp, sizeof(tmp));
+-- 
+2.53.0
+
