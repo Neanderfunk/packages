@@ -19,7 +19,11 @@
 #     Fehler, der in /etc/config/hotfix jahrelang steckte. Die Datei entsteht
 #     hier beim ersten commit und wird hier gepflegt.
 
-sitefile=/lib/gluon/site.json
+. /lib/gluon/neanderfunk/site.sh
+
+# Werte ueber nf_site_get: Domain vor Site, wie Gluons gluon.site. Mit
+# jsonfilter auf site.json allein saehe ein Multi-Domain-Image Werte aus der
+# Domain nicht.
 
 uci -q get neanderfunk.settings >/dev/null || uci -q set neanderfunk.settings=settings
 
@@ -29,7 +33,7 @@ uci -q get neanderfunk.settings >/dev/null || uci -q set neanderfunk.settings=se
 # -z und nicht "-n $v": eine site.conf mit reboot_log_max = 0 soll das Log
 # tatsaechlich abschalten koennen, und "0" ist ein gueltiger Wert.
 if [ -z "$(uci -q get neanderfunk.settings.reboot_log_max)" ] ; then
-	v="$(jsonfilter -i "$sitefile" -e '@.neanderfunk.reboot_log_max' 2>/dev/null)"
+	v="$(nf_site_get '@.neanderfunk.reboot_log_max')"
 	[ -n "$v" ] && uci -q set neanderfunk.settings.reboot_log_max="$v"
 fi
 

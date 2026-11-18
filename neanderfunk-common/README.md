@@ -230,6 +230,35 @@ mediatek filogic und mt7622, x86 — ist `CONFIG_MAGIC_SYSRQ=y`. Das `[ -w ]` vo
 dem Schreiben bleibt trotzdem stehen, für den Fall, dass ein Ziel dazukommt, wo
 das nicht gilt.
 
+## Site- und Domain-Werte aus Shell (`site.sh`)
+
+```sh
+. /lib/gluon/neanderfunk/site.sh
+prefix="$(nf_site_get '@.prefix6')"
+```
+
+`nf_site_get <jsonfilter-Ausdruck>` sucht zuerst in der aktiven Domain
+(`/lib/gluon/domains/<gluon.core.domain>.json`), dann in
+`/lib/gluon/site.json`, wie Gluons `gluon.site`. Leer, wenn der Wert nirgends
+steht. Bei Listen gewinnt die ganze Liste der Domain (Gluon führt
+elementweise zusammen; bei unseren Schlüsseln steht eine Liste nur an einer
+Stelle).
+
+### Warum
+
+Gluon 2025.1 legt Werte, die check_site mit `in_domain` prüft (etwa `prefix6`),
+nur in die Domain-Datei, auch bei unseren Images mit einer Domain. Wer nur
+`site.json` liest, bekommt dafür nichts. Genau so lief der hotfix-Check
+`br_client_ipv6` auf allen 2025.1-Knoten still nicht (gefunden 18.11.2026 an
+einem Multi-Domain- und einem 2025.1-Testknoten). Die Upgrade-Skripte von
+hotfix, linkcheck und common lesen ihre Schlüssel seitdem auch darüber.
+
+### Kosten
+
+Shell und `jsonfilter`, kein Lua: die Checks laufen alle paar Minuten, und ein
+Lua-Start kostet auf 64-MB-Geräten spürbar Speicher. Ein `uci get` und ein bis
+zwei `jsonfilter` je Wert.
+
 ## Privates WLAN ohne WPA3 (`300-neanderfunk-private-wifi-wpa3`)
 
 Gluon 2025.1 baut lowmem_singleradio-Geräte (1043 v2-v5, CPE210/220, WBS210,

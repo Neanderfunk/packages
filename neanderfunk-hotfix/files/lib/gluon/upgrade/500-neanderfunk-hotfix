@@ -30,7 +30,11 @@ CHECKS='kernel_bug ath_malloc ksoftirqd_malloc hostapd_pids dfs_failcheck
 # anzeigen, die es nicht mehr gibt.
 OBSOLETE_CHECKS='stale_lock'
 
-sitefile=/lib/gluon/site.json
+. /lib/gluon/neanderfunk/site.sh
+
+# Werte ueber nf_site_get: Domain vor Site, wie Gluons gluon.site. Mit
+# jsonfilter auf site.json allein saehe ein Multi-Domain-Image Werte aus der
+# Domain nicht.
 
 uci -q get hotfix.settings >/dev/null || uci -q set hotfix.settings=settings
 
@@ -55,12 +59,12 @@ done
 
 # only when the node has no value of its own; unset means the built-in default
 if [ -z "$(uci -q get hotfix.settings.check_uptime_min)" ] ; then
-	v="$(jsonfilter -i "$sitefile" -e '@.hotfix.check_uptime_min' 2>/dev/null)"
+	v="$(nf_site_get '@.hotfix.check_uptime_min')"
 	[ -n "$v" ] && uci -q set hotfix.settings.check_uptime_min="$v"
 fi
 
 if [ -z "$(uci -q get hotfix.settings.reboot_uptime_min)" ] ; then
-	v="$(jsonfilter -i "$sitefile" -e '@.hotfix.reboot_uptime_min' 2>/dev/null)"
+	v="$(nf_site_get '@.hotfix.reboot_uptime_min')"
 	[ -n "$v" ] && uci -q set hotfix.settings.reboot_uptime_min="$v"
 fi
 
@@ -68,7 +72,7 @@ fi
 # site.conf scharf schalten (eth_tx_stall_dry_run = 0); ein Wert am Knoten
 # gewinnt wie immer.
 if [ -z "$(uci -q get hotfix.eth_tx_stall.dry_run)" ] ; then
-	v="$(jsonfilter -i "$sitefile" -e '@.hotfix.eth_tx_stall_dry_run' 2>/dev/null)"
+	v="$(nf_site_get '@.hotfix.eth_tx_stall_dry_run')"
 	case "$v" in
 		0|false) uci -q set hotfix.eth_tx_stall.dry_run=0 ;;
 		1|true) uci -q set hotfix.eth_tx_stall.dry_run=1 ;;
@@ -77,7 +81,7 @@ fi
 
 # Load-Schwelle je Kern (Vorgabe im Check: 2), ganze Zahl
 if [ -z "$(uci -q get hotfix.load.per_cpu)" ] ; then
-	v="$(jsonfilter -i "$sitefile" -e '@.hotfix.load_per_cpu' 2>/dev/null)"
+	v="$(nf_site_get '@.hotfix.load_per_cpu')"
 	case "$v" in
 		''|0|*[!0-9]*) ;;
 		*) uci -q set hotfix.load.per_cpu="$v" ;;
@@ -85,7 +89,7 @@ if [ -z "$(uci -q get hotfix.load.per_cpu)" ] ; then
 fi
 
 # checks the community wants switched off by default
-for c in $(jsonfilter -i "$sitefile" -e '@.hotfix.disabled_checks[*]' 2>/dev/null) ; do
+for c in $(nf_site_get '@.hotfix.disabled_checks[*]') ; do
 	uci -q get hotfix."$c" >/dev/null || uci -q set hotfix."$c"=check
 	[ -z "$(uci -q get hotfix."$c".disabled)" ] && uci -q set hotfix."$c".disabled=1
 done

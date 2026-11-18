@@ -191,7 +191,7 @@ Checks
 | `hostapd_pids` | AP interfaces the running hostapd does not serve, see below | wifi restart |
 | `dfs_failcheck` | hostapd failing its DFS check | wifi restart |
 | `tunneldigger` | too many tunneldigger watchdogs/instances | reboot |
-| `br_client_ipv6` | br-client without an address from the site prefix | reboot |
+| `br_client_ipv6` | br-client without an address from the site prefix (`prefix6`, read domain first via `nf_site_get`; before 18.11.2026 it read `site.json` only and never fired on Gluon 2025.1, where `prefix6` sits in the domain file) | reboot |
 | `load` | 15 minute load average above `hotfix.load.per_cpu` x cores (default 2 x cores) in two runs in a row (~7 min) | reboot |
 | `respondd` | respondd not running | reboot |
 | `dropbear` | dropbear not running | reboot |

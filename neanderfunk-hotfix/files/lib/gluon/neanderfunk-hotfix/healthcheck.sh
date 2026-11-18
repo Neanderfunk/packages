@@ -312,8 +312,13 @@ check_disabled logremote || logremote_check
 # domain's own ULA prefix (fd..), which the node assigns to itself - so this is a
 # local network-config fault, not a question of reachability, and it stays here
 # rather than in linkcheck. Escalates over four runs before rebooting.
+# prefix6 is a domain value (Gluon: in_domain). On a multi-domain image it is
+# only in /lib/gluon/domains/<code>.json, never in site.json, so read it with
+# nf_site_get (domain first). Until 18.11.2026 this read site.json only and the
+# check silently did nothing on multi-domain images.
 if ! check_disabled br_client_ipv6 ; then
-  prefix="$(jsonfilter -i /lib/gluon/site.json -e '@.prefix6' 2>/dev/null)"
+  . /lib/gluon/neanderfunk/site.sh
+  prefix="$(nf_site_get '@.prefix6')"
   # without a prefix6 there is nothing to compare against, so do not reboot. The
   # old version compared against an empty prefix, which made grep -c report 0 and
   # would have rebooted the node every 7 minutes.
