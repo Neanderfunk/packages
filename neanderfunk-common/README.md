@@ -246,12 +246,14 @@ Stelle).
 
 ### Warum
 
-Gluon 2025.1 legt Werte, die check_site mit `in_domain` prüft (etwa `prefix6`),
-nur in die Domain-Datei, auch bei unseren Images mit einer Domain. Wer nur
-`site.json` liest, bekommt dafür nichts. Genau so lief der hotfix-Check
-`br_client_ipv6` auf allen 2025.1-Knoten still nicht (gefunden 18.11.2026 an
-einem Multi-Domain- und einem 2025.1-Testknoten). Die Upgrade-Skripte von
-hotfix, linkcheck und common lesen ihre Schlüssel seitdem auch darüber.
+In einem Multi-Domain-Image (`GLUON_MULTIDOMAIN`) legt Gluon Werte, die
+check_site mit `in_domain` prüft (etwa `prefix6`), nur in die Domain-Datei.
+Wer nur `site.json` liest, bekommt dafür nichts. Genau so lief der
+hotfix-Check `br_client_ipv6` auf den Multi-Domain-Testimages still nicht
+(gefunden 18.11.2026). Single-Domain-Images (2023.2 und 2025.1 ohne
+`GLUON_MULTIDOMAIN`) haben alles in `site.json`, dort lief er. Die
+Upgrade-Skripte von hotfix, linkcheck und common lesen ihre Schlüssel
+seitdem auch darüber.
 
 ### Kosten
 
