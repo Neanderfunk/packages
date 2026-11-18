@@ -153,13 +153,19 @@ Vorgabe-Hostname (`neanderfunk-default-hostname`, Präfix je Domain):
 | `prefix6` | neanderfunk-hotfix (`br_client_ipv6`) | Gluon: `in_domain` | `nf_site_get` (bis 18.11.2026 `site.json`, lief im Multi-Image nie) | behoben, siehe 5. |
 | ddhcpd-Bereich | neanderfunk-respondd (`clients_ipv4`) | - | site.json + Domain-Datei, Domain zuerst | |
 
-- [ ] ddhcpd (`range` 10.NN.128.0/19, `client_prefix4` 10.NN.0.0/16, `router`
+- [x] ddhcpd (`range` 10.NN.128.0/19, `client_prefix4` 10.NN.0.0/16, `router`
       .0.2, `dns` .0.1 und zwei externe, `block_size` 4, ohne
       `foreign_prefix4`, also Vorgabe `client_prefix4`): auf einem Testknoten
       läuft der Daemon, Statusseite „läuft“, `ddhcpdctl -m` mit Blöcken.
       Labor-VM `26111803bro` 18.11.2026: Daemon läuft, `block_size_pow` 4,
       `block_network` 10.21.128.0/19, `foreign_network` 10.21.0.0/16; offen
       noch Statusseite und `ddhcpdctl -m` am WLAN-Testknoten 33f1.
+      Im Feld 18.11.2026: Statusseite 4402 (26111810bro) „läuft“, Blöcke
+      eigen 1, fremd 1, frei 510. Client-Test auf kollektor6 (Namespace
+      `ffclient` an ovh-kollektor-839d, 26111816bro): vorher Kea
+      (`10.21.1.0` von 10.21.0.5), nach dem Update ab 21:23 in 38 von 40
+      Läufen ddhcpd-Lease `10.21.148.80` von 10.21.0.1, Router 10.21.0.2,
+      Ping v4/v6 und HTTPS v4/v6 in Ordnung (die zwei Ausfälle: Neustart).
 - [ ] Kea vergibt in keiner Domain aus 10.NN.128.0/19 (laut adorfer 17.11.2026
       auf allen Supernodes umgesetzt); Clients mit Kea-Adresse bekommen kein NAK von ddhcpd.
 - [ ] Nach einem Domainwechsel auf dem Testknoten: ddhcpd-Bereich,
