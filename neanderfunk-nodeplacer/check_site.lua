@@ -10,7 +10,11 @@
 
 -- The whole block is optional (D-042): installed means active, with the
 -- autoupdater branch's mirrors, keys and threshold as defaults.
-need_string_array_match(in_site({'nodeplacer', 'mirrors'}), '^http://', false)
+-- mirrors may also be set per domain (a multi-domain image reaches each
+-- domain's mirror under that domain's own ULA). 510-nodeplacer reads them
+-- through gluon.site, i.e. site and active domain merged, on every
+-- gluon-reconfigure, so a domain switch takes them along.
+need_string_array_match(in_domain({'nodeplacer', 'mirrors'}), '^http://', false)
 
 -- Both are optional overrides. By default the control file is verified with
 -- the keys and the threshold of the autoupdater branch the node is running,

@@ -782,3 +782,21 @@ ist DEPENDS-Syntax; OpenWrt entfernt es nur dort.
 * Jetzt: fehlt die Zeile `---` ganz, gilt der Mirror als "kein Manifest"
   (Exit 2, leise, naechster Mirror). Ein echtes Manifest ohne Signaturen
   hat den Trenner und wird weiter abgelehnt.
+
+## D-044 Mirrors je Domain
+
+* Status: **entschieden** (2026-11-18, Auftrag adorfer)
+* Im Multi-Domain-Image erreicht jede Domain ihren Mirror unter der eigenen
+  ULA (`http://[<ULA>::733]/firmware/nodeplacer`). Mit `in_site` ging nur
+  ein gemeinsamer Mirror fuer alle Domains.
+* Jetzt: `nodeplacer.mirrors` ist `in_domain`. Gluons check_site verbietet
+  den Schluessel damit im Multi-Image in der site.conf; jede Domain traegt
+  ihre ganze Liste (Gluon fuehrt Listen elementweise zusammen, eine
+  Site-Liste plus Domain-Liste waere also ohnehin falsch). Single-Domain
+  bleibt bei der site.conf. `good_signatures`, `pubkeys`, `disable` und
+  `config_mode` bleiben `in_site`.
+* Zur Laufzeit aendert sich nichts: `510-nodeplacer` liest ueber
+  `gluon.site` (Site und aktive Domain zusammengefuehrt) und schreibt
+  `nodeplacer.settings.mirror`, das `nodeplacer-fetch` liest. Nach
+  `gluon-switch-domain` (auch der nodeplacer-Methode `domain`) laeuft beim
+  Neustart `gluon-reconfigure` und damit 510 mit der neuen Domain.
