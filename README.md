@@ -76,6 +76,10 @@ returns as soon as it has handed over to procd, seconds before stage2 reads
 the image, so any cleanup after it breaks the upgrade:
 [docs/sysupgrade-aus-skripten.md](docs/sysupgrade-aus-skripten.md).
 
+What changes for these packages with a multi-domain image (one firmware for
+all domains), as a checklist for the acceptance test:
+[docs/multidomain-abnahme.md](docs/multidomain-abnahme.md).
+
 ### neanderfunk-config-mode-theme ###
 
 replaces gluon-config-mode-theme: config mode layout and stylesheet,
