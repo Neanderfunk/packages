@@ -1,15 +1,15 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-node-whisperer
-PKG_RELEASE:=3
+PKG_RELEASE:=4
 
 # Upstream bleibt gepinnt und unveraendert; unsere Aenderungen liegen als
 # Patches daneben. Ein Backport ist damit: PKG_SOURCE_VERSION/-DATE hochziehen,
 # Patches neu anwenden, Konflikte anschauen. Siehe README.md.
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_URL=https://github.com/blocktrron/node-whisperer.git
-PKG_SOURCE_DATE:=2024-11-09
-PKG_SOURCE_VERSION:=8f1e5560ce2e9319083004af4b6bfd87e4d246b3
+PKG_SOURCE_URL=https://github.com/fnsh/node-whisperer.git
+PKG_SOURCE_DATE:=2026-11-12
+PKG_SOURCE_VERSION:=c2d410d5527e290d516d6c84e8b425c125d3bcd4
 
 PKG_MAINTAINER:=Freifunk im Neanderland <projekt@neanderfunk.de>
 PKG_LICENSE:=GPL-2.0-or-later

@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Neanderfunk <projekt@neanderfunk.de>
 Date: Sun, 6 Sep 2026 17:51:36 +0200
-Subject: [PATCH] openwrt: name the service neanderfunk-node-whisperer
+Subject: [PATCH 3/4] openwrt: name the service neanderfunk-node-whisperer
 
 Neanderfunk ships this as its own package next to the community-packages one.
 Renaming the binary, the init service and the uci package keeps the two from
@@ -57,3 +57,6 @@ index d9c46cf..1aa0dc1 100644
  	LOG_LEVEL="${LOG_LEVEL:-3}"
  
  	[ "$DISABLED" -gt 0 ] && return
+-- 
+2.53.0
+

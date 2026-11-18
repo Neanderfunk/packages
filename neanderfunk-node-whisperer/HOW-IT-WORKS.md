@@ -8,9 +8,9 @@ daemon and the app (2026-09-13), not written from memory.
 - This package: [`neanderfunk-node-whisperer`](https://github.com/Neanderfunk/packages/tree/v2023.2.x/neanderfunk-node-whisperer)
   (fork of [`ffda-node-whisperer`](https://github.com/freifunk-gluon/community-packages/tree/v2023.2.x/ffda-node-whisperer)
   from the Gluon community packages; why we forked is in [README.md](README.md))
-- Daemon source: [blocktrron/node-whisperer](https://github.com/blocktrron/node-whisperer)
-  (David Bauer, Matthias Schiffer; GPL-2.0-or-later), pinned to `8f1e5560`
-  (2024-11-09)
+- Daemon source: [fnsh/node-whisperer](https://github.com/fnsh/node-whisperer)
+  (formerly blocktrron/node-whisperer; David Bauer, Matthias Schiffer;
+  GPL-2.0-or-later), pinned to `c2d410d` (2026-11-12)
 - App: [freifunk-darmstadt/NodeMonitor](https://github.com/freifunk-darmstadt/NodeMonitor)
   (Android, Kotlin)
 
@@ -29,7 +29,7 @@ Sender: the node
    | 4 | domain (usually absent for us, see patch 0001) |
    | 5 | system load |
    | 6 | firmware version |
-   | 20 | batman-adv, 8 bytes: byte 0 = VPN uplink yes/no, byte 1 = TQ of the selected gateway (patch 0002; before, it carried the TQ of the VPN neighbour), bytes 2-3 = originators (patch 0004: each one once, not each route), bytes 4-5 = neighbours, bytes 6-7 = clients (local translation table of `bat0`, without NOPURGE entries, last seen within 60 s; same count as `clients.total` in respondd). 16-bit values are big endian |
+   | 20 | batman-adv, 8 bytes: byte 0 = VPN uplink yes/no, byte 1 = TQ of the selected gateway (patch 0002; before, it carried the TQ of the VPN neighbour), bytes 2-3 = originators (each one once, not each route; upstream since `e194120`, before that our patch), bytes 4-5 = neighbours, bytes 6-7 = clients (local translation table of `bat0`, without NOPURGE entries, last seen within 60 s; same count as `clients.total` in respondd). 16-bit values are big endian |
 
    Which sources are active comes from `site.conf`
    (`node_whisperer.information`), stored in uci as

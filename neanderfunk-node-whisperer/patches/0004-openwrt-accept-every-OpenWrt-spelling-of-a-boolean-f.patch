@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Neanderfunk <projekt@neanderfunk.de>
 Date: Thu, 1 Oct 2026 00:41:29 +0200
-Subject: [PATCH] openwrt: accept every OpenWrt spelling of a boolean for
+Subject: [PATCH 4/4] openwrt: accept every OpenWrt spelling of a boolean for
  disabled
 
 The init script compared the uci value numerically. "true" or "yes" made

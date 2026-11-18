@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Neanderfunk <projekt@neanderfunk.de>
 Date: Sun, 6 Sep 2026 17:50:21 +0200
-Subject: [PATCH] information: a missing domain is not an error
+Subject: [PATCH 1/4] information: a missing domain is not an error
 
 gluonutil_get_domain() returns NULL on a single-domain firmware - there is
 simply no domain to report. The collector returned -1 for that, and the daemon
@@ -22,7 +22,7 @@ collection failures keep their error message.
  2 files changed, 13 insertions(+), 1 deletion(-)
 
 diff --git a/src/daemon.c b/src/daemon.c
-index b636150..ecdcc8c 100644
+index ff942fd..ba227dc 100644
 --- a/src/daemon.c
 +++ b/src/daemon.c
 @@ -4,6 +4,7 @@
@@ -48,7 +48,7 @@ index b636150..ecdcc8c 100644
  			/* Error */
  			log_error("Error collecting Information for id=%d name=%s code=%d",
 diff --git a/src/information.c b/src/information.c
-index 91dcc7f..c6e3ca5 100644
+index d24f1c3..7ec0efd 100644
 --- a/src/information.c
 +++ b/src/information.c
 @@ -4,6 +4,7 @@
@@ -58,8 +58,8 @@ index 91dcc7f..c6e3ca5 100644
 +#include <errno.h>
  
  #include <arpa/inet.h>
- #include <linux/unistd.h>
-@@ -176,7 +177,10 @@ int node_whisperer_information_domain_collect(uint8_t *buffer, size_t buffer_siz
+ #include <sys/sysinfo.h>
+@@ -179,7 +180,10 @@ int node_whisperer_information_domain_collect(uint8_t *buffer, size_t buffer_siz
  
  	dom = gluonutil_get_domain();
  	if (!dom) {
@@ -71,3 +71,6 @@ index 91dcc7f..c6e3ca5 100644
  		goto out_free;
  	}
  
+-- 
+2.53.0
+
