@@ -322,7 +322,16 @@ if ! check_disabled br_client_ipv6 ; then
   # without a prefix6 there is nothing to compare against, so do not reboot. The
   # old version compared against an empty prefix, which made grep -c report 0 and
   # would have rebooted the node every 7 minutes.
-  if [ -n "$prefix" ] ; then
+  # Skipping is safe but used to be silent: on multi-domain images the check was
+  # dead for weeks and looked exactly like a healthy node. Say so once per boot
+  # (/tmp is empty after a reboot); the marker goes away once a prefix is found.
+  if [ -z "$prefix" ] ; then
+    if [ ! -e /tmp/hotfix.brclient-noprefix ] ; then
+      : > /tmp/hotfix.brclient-noprefix
+      logger -s -t "$HOTFIX_TAG" -p 4 "[br_client_ipv6] no prefix6 in site.conf or domain (domain '$(uci -q get gluon.core.domain)'), check skipped while it is missing (logged once per boot)"
+    fi
+  else
+    [ -e /tmp/hotfix.brclient-noprefix ] && rm -f /tmp/hotfix.brclient-noprefix
     if [ "$(ip -6 addr show to "$prefix" dev br-client 2>/dev/null | grep -c inet6)" = "0" ] ; then
       [ "$(strike /tmp/hotfix.brclient-noaddr)" -ge 4 ] && now_reboot "[br_client_ipv6] br-client has no address from the site prefix"
     else
