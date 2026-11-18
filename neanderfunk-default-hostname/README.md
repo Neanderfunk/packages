@@ -79,6 +79,9 @@ Wizard steht das Namensfeld über der Domain-Auswahl.
   Name mit dem Präfix einer Domain im Image (längster Treffer, leere Präfixe
   zählen nicht), wird es durch das Präfix der gewählten Domain ersetzt; Mitte
   und Kennung bleiben. Sonst bleibt der Name unverändert.
+  Das gilt auch für einen selbst gewählten Namen mit Domain-Präfix
+  (`dias-mt-labor` wird `HAN-mt-labor`): Solange das Setup nicht einmal
+  durchgelaufen ist, wandert das Präfix mit, gewollt (adorfer 18.11.2026).
 - Bestehende und migrierte Knoten behalten ihren Namen, ein späterer Umzug in
   eine andere Domain ändert das Präfix nicht.
 

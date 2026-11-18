@@ -86,10 +86,10 @@ Gluon-Feature `config-mode-domain-select`, dazu Patch
   Multi, dann `configured=0`, Setup-Modus. Vorbelegt 21_dias; hin und
   zurück umgeschaltet und gespeichert: 21_dias, Name, Position, Mesh-VPN und
   next_node 10.21.0.1 unverändert.
-- [ ] Entscheidung adorfer offen: Bei `configured=0` tauscht der
-  Präfix-Schritt auch bei einem eigenen Namen mit Domain-Präfix
-  (`dias-mt-labor` wird beim Umschalten auf 06_han `HAN-mt-labor`). Betrifft
-  nur umgestiegene Knoten, die nie über den Wizard eingerichtet wurden.
+- [x] Bei `configured=0` tauscht der Präfix-Schritt auch bei einem eigenen
+  Namen mit Domain-Präfix (`dias-mt-labor` wird beim Umschalten auf 06_han
+  `HAN-mt-labor`). Gewollt (adorfer 18.11.2026): solange das Setup nicht
+  einmal durchgelaufen ist, wandert das Domain-Präfix mit.
 
 Karte im Wizard, Patch `config-mode/geo-location-domain-map`
 (gluon-patches-packages `5d52c40`), Domain-Schlüssel `neanderfunk_map`
