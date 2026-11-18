@@ -80,8 +80,16 @@ Gluon-Feature `config-mode-domain-select`, dazu Patch
       im Image nur `25_hvb`. Im geschlossenen Feld ist der Name nach „bitte
       eine andere Domain wählen, sonst“ abgeschnitten, der Kern bleibt lesbar.
       Mit `configured=1` ist die aktuelle Domain (`21_dias`) vorbelegt.
-- [ ] Knoten mit erkannter Altdomain: diese ist vorbelegt.
-- [ ] Speichern ohne Änderung lässt die Domain, wie sie ist.
+- [x] Knoten mit erkannter Altdomain: diese ist vorbelegt.
+- [x] Speichern ohne Änderung lässt die Domain, wie sie ist.
+- Beide 26111810bro, 18.11.2026 (Buildsystem): t1.sh Single 21_dias auf
+  Multi, dann `configured=0`, Setup-Modus. Vorbelegt 21_dias; hin und
+  zurück umgeschaltet und gespeichert: 21_dias, Name, Position, Mesh-VPN und
+  next_node 10.21.0.1 unverändert.
+- [ ] Entscheidung adorfer offen: Bei `configured=0` tauscht der
+  Präfix-Schritt auch bei einem eigenen Namen mit Domain-Präfix
+  (`dias-mt-labor` wird beim Umschalten auf 06_han `HAN-mt-labor`). Betrifft
+  nur umgestiegene Knoten, die nie über den Wizard eingerichtet wurden.
 
 Karte im Wizard, Patch `config-mode/geo-location-domain-map`
 (gluon-patches-packages `5d52c40`), Domain-Schlüssel `neanderfunk_map`
@@ -93,10 +101,11 @@ Karte im Wizard, Patch `config-mode/geo-location-domain-map`
       Domain-Auswahl verschiebt den Ausschnitt. 26111810bro, 18.11.2026:
       frisch Site-Ausschnitt (`25_hvb` ohne Eintrag), `06_han` z13, `40_sim`
       z12, `21_dias` z5; mit `configured=1` Start auf `21_dias`.
-- [ ] Nach Klick in die Karte oder eingetippten Koordinaten, und bei einem
+- [x] Nach Klick in die Karte oder eingetippten Koordinaten, und bei einem
       Knoten mit Position: Umschalten verschiebt nichts, Koordinaten bleiben.
       Klick und Tippen bestanden (26111810bro, 18.11.2026); Knoten mit
-      gespeicherter Position noch offen.
+      gespeicherter Position: Start dort mit Zoom 18, Umschalten verschiebt
+      nichts (Buildsystem, 18.11.2026).
 
 Vorgabe-Hostname (`neanderfunk-default-hostname`, Präfix je Domain):
 
