@@ -74,8 +74,12 @@ Gluon-Feature `config-mode-domain-select`, dazu Patch
   Vorbelegung, Speichern verschob ihn in den ersten Eintrag nach Namen (Fehler
   aus 2023.2.6). Jetzt immer gelistet und vorbelegt.
 - [x] Offline-Test 5 Fälle bestanden (18.11.2026).
-- [ ] Im Browser: frisch geflasht steht „Halteverbot ...“ vorbelegt; der lange
+- [x] Im Browser: frisch geflasht steht „Halteverbot ...“ vorbelegt; der lange
       Name ist im Dropdown lesbar; andere versteckte Domains fehlen.
+      26111810bro, 18.11.2026: 48 Domains, vorbelegt `25_hvb`; versteckt ist
+      im Image nur `25_hvb`. Im geschlossenen Feld ist der Name nach „bitte
+      eine andere Domain wählen, sonst“ abgeschnitten, der Kern bleibt lesbar.
+      Mit `configured=1` ist die aktuelle Domain (`21_dias`) vorbelegt.
 - [ ] Knoten mit erkannter Altdomain: diese ist vorbelegt.
 - [ ] Speichern ohne Änderung lässt die Domain, wie sie ist.
 
@@ -85,22 +89,34 @@ Karte im Wizard, Patch `config-mode/geo-location-domain-map`
 
 - [x] Offline-Test der Domainwerte (10 Prüfungen), check_site mit Gluons
       check-site, JS-Logik simuliert (18.11.2026).
-- [ ] Im Browser: Karte startet auf der aktuellen Domain; Umschalten der
-      Domain-Auswahl verschiebt den Ausschnitt.
+- [x] Im Browser: Karte startet auf der aktuellen Domain; Umschalten der
+      Domain-Auswahl verschiebt den Ausschnitt. 26111810bro, 18.11.2026:
+      frisch Site-Ausschnitt (`25_hvb` ohne Eintrag), `06_han` z13, `40_sim`
+      z12, `21_dias` z5; mit `configured=1` Start auf `21_dias`.
 - [ ] Nach Klick in die Karte oder eingetippten Koordinaten, und bei einem
       Knoten mit Position: Umschalten verschiebt nichts, Koordinaten bleiben.
+      Klick und Tippen bestanden (26111810bro, 18.11.2026); Knoten mit
+      gespeicherter Position noch offen.
 
 Vorgabe-Hostname (`neanderfunk-default-hostname`, Präfix je Domain):
 
-- [ ] a) frischer Knoten: Vorgabename mit dem Präfix von `25_hvb`, Domain
+- [x] a) frischer Knoten: Vorgabename mit dem Präfix von `25_hvb`, Domain
       umschalten, Präfix im Namensfeld tauscht, gespeicherter Name trägt das
       neue Präfix.
-- [ ] b) dasselbe ohne JavaScript, Tausch beim Speichern.
-- [ ] c) selbst gewählter Name ohne bekanntes Präfix bleibt.
-- [ ] d) Setup-Modus später erneut (`configured=1`), Domain wechseln, Name
+- [x] b) dasselbe ohne JavaScript, Tausch beim Speichern.
+- [x] c) selbst gewählter Name ohne bekanntes Präfix bleibt.
+- [x] d) Setup-Modus später erneut (`configured=1`), Domain wechseln, Name
       bleibt.
-- [ ] e) Knoten aus der Single-Firmware (erkannte Altdomain) behält seinen
+- [x] e) Knoten aus der Single-Firmware (erkannte Altdomain) behält seinen
       Namen.
+- a bis d: Labor-VM x86-64, 26111810bro, 18.11.2026, je frisch geflasht
+  außer d. a) `HVB-x86-1101`, im Browser `HAN-`/`SIM-`/`dias-`, auch mit
+  bearbeiteter Mitte (`SIM-x86-Kirchstr-1101`), gespeichert `dias-x86-1101`.
+  b) Formular ohne Handler der Seite abgeschickt, gespeichert
+  `dias-x86-1101`. c) `Testknoten-Kirchstrasse` bleibt im Browser und
+  gespeichert. d) nach a erneut in den Setup-Modus, auf `06_han` (Mesh-VPN
+  aus) gespeichert: Name `dias-x86-1101` bleibt. e) mit t1.sh (Single
+  `26101610sta` auf Multi `26111803bro`): hostname übernommen.
 
 ### 3. Anzeige der Domain
 

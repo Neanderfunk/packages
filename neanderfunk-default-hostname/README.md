@@ -87,12 +87,12 @@ Browser mit einer Nachbildung des Formulars und dem Skript aus dem Template
 (Headless-Chromium: Mitte bearbeitet, dann Domain gewechselt), Modul und
 serverseitiger Schritt auf 26101300bro in QEMU mit nachgestellten
 Domain-Dateien (Präfix je Domain, Rückfall auf das site-weite Präfix,
-Alias-Code, `configured=1` lässt den Namen in Ruhe). Nicht getestet: der
-echte Wizard mit `gluon-config-mode-domain-select` in einem
-Multi-Domain-Image.
+Alias-Code, `configured=1` lässt den Namen in Ruhe). Echter Wizard
+mit `gluon-config-mode-domain-select` im Multi-Domain-Image 26111810bro
+(QEMU, 18.11.2026): Tausch im Browser und beim Senden ohne JavaScript, eigener
+Name bleibt, `configured=1` lässt den Namen beim Domainwechsel in Ruhe.
 
 Im Image beider 2025.1-Linien (FirmwareConfigs `templates/common`, mit dem
 Gluon-Patch `hostname/default-hostname` aus gluon-patches-packages). Im
 Multi-Domain-Image steht `neanderfunk_hostname_prefix` in allen 48 Domains
-(Stand 18.11.2026). Der Test des echten Wizards mit Domain-Auswahl steht mit
-dem ersten Multi-Image an, das die Domain-Auswahl enthält.
+(Stand 18.11.2026). 
