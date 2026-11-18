@@ -31,6 +31,13 @@ actually running, not just what is configured:
 - clients (local, per band, mesh-wide), SSID, and the offline SSID worded
   like the status page: `online`, `offline` (red) or `aus`, with the
   counters now/switches since boot/gateway losses since boot
+- ddhcpd (row `DHCP`, only with neanderfunk-ddhcpd): `laeuft`,
+  `Lernphase`, own and foreign blocks, leases leased/total (offered ones
+  when there are any); `nodeinfo` adds free blocks, leases of clients not
+  here, roaming in/out and IPv4 clients. Values from `statistics.neanderfunk`
+  of neanderfunk-respondd, the same as the status page block "DHCP
+  (ddhcpd)". `steht` in red with a warning only when the domain enables
+  ddhcpd, otherwise `ddhcpd aus`
 - a radio table with the live channel, width, HT mode and tx power per radio
   (from `iwinfo`), AP and mesh state, clients and mesh neighbours with TQ
 - a warning when a radio's channel differs from the firmware (site.conf /

@@ -1299,6 +1299,44 @@ row('Clients', 'lokal ' .. (cl.total or '?') .. ((has_wifi and wired) and ('  Ka
 	has_wifi and ('WLAN 2G ' .. (cl.wifi24 or '?') .. '  5G ' .. (cl.wifi5 or '?')) or '',
 	'im Mesh ' .. (batctl_ok and meshclients or '?'))
 
+-- ddhcpd (neanderfunk-ddhcpd): dieselben Werte wie der Block "DHCP (ddhcpd)"
+-- der Statusseite, aus statistics.neanderfunk von neanderfunk-respondd (fragt
+-- den Control-Socket, kein Prozessstart). Ohne das Paket fehlt der Eintrag,
+-- dann auch die Zeile. "aus" ist nur dann ein Fehler, wenn die Domain ddhcpd
+-- einschaltet (ddhcpd.settings.enabled, gesetzt von 500-neanderfunk-ddhcpd).
+local nf_stats = type(stats.neanderfunk) == 'table' and stats.neanderfunk or {}
+local dd = type(nf_stats.ddhcpd) == 'table' and nf_stats.ddhcpd or nil
+if dd then
+	local function n(group, key)
+		local g = type(dd[group]) == 'table' and dd[group] or {}
+		return g[key] ~= nil and tostring(g[key]) or '?'
+	end
+	local want = is_true(uci:get('ddhcpd', 'settings', 'enabled'))
+		and not is_true(uci:get('ddhcpd', 'settings', 'disabled_local'))
+	if dd.running then
+		local blocks = 'Bloecke eigen ' .. n('blocks', 'ours')
+		if not dd.learning then blocks = blocks .. ' fremd ' .. n('blocks', 'foreign') end
+		local offered = tonumber((dd.leases or {}).offered) or 0
+		row('DHCP', dd.learning and c('yellow', 'ddhcpd Lernphase') or 'ddhcpd laeuft', blocks,
+			'Leases ' .. n('leases', 'leased') .. '/' .. n('leases', 'total')
+				.. (offered > 0 and (' +' .. offered .. ' angeb.') or ''))
+		if MODE == 'details' then
+			local v4 = type(nf_stats.clients_ipv4) == 'table' and nf_stats.clients_ipv4 or {}
+			row('', dd.learning and '' or ('Bloecke frei ' .. n('blocks', 'free')),
+				'nicht lokal ' .. n('leases', 'away'),
+				dd.roaming and ('Roaming rein ' .. n('roaming', 'in') .. ' raus ' .. n('roaming', 'out')) or '')
+			if v4.total then
+				row('', 'IPv4-Clients ' .. v4.total, 'davon ddhcpd ' .. (v4.ddhcpd or '?'), '')
+			end
+		end
+	elseif want then
+		row('DHCP', c('red', 'ddhcpd steht'), 'Domain schaltet es ein', '')
+		warn('red', 'ddhcpd soll laufen, antwortet aber nicht (logread | grep ddhcpd)')
+	else
+		row('DHCP', c('dim', 'ddhcpd aus'), c('dim', 'in dieser Domain'), '')
+	end
+end
+
 -- Offline-SSID (neanderfunk-ssid-changer): jetzt / Wechsel seit Boot / Gateway-Verluste
 local sc_now = readline('/tmp/ssid-changer-offline')
 local essid = sh('iwinfo client0 info'):match('ESSID: "([^"]*)"') or sh('iwinfo client1 info'):match('ESSID: "([^"]*)"')
