@@ -53,12 +53,15 @@ Paket `neanderfunk-domain-from-legacy` (`004`, vor Gluons `005-set-domain`).
   `logread | grep neanderfunk-domain` (logger ging vor logd verloren).
 - [x] Testfälle auf einer VM bestanden (12 Fälle, 18.10.2026); Offline-Test 12
       Fälle (16.11.2026).
-- [ ] Ganzer Ablauf `001` -> `004` -> `005` in einem echten Multi-Image:
-      Single-Domain-Knoten per sysupgrade umstellen, danach `uci show
-      gluon.domain_from_legacy` und `logread`. Offen seit 16.11.2026, erwartet
-      etwa `source='next_node:10.51.64.1'`, `domain='21_dias'`.
+- [x] Ganzer Ablauf `001` -> `004` -> `005` in einem echten Multi-Image:
+      Labor-VM x86-64, sysupgrade von `26101610sta` (Single, 21_dias) auf
+      `26111803bro` (Multi), 18.11.2026: erkannt über `next_node` 10.51.64.1,
+      Domain `21_dias`, Logzeile vorhanden; danach next_node 10.21.0.1/16,
+      hostname und mesh_vpn übernommen, LAN-Rolle client, nodeinfo
+      `site_code` ffnef, `domain_code` 21_dias.
 - [ ] Je ein Knoten mit WLAN-Mesh, einer ohne WLAN (x86/ERX) und einer mit
-      einer der festen Altadressen (`10.31.0.1`, `10.40.0.1`).
+      einer der festen Altadressen (`10.31.0.1`, `10.40.0.1`). Ohne WLAN
+      (x86) erledigt, siehe oben.
 - [ ] Neuinstallation: kein Eintrag, Domain `25_hvb`.
 
 ### 2. Config-Mode: Domain-Auswahl
@@ -129,6 +132,9 @@ Vorgabe-Hostname (`neanderfunk-default-hostname`, Präfix je Domain):
       .0.2, `dns` .0.1 und zwei externe, `block_size` 4, ohne
       `foreign_prefix4`, also Vorgabe `client_prefix4`): auf einem Testknoten
       läuft der Daemon, Statusseite „läuft“, `ddhcpdctl -m` mit Blöcken.
+      Labor-VM `26111803bro` 18.11.2026: Daemon läuft, `block_size_pow` 4,
+      `block_network` 10.21.128.0/19, `foreign_network` 10.21.0.0/16; offen
+      noch Statusseite und `ddhcpdctl -m` am WLAN-Testknoten 33f1.
 - [ ] Kea vergibt in keiner Domain aus 10.NN.128.0/19 (laut adorfer 17.11.2026
       auf allen Supernodes umgesetzt); Clients mit Kea-Adresse bekommen kein NAK von ddhcpd.
 - [ ] Nach einem Domainwechsel auf dem Testknoten: ddhcpd-Bereich,
