@@ -12,10 +12,10 @@ steht nur dort, wo es ein Paket berührt.
 Angelegt am 18.11.2026 auf Wunsch adorfer. Beim Abhaken Datum und Image
 dazuschreiben.
 
-Die verbindliche Gesamtabnahme ist Test G (G1 bis G9) in der
+Die verbindliche Gesamtabnahme ist Test G (G1 bis G10) in der
 Release-Abnahme des Bausystems (`docs/release-abnahme.md` im internen
 Buildsystem-Repo). Diese Liste ist die paketseitige Detailliste dazu: Abschnitt
-1 gehört zu G1, 2 zu G2/G3, 3 zu G7, 4 zu G4/G6, 5 zu G9, 6 zu G5. Ein
+1 gehört zu G1, 2 zu G2/G3, 3 zu G7, 4 zu G4/G6/G10 (Domainwechsel im Betrieb), 5 zu G9, 6 zu G5. Ein
 Haken hier ersetzt keinen in Test G.
 
 Grundregeln, die überall gelten
