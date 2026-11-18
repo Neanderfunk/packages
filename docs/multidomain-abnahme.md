@@ -116,7 +116,7 @@ Vorgabe-Hostname (`neanderfunk-default-hostname`, Präfix je Domain):
 | `neanderfunk_map` | Patch geo-location-domain-map | `in_domain` | Domain-Dateien direkt (Auswahl), `gluon.site` (Start) | |
 | `nodeplacer.mirrors` | neanderfunk-nodeplacer | `in_domain` seit Feed `b32a1b4` | `gluon.site` in `510-nodeplacer` | in allen 48 Domains mit ULA-Mirror |
 | `neanderfunk_legacy.*` | neanderfunk-domain-from-legacy | keins | Domain-Dateien direkt | |
-| `prefix6` | neanderfunk-hotfix (`br_client_ipv6`) | - | **`site.json` direkt** | **offen, siehe 5.** |
+| `prefix6` | neanderfunk-hotfix (`br_client_ipv6`) | Gluon: `in_domain` | `nf_site_get` (bis 18.11.2026 `site.json`, lief nie) | behoben, siehe 5. |
 | ddhcpd-Bereich | neanderfunk-respondd (`clients_ipv4`) | - | site.json + Domain-Datei, Domain zuerst | |
 
 - [ ] ddhcpd (`range` 10.NN.128.0/19, `client_prefix4` 10.NN.0.0/16, `router`
@@ -134,14 +134,20 @@ Vorgabe-Hostname (`neanderfunk-default-hostname`, Präfix je Domain):
 
 Im Multi-Image sehen sie nur Site-Werte. Bestandsaufnahme 18.11.2026:
 
-- **neanderfunk-hotfix `healthcheck.sh`, Check `br_client_ipv6`:** liest
-  `prefix6` aus `site.json`. Im Multi-Image steht `prefix6` nur in der Domain
-  (`fd66:666e:6566:6415::/64` für 21_dias, am Testknoten nachgesehen), der
-  Wert ist leer, der Check läuft still nicht. Kein Fehlneustart, aber ein
-  verlorener Check. **Offen: über `gluon.site` lesen.**
+- **neanderfunk-hotfix `healthcheck.sh`, Check `br_client_ipv6`:** las
+  `prefix6` aus `site.json`. Gluon 2025.1 legt `prefix6` (`in_domain`) nur in
+  die Domain-Datei, auch bei Images mit einer Domain: der Check lief auf allen
+  2025.1-Knoten still nicht (gesehen an einem Multi- und einem
+  2025.1-Testknoten). **Behoben 18.11.2026** (Feed `afe4112`/`18465ad`): neue
+  Funktion `nf_site_get` in neanderfunk-common (`/lib/gluon/neanderfunk/site.sh`),
+  Domain vor Site.
+  - [ ] Mit dem neuen Image: `br_client_ipv6` läuft wieder (kein Fehlneustart,
+        `/tmp/hotfix.brclient-noaddr` bleibt leer, solange br-client seine
+        ULA hat).
 - neanderfunk-hotfix `500`, neanderfunk-linkcheck `500`, neanderfunk-common
-  `490`: lesen `hotfix.*`, `linkcheck.*`, `neanderfunk.*` aus `site.json`.
-  Funktioniert, solange diese Blöcke in der site.conf stehen.
+  `490`: lasen `hotfix.*`, `linkcheck.*`, `neanderfunk.*` aus `site.json`;
+  seit 18.11.2026 ebenfalls über `nf_site_get`, ein Wert in der Domain
+  würde also auch wirken.
   - [ ] Im Multi-Image stehen sie nicht in Domain-Dateien (sonst wirkungslos).
     Am Testknoten 21_dias: `neanderfunk` in der Site, `hotfix` und `linkcheck`
     gar nicht gesetzt (Vorgaben greifen).
@@ -184,5 +190,5 @@ Stand der Punkte
 ----------------
 
 Offen bei Anlage: 1 (echtes Image), 2 (Browser: Auswahl, Karte, Hostname), 3, 4 (Gerät), 5
-(`br_client_ipv6`), 6 (App), 8. Bestanden: Offline-Tests zu 1 und 2,
+(`br_client_ipv6` am Gerät, Code behoben), 6 (App), 8. Bestanden: Offline-Tests zu 1 und 2,
 check_site-Probe zu `nodeplacer.mirrors` mit Gluons check-site.
