@@ -142,6 +142,10 @@ Realer Test im Config-Mode (echte Geräte, nicht Labor-VM; adorfer):
 - [ ] Neuer Knoten: frisch mit dem Multi-Image geflasht. Wizard mit `25_hvb`
       vorbelegt; Domain wählen, Karte, Vorgabename mit Präfix, speichern;
       danach in der gewählten Domain online.
+      Erster Teil bestanden: D-Link M60 bb31, frisch mit 26111822bro,
+      19.11.2026 (Screenshot adorfer). Vorgabename `HVB-M60-bb31`, Domain
+      „Halteverbot ...“ vorbelegt, Kontakt leer. Offen: Domain wählen,
+      speichern, online in der gewählten Domain.
 
 ### 3. Anzeige der Domain
 
