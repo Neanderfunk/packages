@@ -110,8 +110,8 @@ sieben Domains „LVR-HPH“ (M60 bb31, 26111822bro).
       „LVR-HPH NordWest“, `33_lvrmo` „LVR-HPH MitteOst“, `34_lvrmw`
       „LVR-HPH MitteWest“, `35_lvrso` „LVR-HPH SüdOst“, `36_lvrsw`
       „LVR-HPH SüdWest“; `11_lvr` bleibt „LVR-HPH“.
-  - [ ] adorfer bestätigt `36_lvrsw` = SüdWest (der Langname in den
-        Stammdaten sagt noch SüdOst).
+  - [x] `36_lvrsw` = SüdWest, bestätigt von adorfer 19.11.2026: „SüdOst“
+        im Langnamen der alten Stammdaten war ein Fehler.
 
 Karte im Wizard, Patch `config-mode/geo-location-domain-map`
 (gluon-patches-packages `5d52c40`), Domain-Schlüssel `neanderfunk_map`
