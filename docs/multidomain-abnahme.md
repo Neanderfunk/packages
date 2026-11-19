@@ -133,6 +133,16 @@ Vorgabe-Hostname (`neanderfunk-default-hostname`, Präfix je Domain):
   aus) gespeichert: Name `dias-x86-1101` bleibt. e) mit t1.sh (Single
   `26101610sta` auf Multi `26111803bro`): hostname übernommen.
 
+Realer Test im Config-Mode (echte Geräte, nicht Labor-VM; adorfer):
+
+- [ ] Bestandsknoten: ein Knoten aus dem Feld bzw. mit Single-Firmware, auf
+      das Multi-Image gebracht, dann in den Config-Mode (Reset-Knopf etwa
+      10 s). Vorbelegt sind die erkannte Domain, Name, Position und Mesh-VPN.
+      Speichern ändert nichts davon.
+- [ ] Neuer Knoten: frisch mit dem Multi-Image geflasht. Wizard mit `25_hvb`
+      vorbelegt; Domain wählen, Karte, Vorgabename mit Präfix, speichern;
+      danach in der gewählten Domain online.
+
 ### 3. Anzeige der Domain
 
 - Statusseite: Zeile „Domain“ zeigt `Anzeigename (Code)`, Patch
@@ -289,9 +299,10 @@ check_site-Probe zu `nodeplacer.mirrors` mit Gluons check-site.
 
 Stand 19.11.2026 (Image `26111822bro` auf 17 Knoten, 15 in `21_dias`):
 
-- Erledigt: 1 bis auf die festen Altadressen, 2 ganz, 3 ganz, 5 ganz, 7.
-  Aus 4: ddhcpd im Feld, Vorgabe-Hostname.
-- Offen bei adorfer: nodeplacer-Wechsel per Manifest im Multi-Image (4),
+- Erledigt: 1 bis auf die festen Altadressen, 2 in Labor-VM und Browser, 3
+  ganz, 5 ganz, 7. Aus 4: ddhcpd im Feld, Vorgabe-Hostname.
+- Offen bei adorfer: realer Config-Mode-Test mit Bestandsknoten und neuem
+  Knoten (2), nodeplacer-Wechsel per Manifest im Multi-Image (4),
   NodeMonitor-App am Handy (6), Entscheidung über die Zweige (8).
 - Offen in diesem Feed: Domainwechsel am Testknoten mit Kontrolle von
   ddhcpd, next_node und Mirrors (4); `domainswitch` im Image (4); Fehler von
