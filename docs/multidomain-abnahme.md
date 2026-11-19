@@ -182,7 +182,9 @@ Im nächsten Multi-Bau (alles gepinnt auf FirmwareConfigs
 `v2025.1.x-next`, spätestens `a9b789a`) im Browser bzw. am Knoten prüfen:
 
 - [ ] Domain-Auswahl „01_vel: Velbert“, nach Code sortiert; LVR-Domains mit
-      eigenen Namen.
+      eigenen Namen; Vorratsdomains als „Werft: <Name>“, etwa
+      „19_agi: Werft: Agios“ (19, 20, 26 bis 29; FirmwareConfigs `ad269e1`,
+      adorfer 19.11.2026).
 - [ ] Nodeplacer-Seite ohne Nachsatz.
 - [ ] Automatische Updates mit Erklärtext (de, fr).
 - [ ] `domainswitch` und `domainswitch 06 -n` auf der Kommandozeile.
