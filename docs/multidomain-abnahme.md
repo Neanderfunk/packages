@@ -192,7 +192,8 @@ Im nächsten Multi-Bau (alles gepinnt auf FirmwareConfigs
       aktualisiert“: ohne „Einstellungen behalten“ Link auf 192.168.1.1 und
       nach 240 s zurück im Konfigurationsmodus; mit „Einstellungen behalten“
       an einem eingerichteten Knoten der Hinweis auf den Normalbetrieb, kein
-      Refresh (neanderfunk-config-mode-theme, Wunsch adorfer 19.11.2026).
+      Refresh (neanderfunk-config-mode-theme, Wunsch adorfer 19.11.2026;
+      FirmwareConfigs `7012e5a`).
 
 ### 3. Anzeige der Domain
 
