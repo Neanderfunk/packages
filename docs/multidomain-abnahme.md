@@ -163,6 +163,30 @@ Realer Test im Config-Mode (echte Geräte, nicht Labor-VM; adorfer):
       „Halteverbot ...“ vorbelegt, Kontakt leer. Offen: Domain wählen,
       speichern, online in der gewählten Domain.
 
+Weitere Befunde aus dem realen Test an der M60 bb31 (26111822bro,
+19.11.2026, adorfer):
+
+- [x] Seite „Netzwerk“, Radio-Buttons je Rolle (Patch
+      `config-mode/network-one-role`): funktionieren.
+- Text der Nodeplacer-Seite: Der Nachsatz „Ohne Haken geht das nicht.“
+  ist gestrichen, denn dort steht ein Schiebeschalter (Feed `fffe92e`,
+  FirmwareConfigs `b905e7b`). Andere Haken-Texte gibt es weder im Feed noch
+  in den Patches noch in Gluons deutschen Texten.
+- Seite „Automatische Updates“ mit Erklärtext (Patch
+  `config-mode/autoupdater-hinweis`, gluon-patches-packages `6b8b0b5`,
+  FirmwareConfigs `a9b789a`): „Der Knoten erhält Sicherheitsupdates und
+  bleibt nicht zurück, wenn sich im Freifunk etwas ändert, zum Beispiel am
+  VPN. Ohne Updates verliert er irgendwann den Anschluss.“
+
+Im nächsten Multi-Bau (alles gepinnt auf FirmwareConfigs
+`v2025.1.x-next`, spätestens `a9b789a`) im Browser bzw. am Knoten prüfen:
+
+- [ ] Domain-Auswahl „01_vel: Velbert“, nach Code sortiert; LVR-Domains mit
+      eigenen Namen.
+- [ ] Nodeplacer-Seite ohne Nachsatz.
+- [ ] Automatische Updates mit Erklärtext (de, fr).
+- [ ] `domainswitch` und `domainswitch 06 -n` auf der Kommandozeile.
+
 ### 3. Anzeige der Domain
 
 - Statusseite: Zeile „Domain“ zeigt `Anzeigename (Code)`, Patch
@@ -325,7 +349,9 @@ Stand 19.11.2026 (Image `26111822bro` auf 17 Knoten, 15 in `21_dias`):
   Knoten (2), nodeplacer-Wechsel per Manifest im Multi-Image (4),
   NodeMonitor-App am Handy (6), Entscheidung über die Zweige (8).
 - Offen in diesem Feed: Domainwechsel am Testknoten mit Kontrolle von
-  ddhcpd, next_node und Mirrors (4); `domainswitch` im Image (4); Fehler von
-  ddhcpd beim Booten ansehen (4).
+  ddhcpd, next_node und Mirrors (4); Fehler von ddhcpd beim Booten ansehen
+  (4); Liste „Im nächsten Multi-Bau prüfen“ (2).
+- Neuer Knoten (M60 bb31): Vorbelegung bestanden, Speichern und online in
+  der gewählten Domain noch offen (2).
 - Offen auf Seite der Supernodes: Kea außerhalb 10.NN.128.0/19 (4).
 - Wartet auf einen Feldknoten: feste Altadressen (1).
