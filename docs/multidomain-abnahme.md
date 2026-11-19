@@ -59,10 +59,16 @@ Paket `neanderfunk-domain-from-legacy` (`004`, vor Gluons `005-set-domain`).
       Domain `21_dias`, Logzeile vorhanden; danach next_node 10.21.0.1/16,
       hostname und mesh_vpn übernommen, LAN-Rolle client, nodeinfo
       `site_code` ffnef, `domain_code` 21_dias.
-- [ ] Je ein Knoten mit WLAN-Mesh, einer ohne WLAN (x86/ERX) und einer mit
-      einer der festen Altadressen (`10.31.0.1`, `10.40.0.1`). Ohne WLAN
-      (x86) erledigt, siehe oben.
-- [ ] Neuinstallation: kein Eintrag, Domain `25_hvb`.
+- [x] Je ein Knoten mit WLAN-Mesh und einer ohne WLAN (x86/ERX). Testknoten
+      von `26101610sta` auf `26111822bro`, 19.11.2026: M60 b483, Xiaomi 4A
+      33f1, 1043v2 4402 und MR90X e2a9 über `mesh_id:dias-mesh`, ERX über
+      `next_node:10.51.64.1`, alle `21_dias`.
+- [ ] Ein Knoten mit einer der festen Altadressen (`10.31.0.1`, `10.40.0.1`).
+      Kein Testknoten in diesen Altdomains; offen, bis ein Feldknoten von
+      dort updatet (`uci show gluon.domain_from_legacy`).
+- [x] Neuinstallation: Domain `25_hvb`. Frisch geflashte Labor-VM
+      (26111810bro, 18.11.2026): Wizard mit `25_hvb` vorbelegt, Vorgabename
+      `HVB-x86-1101` (siehe 2.).
 
 ### 2. Config-Mode: Domain-Auswahl
 
@@ -136,9 +142,16 @@ Vorgabe-Hostname (`neanderfunk-default-hostname`, Präfix je Domain):
   `Domain  ffnef / 21_dias  NP:1   <Name>`. `site_name` ist im Multi-Image für
   alle Domains „Freifunk im Neanderland“, deshalb jetzt der Name aus
   `domain_names`.
-- [ ] Statusseite und Login auf einem Testknoten mit dem neuen Image.
-- [ ] Weitere Stellen, die `site_name` als Domainnamen zeigen (Config-Mode-
-      Texte, Setup-Mode-Seiten): noch nicht durchgesehen.
+- Login zusätzlich mit DHCP-Zeile unter Gateway/Clients (ddhcpd läuft oder
+  Lernphase, Blöcke, Leases), `nodeinfo` ausführlicher (Feed `80b1d4e`).
+- [x] Statusseite und Login auf einem Testknoten mit dem neuen Image.
+      26111822bro, 19.11.2026, b483/33f1/4402/ERX/e2a9: Login
+      `Domain  ffnef / 21_dias  NP:1   Neanderfunk Diaspora`, Statusseite
+      „Neanderfunk Diaspora (21_dias)“.
+- [x] Weitere Stellen mit `site_name` (26111822bro, 19.11.2026, im Image
+      gesucht): Kopf des Config-Mode (`layout.html`), Zeile „Site“ der
+      Statusseite und `gluon-info` („Site“, daneben „Domain: 21_dias“). Alle
+      zeigen ihn als Namen der Site, nicht als Domain; das ist richtig so.
 
 ### 4. Werte, die je Domain verschieden sind
 
@@ -166,12 +179,38 @@ Vorgabe-Hostname (`neanderfunk-default-hostname`, Präfix je Domain):
       (`10.21.1.0` von 10.21.0.5), nach dem Update ab 21:23 in 38 von 40
       Läufen ddhcpd-Lease `10.21.148.80` von 10.21.0.1, Router 10.21.0.2,
       Ping v4/v6 und HTTPS v4/v6 in Ordnung (die zwei Ausfälle: Neustart).
+      WLAN-Testknoten 33f1 (26111822bro, 19.11.2026): `ddhcpdctl -m` mit
+      512 Blöcken, eigen 1, fremd 14; Login-Zeile „ddhcpd laeuft“ auf allen
+      neun erreichbaren Testknoten.
+- Nebenbefund Client-Test (18./19.11.2026): Router-Ping alle 5 bis 7 Minuten
+  mit Spitzen um 270 ms. Ursache war das DAT von batman-adv auf den
+  Supernodes (abgelaufener Eintrag, danach ARP-Broadcast). DAT ist seit
+  19.11.2026 auf allen Supernodes aus; seitdem keine Spitzen mehr, auch in
+  den anderen Domänen (ARP-Mitschnitt auf dem Supernode). Kein Thema der
+  Firmware.
+- [ ] Beim Booten meldet ddhcpd in den ersten Minuten 1 bis 3 Fehler
+      (`send_packet_mcast(...): Operation not permitted`, `Error in epoll`),
+      auf dem Xiaomi 4A einmal mit Neustart des Daemons (26111822bro,
+      19.11.2026: NWA55AXE, COVR-X1860, Xiaomi 4A). Danach ruhig. Vermutlich
+      Start vor dem Mesh-Interface; klein, ansehen.
 - [ ] Kea vergibt in keiner Domain aus 10.NN.128.0/19 (laut adorfer 17.11.2026
-      auf allen Supernodes umgesetzt); Clients mit Kea-Adresse bekommen kein NAK von ddhcpd.
+      auf allen Supernodes umgesetzt); Clients mit Kea-Adresse bekommen kein
+      NAK von ddhcpd. Prüfung auf Seite der Supernodes.
+- Domainwechsel von Hand: Befehl `domainswitch` (neanderfunk-banner, Feed
+  `355d1b6`, FirmwareConfigs `58ef58a`). Ohne Argument alle Domains mit Code
+  und Name, sonst Wechsel per Code, Nummer, Kürzel oder Name mit Rückfrage
+  (`-f` ohne, `-n` nur zeigen), dann `gluon-switch-domain` (Neustart,
+  `gluon-reconfigure` beim Booten). Auf b483 mit Attrappe getestet
+  (19.11.2026), im Image ab dem nächsten Multi-Bau.
+  - [ ] Im Image: `domainswitch` und `domainswitch 06 -n` am Testknoten.
 - [ ] Nach einem Domainwechsel auf dem Testknoten: ddhcpd-Bereich,
       next_node-Adresse und nodeplacer-Mirrors (`uci show nodeplacer`) sind die
-      der neuen Domain.
-- [ ] Vorgabe-Hostname neuer Knoten mit dem Präfix der gewählten Domain.
+      der neuen Domain. Nur im Labor oder mit Mesh-VPN aus, Testknoten
+      gehören sonst in `21_dias`.
+- [ ] nodeplacer im Multi-Image: Wechsel per Manifest (`method domain`,
+      `gluon-switch-domain`) an einem Testknoten (adorfer).
+- [x] Vorgabe-Hostname neuer Knoten mit dem Präfix der gewählten Domain:
+      siehe 2., Fall a (gespeichert `dias-x86-1101` nach Wahl von `21_dias`).
 
 ### 5. Pakete, die site.json direkt lesen
 
@@ -185,27 +224,35 @@ Im Multi-Image sehen sie nur Site-Werte. Bestandsaufnahme 18.11.2026:
   Single-Domain-Images haben `prefix6` in `site.json`, dort lief er. **Behoben 18.11.2026** (Feed `afe4112`/`18465ad`): neue
   Funktion `nf_site_get` in neanderfunk-common (`/lib/gluon/neanderfunk/site.sh`),
   Domain vor Site.
-  - [ ] Mit dem neuen Image: `br_client_ipv6` läuft wieder (kein Fehlneustart,
+  - [x] Mit dem neuen Image: `br_client_ipv6` läuft wieder (kein Fehlneustart,
         `/tmp/hotfix.brclient-noaddr` bleibt leer, solange br-client seine
-        ULA hat).
+        ULA hat). 26111822bro, 19.11.2026, b483 und 4402 (Check nicht von
+        Hand gestartet, nur seine Eingaben gelesen): `nf_site_get` liefert
+        `fd66:666e:6566:6415::/64`, br-client hat eine Adresse daraus, kein
+        Marker `noprefix` oder `noaddr`, healthcheck im Cron alle 7 Minuten.
 - neanderfunk-hotfix `500`, neanderfunk-linkcheck `500`, neanderfunk-common
   `490`: lasen `hotfix.*`, `linkcheck.*`, `neanderfunk.*` aus `site.json`;
   seit 18.11.2026 ebenfalls über `nf_site_get`, ein Wert in der Domain
   würde also auch wirken.
-  - [ ] Im Multi-Image stehen sie nicht in Domain-Dateien (sonst wirkungslos).
-    Am Testknoten 21_dias: `neanderfunk` in der Site, `hotfix` und `linkcheck`
-    gar nicht gesetzt (Vorgaben greifen).
+  - [x] Im Multi-Image stehen sie nicht in Domain-Dateien. 26111822bro,
+    19.11.2026, fünf Testknoten: in keiner der 48 Domain-Dateien `hotfix`,
+    `linkcheck` oder `neanderfunk`; `neanderfunk` in der Site, `hotfix` und
+    `linkcheck` gar nicht gesetzt (Vorgaben greifen).
 - neanderfunk-respondd: führt Site und Domain selbst zusammen, passt.
 - neanderfunk-default-hostname: liest Site und alle Domain-Dateien, passt.
-- [ ] Bei jedem neuen Paket oder Skript: `grep site.json` und diese Liste
-      nachziehen.
+- Daueraufgabe: bei jedem neuen Paket oder Skript `grep site.json` und diese
+  Liste nachziehen. Zuletzt `domainswitch` (19.11.2026): liest nur die
+  Domain-Dateien.
 
 ### 6. Was nur Single-Domain betrifft
 
 - neanderfunk-node-whisperer `patches/0001`: fehlende Domain ist kein Fehler.
   Im Multi-Image gibt es immer eine Domain; die Information `domain` meldet
   der Daemon dort wieder (FirmwareConfigs `ae07154`).
-  - [ ] NodeMonitor-App zeigt am Testknoten die Domain.
+  - Knotenseite geprüft (33f1, 26111822bro, 19.11.2026): Daemon läuft,
+    `information` enthält `domain`, Interfaces `client0`/`client1`.
+  - [ ] NodeMonitor-App zeigt am Testknoten die Domain (vom Handy aus,
+        adorfer).
 - Statusseite ohne Domain-Zeile, `nodestatus` mit `site_name`: unverändert.
 
 ### 7. Site-weite Werte, die für alle Domains gleich bleiben müssen
@@ -216,8 +263,8 @@ Mit `in_site` abgesichert: `setup_mode.*` (setup-mode, setup-wifi),
 `linkcheck.*`, `neanderfunk.*` (siehe 5.). `ssid_changer.*` über
 `gluon.site`, steht in der Site.
 
-- [ ] Gluons check_site läuft im Multi-Bau ohne Fehler (sonst bricht der Bau
-      ab).
+- [x] Gluons check_site läuft im Multi-Bau ohne Fehler (sonst bricht der Bau
+      ab). Die Multi-Bauten `26111803bro` bis `26111822bro` sind durchgelaufen.
 
 ### 8. Zweige und Rückführung
 
@@ -228,7 +275,10 @@ Mit `in_site` abgesichert: `setup_mode.*` (setup-mode, setup-wifi),
 - [ ] Vor dem Wechsel der Produktion auf Multi-Domain: entscheiden, ob
       `v2025.1.x-next` nach `v2025.1.x` zurückgeführt wird oder next zur
       Produktionslinie wird; dann die Patch-Repos (`gluon-patches-packages`
-      `v2025.1.x-next`) genauso.
+      `v2025.1.x-next`) genauso. Stand 18.11.2026 (adorfer): eine
+      Single-Domain-Firmware ist nicht mehr geplant, `v2025.1.x` nur noch
+      Rückfall für den Notfall; die formale Entscheidung über die Zweige
+      steht noch aus.
 
 Stand der Punkte
 ----------------
@@ -236,3 +286,15 @@ Stand der Punkte
 Offen bei Anlage: 1 (echtes Image), 2 (Browser: Auswahl, Karte, Hostname), 3, 4 (Gerät), 5
 (`br_client_ipv6` am Gerät, Code behoben), 6 (App), 8. Bestanden: Offline-Tests zu 1 und 2,
 check_site-Probe zu `nodeplacer.mirrors` mit Gluons check-site.
+
+Stand 19.11.2026 (Image `26111822bro` auf 17 Knoten, 15 in `21_dias`):
+
+- Erledigt: 1 bis auf die festen Altadressen, 2 ganz, 3 ganz, 5 ganz, 7.
+  Aus 4: ddhcpd im Feld, Vorgabe-Hostname.
+- Offen bei adorfer: nodeplacer-Wechsel per Manifest im Multi-Image (4),
+  NodeMonitor-App am Handy (6), Entscheidung über die Zweige (8).
+- Offen in diesem Feed: Domainwechsel am Testknoten mit Kontrolle von
+  ddhcpd, next_node und Mirrors (4); `domainswitch` im Image (4); Fehler von
+  ddhcpd beim Booten ansehen (4).
+- Offen auf Seite der Supernodes: Kea außerhalb 10.NN.128.0/19 (4).
+- Wartet auf einen Feldknoten: feste Altadressen (1).
