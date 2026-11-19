@@ -13,5 +13,5 @@ msgstr "Activé"
 msgid "Nodeplacer"
 msgstr "Nodeplacer"
 
-msgid "Nodeplacer can move this node to another domain via a signed instruction. Untick to prevent this."
-msgstr "Nodeplacer peut déplacer ce nœud vers un autre domaine sur instruction signée. Décochez pour l'empêcher."
+msgid "Nodeplacer can move this node to another domain via a signed instruction."
+msgstr "Nodeplacer peut déplacer ce nœud vers un autre domaine sur instruction signée."

@@ -20,7 +20,7 @@ end
 
 local f = Form(pkg_i18n.translate('Nodeplacer'), pkg_i18n.translate(
 	'Nodeplacer can move this node to another domain via a signed '
-	.. 'instruction. Untick to prevent this.'))
+	.. 'instruction.'))
 
 local s = f:section(Section)
 
