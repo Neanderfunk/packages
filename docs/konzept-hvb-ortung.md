@@ -161,8 +161,9 @@ Die SSIDs werden nicht mitgeschickt; die Ortung braucht nur die BSSIDs.
    das nächste HVB-Manifest (siehe 4.5) und legt das Ergebnis zur
    Nachkontrolle ab.
 
-Liegt die Position außerhalb aller Domains, bleibt der Knoten in `25_hvb`.
-Er landet dann auf einer Liste für Handarbeit.
+Liegt die Position außerhalb aller Domains, geht der Knoten nach `21_dias`
+(Diaspora), wie jede andere Verschiebung per Zeile im HVB-Manifest
+(Entscheidung E8).
 
 ### 4.5 nodeplacer: vereinfachtes Verschieben aus 25_hvb
 
@@ -244,7 +245,7 @@ Er landet dann auf einer Liste für Handarbeit.
 | E5 | Wie wird aus der Position eine Domain: nächster Domain-Mittelpunkt, Gemeindegrenzen oder Polygone je Domain? | Polygone je Domain, wo vorhanden, sonst Handarbeit |
 | E6 | Was wird gespeichert, wie lange? | Domain und Zeit; Position vergröbert bis zur Verschiebung |
 | E7 | Name und Adresse des Dienstes (vhost, ULA) | legt der Mapserver fest |
-| E8 | Was passiert mit Knoten außerhalb aller Domains? | bleiben in `25_hvb`, Liste für Handarbeit |
+| E8 | Was passiert mit Knoten außerhalb aller Domains? | **entschieden 19.11.2026:** nach `21_dias` |
 | E9 | Wiederholung: täglich bis zur Verschiebung, oder nach n Versuchen aufhören? | täglich, höchstens 30 Tage |
 
 ## 7. Arbeitspakete und Reihenfolge
