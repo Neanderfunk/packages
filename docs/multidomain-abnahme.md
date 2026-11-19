@@ -105,9 +105,13 @@ sieben Domains „LVR-HPH“ (M60 bb31, 26111822bro).
 - [x] Offline-Test (Beschriftung, Reihenfolge), Kette mit
       `domain-select-current` auf Gluon `0ad3ad5` zweimal angewendet.
 - [ ] Im Browser mit dem nächsten Multi-Image.
-- [ ] Eindeutige Namen für die LVR-Domains (`11_lvr`, `31_lvrno` bis
-      `36_lvrsw`) in den Domain-Dateien von FirmwareConfigs; Namen legt
-      adorfer fest.
+- [x] Eindeutige Namen für die LVR-Domains, gesetzt in FirmwareConfigs
+      `edd3276` (19.11.2026): `31_lvrno` „LVR-HPH NordOst“, `32_lvrnw`
+      „LVR-HPH NordWest“, `33_lvrmo` „LVR-HPH MitteOst“, `34_lvrmw`
+      „LVR-HPH MitteWest“, `35_lvrso` „LVR-HPH SüdOst“, `36_lvrsw`
+      „LVR-HPH SüdWest“; `11_lvr` bleibt „LVR-HPH“.
+  - [ ] adorfer bestätigt `36_lvrsw` = SüdWest (der Langname in den
+        Stammdaten sagt noch SüdOst).
 
 Karte im Wizard, Patch `config-mode/geo-location-domain-map`
 (gluon-patches-packages `5d52c40`), Domain-Schlüssel `neanderfunk_map`
