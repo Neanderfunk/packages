@@ -97,6 +97,18 @@ Gluon-Feature `config-mode-domain-select`, dazu Patch
   `HAN-mt-labor`). Gewollt (adorfer 18.11.2026): solange das Setup nicht
   einmal durchgelaufen ist, wandert das Domain-Präfix mit.
 
+Beschriftung der Auswahl, Patch `config-mode/domain-select-code`
+(gluon-patches-packages `99e35d7`, Wunsch adorfer 19.11.2026): Code vor dem
+Namen („01_vel: Velbert“), sortiert nach Code. Anlass: Im Wizard heißen
+sieben Domains „LVR-HPH“ (M60 bb31, 26111822bro).
+
+- [x] Offline-Test (Beschriftung, Reihenfolge), Kette mit
+      `domain-select-current` auf Gluon `0ad3ad5` zweimal angewendet.
+- [ ] Im Browser mit dem nächsten Multi-Image.
+- [ ] Eindeutige Namen für die LVR-Domains (`11_lvr`, `31_lvrno` bis
+      `36_lvrsw`) in den Domain-Dateien von FirmwareConfigs; Namen legt
+      adorfer fest.
+
 Karte im Wizard, Patch `config-mode/geo-location-domain-map`
 (gluon-patches-packages `5d52c40`), Domain-Schlüssel `neanderfunk_map`
 (`in_domain`; ohne Eintrag gilt der Site-Ausschnitt):
