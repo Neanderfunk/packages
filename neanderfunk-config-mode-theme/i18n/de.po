@@ -25,3 +25,15 @@ msgstr "Öffne dafür %s im normalen Browser."
 
 msgid "en"
 msgstr "de"
+
+msgid "Afterwards the config mode opens again at %s."
+msgstr "Danach ist der Konfigurationsmodus wieder unter %s erreichbar."
+
+msgid "This page reloads by itself after 4 minutes. If nothing appears yet, wait a moment and reload."
+msgstr "Diese Seite lädt nach 4 Minuten von selbst neu. Erscheint dann noch nichts, kurz warten und neu laden."
+
+msgid "The settings are kept: after the restart the node runs normally and the config mode closes. The address of this page does not answer then; that is how it should be."
+msgstr "Die Einstellungen bleiben erhalten: Nach dem Neustart läuft der Knoten normal weiter, der Konfigurationsmodus ist dann beendet. Die Adresse dieser Seite antwortet dann nicht mehr, das ist so richtig."
+
+msgid "To change settings later: press the reset button for about 10 seconds, then open %s."
+msgstr "Um später etwas zu ändern: Reset-Knopf etwa 10 Sekunden drücken, dann %s öffnen."

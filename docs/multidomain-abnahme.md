@@ -188,6 +188,11 @@ Im nächsten Multi-Bau (alles gepinnt auf FirmwareConfigs
 - [ ] Nodeplacer-Seite ohne Nachsatz.
 - [ ] Automatische Updates mit Erklärtext (de, fr).
 - [ ] `domainswitch` und `domainswitch 06 -n` auf der Kommandozeile.
+- [ ] Firmware-Upgrade über den Config-Mode, Seite „Die Firmware wird jetzt
+      aktualisiert“: ohne „Einstellungen behalten“ Link auf 192.168.1.1 und
+      nach 240 s zurück im Konfigurationsmodus; mit „Einstellungen behalten“
+      an einem eingerichteten Knoten der Hinweis auf den Normalbetrieb, kein
+      Refresh (neanderfunk-config-mode-theme, Wunsch adorfer 19.11.2026).
 
 ### 3. Anzeige der Domain
 

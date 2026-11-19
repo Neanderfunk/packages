@@ -49,6 +49,31 @@ dispatcher tree, below that the pages of the current category as tabs.
 	-- an update instead of keeping last month's.
 	local v = '?v=' .. urlencode(release)
 
+	-- The config mode's address as this page came in: 198.51.100.1 over the
+	-- setup WLAN, 192.168.1.1 by cable.
+	local function config_base()
+		local addr = http:getenv('SERVER_ADDR') or ''
+		if addr == '' then addr = '192.168.1.1' end
+		if addr:find(':', 1, true) then addr = '[' .. addr .. ']' end
+		return 'http://' .. addr
+	end
+
+	-- "The firmware is being upgraded" (admin/upgrade_reboot, step 3 of the
+	-- upgrade, without navigation). Afterwards the node is in config mode
+	-- again only if its settings were dropped, or it was never configured
+	-- (preinit 90_setup_mode: configured ~= 1; "enabled" from the button is
+	-- reset when the config mode starts). With "keep settings" on a
+	-- configured node it boots into normal operation, the address no longer
+	-- answers, and a refresh would end on a browser error page: no refresh
+	-- then, and the text says that this is how it should be.
+	local reboot = content == 'admin/upgrade_reboot'
+	local reboot_config, reboot_url
+	if reboot then
+		reboot_config = http:formvalue('keepcfg') ~= '1'
+			or uci:get_first('gluon-setup-mode', 'setup_mode', 'configured') ~= '1'
+		reboot_url = config_base() .. url({})
+	end
+
 	http:prepare_content('text/html')
 -%>
 <!DOCTYPE html>
@@ -75,6 +100,10 @@ dispatcher tree, below that the pages of the current category as tabs.
 	page a second time on the node (Firefox profile, 30.09.2026).
 %>
 <link rel="icon" type="image/svg+xml" href="/static/neanderfunk-logo.svg<%=v%>">
+<% if reboot and reboot_config then %>
+<%# Back to the config mode after 240 s: upgrade and restart take a few minutes (adorfer, 19.11.2026). %>
+<meta http-equiv="refresh" content="240; url=<%|reboot_url%>">
+<% end %>
 <title><%| hostname .. ((rnode and rnode.title) and ' - ' .. title(rnode) or '') %></title>
 </head>
 <body>
@@ -119,10 +148,7 @@ dispatcher tree, below that the pages of the current category as tabs.
 		-- Detecting that browser is unreliable, so the upgrade page always
 		-- says it, with the address this page came in on.
 		if content == 'admin/upgrade' then
-			local addr = http:getenv('SERVER_ADDR') or ''
-			if addr == '' then addr = '192.168.1.1' end
-			if addr:find(':', 1, true) then addr = '[' .. addr .. ']' end
-			local base = 'http://' .. addr
+			local base = config_base()
 			local link = '<a href="' .. pcdata(base .. url(request)) .. '">' .. pcdata(base) .. '</a>'
 	%>
 	<p class="gluon-warning"><%|t.translate('The sign-in window of your phone cannot upload files.')%>
@@ -134,6 +160,20 @@ dispatcher tree, below that the pages of the current category as tabs.
 			renderer.render('error/500', {message = err}, 'gluon-web')
 		end
 	%>
+	<%
+		-- Below Gluon's text on the reboot page: where it goes on (see above).
+		if reboot then
+			local base = config_base()
+			local link = '<a href="' .. pcdata(reboot_url) .. '">' .. pcdata(base) .. '</a>'
+	%>
+	<% if reboot_config then %>
+	<p class="gluon-warning"><%=t.translatef('Afterwards the config mode opens again at %s.', link)%>
+	<%|t.translate('This page reloads by itself after 4 minutes. If nothing appears yet, wait a moment and reload.')%></p>
+	<% else %>
+	<p class="gluon-warning"><%|t.translate('The settings are kept: after the restart the node runs normally and the config mode closes. The address of this page does not answer then; that is how it should be.')%>
+	<%=t.translatef('To change settings later: press the reset button for about 10 seconds, then open %s.', link)%></p>
+	<% end %>
+	<% end %>
 </div>
 </div>
 <script>

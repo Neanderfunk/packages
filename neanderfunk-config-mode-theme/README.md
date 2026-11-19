@@ -61,6 +61,19 @@ Einzelheiten
   zu, die Schaltfläche ist dort ohne Fehlermeldung wirkungslos. Ihn sicher zu
   erkennen geht nicht, deshalb erscheint der Hinweis immer. Am C25 im
   Setup-Mode geprüft, 14.09.2026 (deutsch und englisch).
+- **Neustart-Seite nach dem Upgrade:** Unter Gluons Text „Die Firmware wird
+  jetzt aktualisiert“ (`admin/upgrade_reboot`) steht, wie es weitergeht, mit
+  Link auf die Adresse, über die die Seite kam (`SERVER_ADDR`, wie oben).
+  Kommt der Knoten danach wieder im Konfigurationsmodus hoch (Einstellungen
+  nicht behalten, oder nie eingerichtet: `gluon-setup-mode.configured` ≠ 1),
+  lädt die Seite nach 240 s `http://<Adresse>/cgi-bin/config` (meta refresh,
+  Wunsch adorfer 19.11.2026). Mit „Einstellungen behalten“ an einem
+  eingerichteten Knoten startet er im Normalbetrieb, die Adresse antwortet
+  nicht mehr: dann kein Refresh (er endete auf einer Fehlerseite des
+  Browsers), stattdessen der Hinweis, dass das so richtig ist, und wie man mit
+  dem Reset-Knopf (etwa 10 Sekunden) zurück in den Konfigurationsmodus kommt.
+  Offline mit Gluons Template-Parser gerendert (drei Fälle), noch nicht am
+  Gerät geprüft.
 - **Karte ohne Referer:** Das Layout setzt `<meta name="referrer"
   content="same-origin">`. Der Kachel-Proxy der Site (`tiles.ffdus.de`)
   beantwortet jeden Referer außerhalb der Kartendomains mit 403, auch den des

@@ -21,3 +21,15 @@ msgstr "Vous devez activer JavaScript dans votre navigateur, sinon l'interface w
 
 msgid "en"
 msgstr "fr"
+
+msgid "Afterwards the config mode opens again at %s."
+msgstr "Ensuite, le mode configuration est de nouveau accessible à l'adresse %s."
+
+msgid "This page reloads by itself after 4 minutes. If nothing appears yet, wait a moment and reload."
+msgstr "Cette page se recharge toute seule après 4 minutes. Si rien ne s'affiche, attendez un peu et rechargez."
+
+msgid "The settings are kept: after the restart the node runs normally and the config mode closes. The address of this page does not answer then; that is how it should be."
+msgstr "Les réglages sont conservés : après le redémarrage, le nœud fonctionne normalement et le mode configuration est fermé. L'adresse de cette page ne répond plus, c'est normal."
+
+msgid "To change settings later: press the reset button for about 10 seconds, then open %s."
+msgstr "Pour modifier plus tard : appuyez environ 10 secondes sur le bouton reset, puis ouvrez %s."
