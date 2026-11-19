@@ -191,7 +191,8 @@ Im nächsten Multi-Bau (alles gepinnt auf FirmwareConfigs
 - [ ] Halteverbot-Hinweis: gelber Kasten unter der Domain-Auswahl nur,
       solange 25_hvb gewählt ist, beim Umschalten ein/aus (gluon-patches-packages
       `8618b19` config-mode/domain-select-hint, Text Site-i18n
-      `gluon-config-mode:domain-hint:25_hvb`, adorfer 19.11.2026).
+      `gluon-config-mode:domain-hint:25_hvb`, adorfer 19.11.2026;
+      FirmwareConfigs `ce80316`).
 - [ ] Firmware-Upgrade über den Config-Mode, Seite „Die Firmware wird jetzt
       aktualisiert“: ohne „Einstellungen behalten“ Link auf 192.168.1.1 und
       nach 240 s zurück im Konfigurationsmodus; mit „Einstellungen behalten“
