@@ -34,7 +34,8 @@ define Package/$(PKG_NAME)/description
 	(gluon-reconfigure and reboot in the background), v4up (IPv4 via the
 	mesh, refused if the uplink has IPv4), vpn (show or switch the mesh VPN
 	on/off persistently), routername/nodename (show or set the node name), kontakt/contact (show or
-	set the operator's contact address), flash
+	set the operator's contact address), domainswitch (list the domains or
+	switch to one by code, number, short or long name, with confirmation), flash
 	(download a firmware image by URL, or find it in a directory URL, check
 	it, stop services like the autoupdater when RAM is low, sysupgrade; in
 	interactive shells "sysupgrade <url>" does the same), help.

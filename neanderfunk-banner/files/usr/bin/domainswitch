@@ -1,0 +1,203 @@
+#!/usr/bin/lua
+-- domainswitch [domain] [-f] [-n] - Domains zeigen oder die Domain wechseln.
+--
+--     domainswitch              alle Domains: Code und Name, die aktuelle mit *
+--     domainswitch 06           Wechsel nach 06_han, mit Rueckfrage
+--     domainswitch 6 | 06_han | han | haan    dasselbe
+--     domainswitch 06 -f        ohne Rueckfrage (auch --force, -y)
+--     domainswitch 06 -n        nur zeigen, was passieren wuerde (--dry-run)
+--
+-- Die Eingabe darf sein: der Code (06_han), nur die Nummer (6, 06), das
+-- Kuerzel hinter dem Unterstrich (han), der Name (Haan) oder ein eindeutiger
+-- Anfang von Kuerzel oder Name (velb). Gross/klein egal, ".json" wird
+-- abgeschnitten. Mehrdeutig: Liste der Treffer, nichts passiert.
+--
+-- Gewechselt wird mit Gluons gluon-switch-domain: gluon.core.switch_domain
+-- und gluon.core.reconfigure setzen, uci commit gluon, Neustart. Beim Booten
+-- sieht /etc/init.d/gluon-core-reconfigure den Schalter und ruft
+-- gluon-reconfigure auf; ein eigenes reconf danach braucht es nicht. Im
+-- Setup-Modus ruft gluon-switch-domain gluon-reconfigure direkt auf, ohne
+-- Neustart. --no-reboot von gluon-switch-domain gibt es hier bewusst nicht:
+-- es committet nicht, nach dem naechsten Neustart waere der Wechsel weg.
+--
+-- Nach dem Neustart hat der Knoten Adressen aus der neuen Domain (anderer
+-- IPv6-Praefix, anderes Mesh, anderer VPN-Broker). Die alte Adresse der
+-- SSH-Sitzung gilt dann nicht mehr.
+
+local unistd = require 'posix.unistd'
+local dirent = require 'posix.dirent'
+local json = require 'jsonc'
+local uci = require('simple-uci').cursor()
+
+local DIR = '/lib/gluon/domains/'
+
+local function usage(code)
+	io.stderr:write([[
+Aufruf: domainswitch [domain] [-f|--force|-y] [-n|--dry-run]
+  ohne domain:  alle Domains zeigen, die aktuelle mit *
+  domain:       Code (06_han), Nummer (6, 06), Kuerzel (han) oder Name (Haan)
+  -f            ohne Rueckfrage wechseln
+  -n            nur zeigen, was passieren wuerde
+Der Wechsel startet den Knoten neu (gluon-reconfigure beim Booten).
+]])
+	os.exit(code or 1)
+end
+
+local force, dry, want = false, false, nil
+for _, a in ipairs(arg) do
+	if a == '-f' or a == '--force' or a == '-y' or a == '--yes' then
+		force = true
+	elseif a == '-n' or a == '--dry-run' then
+		dry = true
+	elseif a == '-h' or a == '--help' then
+		usage(0)
+	elseif a:sub(1, 1) == '-' then
+		io.stderr:write('domainswitch: unbekannte Option ' .. a .. '\n')
+		usage()
+	elseif want then
+		io.stderr:write('domainswitch: nur eine Domain angeben\n')
+		usage()
+	else
+		want = a
+	end
+end
+
+if unistd.access(DIR) ~= 0 then
+	io.stderr:write('Diese Firmware hat nur eine Domain, es gibt nichts zu wechseln.\n')
+	os.exit(1)
+end
+
+-- Domains einlesen: Code = Dateiname ohne .json, Name aus domain_names
+local current = uci:get('gluon', 'core', 'domain')
+
+-- hide_domain: true, oder eine Liste der Domains, in denen sie ausgeblendet ist
+local function hidden(h)
+	if h == true then return true end
+	if type(h) == 'table' then
+		for _, c in ipairs(h) do
+			if c == current then return true end
+		end
+	end
+	return false
+end
+
+local domains = {}
+for f in dirent.files(DIR) do
+	local code = f:match('^(.+)%.json$')
+	if code then
+		local fh = io.open(DIR .. f)
+		local d = fh and json.parse(fh:read('*a'))
+		if fh then fh:close() end
+		local names = type(d) == 'table' and d.domain_names or {}
+		table.insert(domains, {
+			code = code,
+			name = names[code] or code,
+			hidden = type(d) == 'table' and hidden(d.hide_domain),
+			num = tonumber(code:match('^(%d+)_')),
+			short = (code:match('^%d+_(.+)$') or code):lower(),
+		})
+	end
+end
+table.sort(domains, function(a, b) return a.code < b.code end)
+
+local function byCode(code)
+	for _, d in ipairs(domains) do
+		if d.code == code then return d end
+	end
+end
+
+local function label(d)
+	return d and (d.code .. ' (' .. d.name .. ')') or (current or '?')
+end
+
+local function list(sel)
+	local w = 0
+	for _, d in ipairs(sel) do w = math.max(w, #d.code) end
+	for _, d in ipairs(sel) do
+		local mark = d.code == current and '*' or ' '
+		print(string.format('%s %-' .. w .. 's  %s%s', mark, d.code, d.name,
+			d.hidden and '   (im Wizard ausgeblendet)' or ''))
+	end
+end
+
+if not want then
+	list(domains)
+	os.exit(0)
+end
+
+-- Eingabe aufloesen, von streng nach locker
+local q = want:gsub('^%s+', ''):gsub('%s+$', ''):gsub('%.json$', '')
+local ql = q:lower()
+
+local function pick(test)
+	local hits = {}
+	for _, d in ipairs(domains) do
+		if test(d) then table.insert(hits, d) end
+	end
+	return hits
+end
+
+local hits = pick(function(d) return d.code == q end)
+if #hits == 0 then hits = pick(function(d) return d.code:lower() == ql end) end
+if #hits == 0 and ql:match('^%d+$') then
+	local n = tonumber(ql)
+	hits = pick(function(d) return d.num == n end)
+end
+if #hits == 0 then hits = pick(function(d) return d.short == ql end) end
+if #hits == 0 then hits = pick(function(d) return d.name:lower() == ql end) end
+if #hits == 0 and ql ~= '' then
+	hits = pick(function(d)
+		return d.short:sub(1, #ql) == ql or d.name:lower():sub(1, #ql) == ql
+	end)
+end
+
+if #hits == 0 then
+	io.stderr:write("Keine Domain passt zu '" .. want .. "'. Alle Domains: domainswitch\n")
+	os.exit(1)
+elseif #hits > 1 then
+	io.stderr:write("'" .. want .. "' passt zu mehreren Domains:\n")
+	list(hits)
+	os.exit(1)
+end
+
+local target = hits[1]
+
+if target.code == current then
+	print('Der Knoten ist schon in ' .. label(target) .. ', nichts zu tun.')
+	os.exit(0)
+end
+
+local setup = unistd.access('/var/gluon/setup-mode') == 0
+
+print('Aktuell: ' .. label(byCode(current)))
+print('Neu:     ' .. label(target) .. (target.hidden and '   (im Wizard ausgeblendet)' or ''))
+if setup then
+	print('Setup-Modus: gluon-reconfigure laeuft sofort, kein Neustart.')
+else
+	print('Der Knoten startet danach neu und kommt mit Adressen aus der neuen')
+	print('Domain wieder; die SSH-Sitzung bricht ab.')
+end
+
+if dry then
+	print('(--dry-run: nichts geaendert)')
+	os.exit(0)
+end
+
+if not force then
+	if not unistd.isatty(0) then
+		io.stderr:write('Ohne Terminal keine Rueckfrage moeglich: mit -f wechseln.\n')
+		os.exit(1)
+	end
+	io.write('Wechseln? [j/N] ')
+	io.flush()
+	local a = (io.read('*l') or ''):lower()
+	if a ~= 'j' and a ~= 'ja' and a ~= 'y' and a ~= 'yes' then
+		print('Abgebrochen, nichts geaendert.')
+		os.exit(1)
+	end
+end
+
+io.stdout:flush()
+unistd.execp('gluon-switch-domain', {[0] = 'gluon-switch-domain', target.code})
+io.stderr:write('domainswitch: gluon-switch-domain liess sich nicht starten\n')
+os.exit(1)

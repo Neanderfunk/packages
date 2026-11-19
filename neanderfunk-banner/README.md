@@ -128,6 +128,20 @@ It also installs these commands (all listed by `help`):
   Several words need no quotes; `--delete` removes it; nothing is written if
   it is unchanged. respondd reads it on every request, so the map shows it on
   its next nodeinfo query. The value is public.
+- `domainswitch [domain] [-f] [-n]` - without an argument lists all domains
+  of a multi-domain image (`/lib/gluon/domains/*.json`): code and name from
+  `domain_names`, the current one marked `*`, hidden ones (`hide_domain`)
+  marked. With an argument it switches: the code (`06_han`), its number
+  (`6`, `06`), the part after the underscore (`han`), the name (`Haan`) or a
+  unique start of part or name, case-insensitive; ambiguous input lists the
+  matches and does nothing. It shows current and new domain and asks
+  (`-f`/`--force`/`-y` skips that, without a terminal `-f` is required;
+  `-n`/`--dry-run` only shows). Then it runs Gluon's `gluon-switch-domain`,
+  which commits and reboots; `/etc/init.d/gluon-core-reconfigure` runs
+  `gluon-reconfigure` at boot, so no `reconf` is needed (in setup mode it
+  reconfigures at once). `--no-reboot` is not offered: Gluon only saves then,
+  without commit, and the next reboot would drop the switch. The node comes
+  back with addresses of the new domain.
 - `vpn [on|off]` (also `enable`/`disable`) - without an argument shows the
   mesh VPN state (both switches, daemon running, neighbours over
   `mesh-vpn`). `on`/`off` sets `gluon.mesh_vpn.enabled` and lets Gluon's
