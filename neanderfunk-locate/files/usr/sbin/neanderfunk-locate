@@ -173,6 +173,27 @@ local function public_v4()
 	return nil
 end
 
+-- Uplink: Hat der Knoten selbst einen VPN-Uplink, und ueber welches
+-- Interface laeuft sein Gateway? Ein Knoten ohne eigenen VPN-Uplink haengt
+-- per WLAN- oder LAN-Mesh an anderen und darf nicht allein verschoben werden
+-- (Konzept 4.4). Wer ueber ihn ins Netz geht, sieht der Locator aus den
+-- Kartendaten; hier stehen nur die Zahlen der Nachbarn je Art.
+local function uplink()
+	local n = { vpn = 0, wifi = 0, lan = 0 }
+	for line in sh('batctl n -H'):gmatch('[^\n]+') do
+		local ifname = line:match('^%s*(%S+)%s+%x%x:')
+		if ifname == 'mesh-vpn' then
+			n.vpn = n.vpn + 1
+		elseif ifname and ifname:match('^mesh%d+$') then
+			n.wifi = n.wifi + 1
+		elseif ifname then
+			n.lan = n.lan + 1
+		end
+	end
+	local via = sh('batctl gwl -H'):match('^%*[^%[]*%[%s*(%S+)%]')
+	return { vpn = n.vpn > 0, gw_via = via, neighbours = n }
+end
+
 local report = {
 	v = 1,
 	node_id = require('gluon.util').node_id():lower(),
@@ -181,6 +202,7 @@ local report = {
 	uptime = math.floor(tonumber((readfile('/proc/uptime') or '0'):match('^[%d%.]+')) or 0),
 	scan = scans,
 	wifi = wifi,
+	uplink = uplink(),
 }
 
 local v4 = public_v4()

@@ -150,15 +150,26 @@ zusätzlich zum Scan mit. Das gilt auch, wenn sie nicht veröffentlicht sind.
 am Proxy verwerfen und die Annahme begrenzen.
 
 ```json
-{ "node_id": "0123456789ab",
-  "wifi": [ { "bssid": "aa:bb:cc:dd:ee:ff", "ssid": "Freifunk", "mesh_id": "", "signal": -61, "channel": 6 } ],
+{ "v": 1,
+  "node_id": "0123456789ab",
+  "domain": "25_hvb",
+  "release": "26111912bro",
+  "uptime": 12345,
+  "scan": [ { "iface": "mesh0", "ok": true, "count": 17 } ],
+  "wifi": [ { "bssid": "aa:bb:cc:dd:ee:ff", "ssid": "Freifunk", "mesh_id": "", "signal": -61, "freq": 2437, "age_ms": 320 } ],
+  "uplink": { "vpn": true, "gw_via": "mesh-vpn", "neighbours": { "vpn": 1, "wifi": 3, "lan": 0 } },
   "coordinates": { "lat": 51.0, "lon": 7.0 },
-  "exit_ip": { "ipv4": "192.0.2.10", "ipv6": "2001:db8::1" } }
+  "exit_ip": { "ipv4": "192.0.2.10" } }
 ```
 
 - `ssid` und `mesh_id` gehen mit, damit der Dienst Freifunk-Knoten erkennt.
   Mesh-Punkte (802.11s) zeigen im Scan eine Mesh-ID statt einer SSID.
 - `coordinates` nur, wenn der Knoten welche hat.
+- `uplink`: ob der Knoten selbst einen VPN-Uplink hat (batman-Nachbar auf
+  `mesh-vpn`), über welches Interface sein Gateway läuft, und wie viele
+  batman-Nachbarn er je Art hat (VPN, WLAN-Mesh, LAN-Mesh). Wer über ihn ins
+  Netz geht, sieht der Knoten selbst nicht; das zeigen die Kartendaten
+  (siehe „Wer darf gehen?“ in 4.4).
 - `exit_ip`: die öffentlichen Adressen, mit denen der Knoten über seinen
   Uplink ins Internet geht. Er ermittelt sie selbst, so wie es `nodestatus`
   (Paket `neanderfunk-banner`) für IPv4 schon tut: Abfrage bei
@@ -272,6 +283,32 @@ von Hand.
   20 m.
 - Die MLS-Schnittstelle, die beaconDB übernimmt, hat dasselbe Feld. Ob
   beaconDB es sinnvoll füllt, ist ungeprüft [prüfen].
+
+**Wer darf gehen?** (adorfer 20.11.) Ein Knoten aus `25_hvb` darf nur
+verschoben werden, wenn er dabei niemanden vom Netz abschneidet, auch sich
+selbst nicht:
+
+- **Ohne eigenen VPN-Uplink nie.** Ein Knoten, der nur per WLAN-Mesh oder
+  LAN-Mesh im Netz hängt, bleibt in `25_hvb`. In einer anderen Domain fände
+  er seine Mesh-Partner nicht mehr und hätte gar kein Netz.
+- **Mit VPN-Uplink nur, wenn niemand an ihm hängt.** Gehen andere Knoten in
+  `25_hvb` über ihn ins Netz, bleibt er ebenfalls.
+- **Zwei Knoten, die beide VPN haben und zusätzlich zueinander meshen,
+  blockieren sich nicht.** Jeder darf einzeln gehen.
+
+Prüfung auf dem Mapserver anhand der Kartendaten: Betrachtet wird die
+Mesh-Wolke des Knotens in `25_hvb`, also alle Knoten, die über WLAN- oder
+LAN-Mesh mit ihm zusammenhängen. Der Knoten darf gehen, wenn er selbst VPN
+hat und danach jeder Knoten ohne VPN in der Wolke noch einen Knoten mit VPN
+erreicht. Die `uplink`-Angaben aus der Meldung (4.3) dienen zum Abgleich.
+
+Was hängen bleibt, kommt in den Bericht. Bei der Klärung von Hand kann man
+eine ganze Wolke gemeinsam verschieben, mit einer Zeile je Knoten im selben
+Manifest. Automatisch macht der Locator das nicht.
+
+Die Lage kann sich ändern, bevor ein Knoten das Manifest abholt. Deshalb
+prüft der Dienst bei jedem neuen Erzeugen des HVB-Manifests erneut und nimmt
+Zeilen heraus, die die Regel nicht mehr erfüllen.
 
 **5. Verschieben:** Der Dienst schreibt eine Zeile
 `<node_id> domain target=<code>` ins HVB-Manifest. Der Mapserver signiert es
@@ -409,6 +446,7 @@ Stand der Recherche 20.11.2026:
 | E9 | Wiederholung? | **20.11.:** täglich, bis zur Verschiebung |
 | E10 | Grenze für den Genauigkeitsradius | **20.11.:** 5000 m, gilt nur an der Außengrenze (Abgrenzung zu `21_dias`); zwischen zwei Domains entscheidet die nähere |
 | E11 | Wie viele Mesh-Partner einer Domain reichen? | **20.11.:** ein bekanntes Wifimesh ab -75 dBm oder zwei mit beliebigem Pegel; LVR-Domains zählen mit |
+| E12 | Welche HVB-Knoten dürfen überhaupt gehen? | **20.11.:** nur mit eigenem VPN-Uplink und nur, wenn kein Knoten ohne VPN dadurch abgeschnitten wird; zwei VPN-Knoten, die zueinander meshen, blockieren sich nicht |
 
 Außerdem am 20.11. entschieden:
 

@@ -37,6 +37,10 @@ Was das Skript tut
 - **Exit-IPv4:** Das Skript fragt `ipv4.icanhazip.com` bzw.
   `checkip.amazonaws.com`, wie `nodestatus` es tut. Ein Knoten ohne
   IPv4-Uplink (reiner Mesh-Knoten) lässt das Feld weg.
+- **Uplink:** ob der Knoten eigenes VPN hat (batman-Nachbar auf
+  `mesh-vpn`), über welches Interface sein Gateway läuft (`batctl gwl`) und
+  wie viele batman-Nachbarn er je Art hat. Ein Knoten ohne eigenes VPN wird
+  nicht verschoben (Konzept 4.4, „Wer darf gehen?“).
 - **Koordinaten:** aus `gluon-node-info`, falls eingetragen, auch wenn sie
   nicht veröffentlicht sind.
 - **Senden:** zuerst `https`, wenn `libustream-ssl` da ist, sonst `http`.
