@@ -582,17 +582,26 @@ Daten tun, entscheiden wir danach.
 Danach, für den echten Betrieb:
 
 1. **Ankündigung im Wizard:** erledigt, kommt mit dem nächsten Multi-Bau.
-2. **nodeplacer:**
+2. **nodeplacer** (**erledigt 20.11.**, nodeplacer D-045):
    - `good_signatures`/`pubkeys` auch in der Domain-Datei zulassen.
    - Einschränkung auf `domain`, Ziel nicht die eigene Domain (E2).
    - Obergrenze (E3).
    - Tests.
-3. **Mapserver, erster Teil (Abschleppen von Hand):**
-   - HVB-Schlüssel erzeugen, Manifest unter eigenem Pfad ausliefern.
-   - Liste zum Eintragen von Hand, Signieren.
+3. **Mapserver, erster Teil (Abschleppen):**
+   - HVB-Schlüssel erzeugen, Manifest unter eigenem Pfad ausliefern:
+     **erledigt 20.11.** Schlüssel nur auf map6, Manifest unter
+     `http://locator.ffnef.de/hvb/nodeplacer/nodeplacer.manifest`, mit einer
+     Signatur (gegen den Pubkey geprüft).
+   - Das Manifest entsteht automatisch aus E11 und E12 (adorfer 20.11.),
+     alle 10 min neu, `EXPIRES` 3 Tage. Hinein kommt ein Knoten, dessen
+     letzte Meldung aus `25_hvb` höchstens 3 Tage alt ist, ohne
+     `lan_switch`, mit einem E11-Ziel außer `25_hvb` und E12 „ja“.
+   - Eintragen von Hand für die Klärung.
    - Bericht per Mail, wer in der Zieldomain angekommen ist.
 4. **FirmwareConfigs:** `25_hvb` bekommt die nodeplacer-Mirrors auf dem
-   Mapserver, den HVB-Schlüssel mit Schwelle 1 und `neanderfunk_domainhelper.locator.urls`.
+   Mapserver, den HVB-Schlüssel mit Schwelle 1 und
+   `neanderfunk_domainhelper.locator.urls`: **erledigt 20.11.**
+   (Buildsystem), kommt mit dem nächsten Testbau.
 5. **Mapserver, zweiter Teil (Ortung):**
    - Annahme der Meldungen, Abgleich mit den Kartendaten.
    - Mesh-Partner über die Mesh-ID erkennen.
