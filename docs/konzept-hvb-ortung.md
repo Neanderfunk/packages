@@ -137,6 +137,11 @@ entscheidet der Knoten selbst, ohne den Mapserver.
   wie die Statusseite: `gluon-neighbour-info -i <if> -d ff02::2:1001 -p 1001
   -r nodeinfo`. LAN-Mesh heißt jedes batman-Interface außer `mesh-vpn` und
   den WLAN-Meshes `meshN`.
+- Die Antworten kommen nicht immer sofort: Auf der Statusseite stehen
+  Nachbarn oft bis zu 30 s nur als MAC da (adorfer 20.11.). Der Knoten fragt
+  deshalb wiederholt, bis jeder batman-Nachbar am LAN geantwortet hat
+  (erkannt an seinen MACs in `network.mesh` des nodeinfo), höchstens 60 s.
+  Wer bis dahin schweigt, steht nur mit MAC in der Meldung und zählt nicht.
 - Die Domain steht in `system.domain_code`. Ältere Single-Domain-Images
   haben das Feld nicht; dann gilt der Teil des `site_code` hinter dem
   Bindestrich (`nef-21_dias`, `bgl-43_bggl`).
@@ -194,7 +199,7 @@ am Proxy verwerfen und die Annahme begrenzen.
   "wifi": [ { "bssid": "aa:bb:cc:dd:ee:ff", "ssid": "Freifunk", "mesh_id": "", "signal": -61, "freq": 2437, "age_ms": 320 } ],
   "uplink": { "vpn": true, "gw_via": "mesh-vpn", "gw_nexthop": "02:ca:ff:ee:21:00",
               "mesh_macs": [ "12:3d:87:ce:a7:bb" ], "neighbours": { "vpn": 1, "wifi": 3, "lan": 0 } },
-  "lan_mesh": [ { "iface": "br-mesh_other", "node_id": "0123456789cd", "domain": "01_vel" } ],
+  "lan_mesh": [ { "iface": "br-mesh_other", "mac": "ce:30:aa:de:09:54", "node_id": "0123456789cd", "domain": "01_vel" } ],
   "lan_switch": "01_vel",
   "coordinates": { "lat": 51.0, "lon": 7.0 },
   "exit_ip": { "ipv4": "192.0.2.10" } }
@@ -210,7 +215,9 @@ am Proxy verwerfen und die Annahme begrenzen.
   Netz geht, sieht der Knoten selbst nicht; das ergibt sich aus den
   Meldungen der anderen (siehe „Wer darf gehen?“ in 4.4).
 - `lan_mesh`: die direkten Nachbarn am LAN-Mesh mit ihrer Domain (siehe
-  oben). Ohne LAN-Mesh-Nachbarn leer.
+  oben), dazu `mac`, die batman-Nachbar-MAC. Ein Nachbar, der nicht
+  geantwortet hat, steht nur mit `iface` und `mac` da. Ohne
+  LAN-Mesh-Nachbarn leer.
 - `lan_switch`: nur, wenn der Knoten gleich nach der Meldung selbst in diese
   Domain umschaltet.
 - `exit_ip`: die öffentlichen Adressen, mit denen der Knoten über seinen

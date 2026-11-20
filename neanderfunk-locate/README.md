@@ -47,7 +47,11 @@ Was das Skript tut
   fragt das Skript die direkten Nachbarn per respondd
   (`gluon-neighbour-info ... -r nodeinfo`) und meldet sie mit Domain im Feld
   `lan_mesh`. Die Domain kommt aus `system.domain_code`, bei älteren Images
-  aus dem `site_code` hinter dem Bindestrich.
+  aus dem `site_code` hinter dem Bindestrich. Antworten kommen nicht immer
+  sofort, deshalb fragt das Skript wiederholt, bis jeder batman-Nachbar am
+  LAN geantwortet hat, höchstens 60 s. Wer schweigt, steht nur mit MAC da.
+  An den beiden M60-Testknoten kam die Antwort im ersten Durchgang; ein
+  Lauf mit Scan dauerte etwa 10 s.
 - **Umschalten:** Steht der Knoten in `25_hvb` und hängen am Kabel Nachbarn
   genau einer anderen Domain, die im Image steht, meldet das Skript
   `lan_switch` und ruft danach `gluon-switch-domain` auf (Neustart), auch wenn
