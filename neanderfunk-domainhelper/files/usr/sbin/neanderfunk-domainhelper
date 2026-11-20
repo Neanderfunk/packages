@@ -1,12 +1,14 @@
 #!/usr/bin/lua
 -- SPDX-License-Identifier: BSD-3-Clause
 --
--- neanderfunk-hvblocator, Lokator und Abschleppdienst fuer die
--- Halteverbots-Defaultdomain: scannt die WLANs in der Umgebung und meldet
+-- neanderfunk-domainhelper: Hilfen rund um die Domain eines Knotens.
+--
+-- Bisher ein Unterbefehl, "locate": Lokator und Abschleppdienst fuer die
+-- Halteverbots-Defaultdomain. Scannt die WLANs in der Umgebung und meldet
 -- sie per POST an den Locator. Der Knoten wertet die Antwort nicht aus.
 --
 -- Eingeschaltet nur ueber die Domain-Datei: Steht in der aktiven Domain
--- neanderfunk_hvblocator.urls, meldet der Knoten dorthin. Fehlt der
+-- neanderfunk_domainhelper.locator.urls, meldet der Knoten dorthin. Fehlt der
 -- Schluessel (jede andere Domain), tut das Skript nichts. Im Code steht
 -- keine Domain.
 --
@@ -17,16 +19,19 @@
 --
 -- Konzept: docs/konzept-hvb-ortung.md, Format v1 (Abschnitt 4.3).
 --
--- Aufruf (gestartet wird es sonst von run.sh, beim Start und taeglich):
---   neanderfunk-hvblocator            scannen und melden
---   neanderfunk-hvblocator -n         nur scannen, JSON ausgeben, nichts senden
---   neanderfunk-hvblocator -u <url>   an diese URL melden, auch ohne den
---                                     Schluessel in der Domain (schaltet dann nie)
---   neanderfunk-hvblocator -n -a <d>  zum Testen: so tun, als stuende der Knoten
---                                     in Domain <d> mit eingeschalteter Ortung
---                                     (nur mit -n, schaltet nie)
+-- Aufruf (gestartet wird es sonst von locate.sh, beim Start und taeglich):
+--   neanderfunk-domainhelper locate            scannen und melden
+--   neanderfunk-domainhelper locate -n         nur scannen, JSON ausgeben,
+--                                              nichts senden
+--   neanderfunk-domainhelper locate -u <url>   an diese URL melden, auch ohne
+--                                              den Schluessel in der Domain
+--                                              (schaltet dann nie)
+--   neanderfunk-domainhelper locate -n -a <d>  zum Testen: so tun, als stuende
+--                                              der Knoten in Domain <d> mit
+--                                              eingeschalteter Ortung (nur mit
+--                                              -n, schaltet nie)
 
-local VERSION = '0.2'
+local VERSION = '0.3'
 local MAX_NETS = 50
 
 local json = require 'jsonc'
@@ -53,13 +58,18 @@ local function trim(s)
 end
 
 local function log(msg)
-	os.execute("logger -t neanderfunk-hvblocator '" .. msg:gsub("'", '') .. "'")
+	os.execute("logger -t neanderfunk-domainhelper '" .. msg:gsub("'", '') .. "'")
 end
 
--- Argumente
+-- Argumente: erst der Unterbefehl, bisher nur "locate"
+local USAGE = 'usage: neanderfunk-domainhelper locate [-n] [-u url] [-a domain]\n'
+if arg[1] ~= 'locate' then
+	io.stderr:write(USAGE)
+	os.exit(2)
+end
 local dry, url_override, as_domain = false, nil, nil
 do
-	local i = 1
+	local i = 2
 	while arg[i] do
 		if arg[i] == '-n' then
 			dry = true
@@ -70,13 +80,13 @@ do
 			as_domain = arg[i + 1]
 			i = i + 1
 		else
-			io.stderr:write('usage: neanderfunk-hvblocator [-n] [-u url] [-a domain]\n')
+			io.stderr:write(USAGE)
 			os.exit(2)
 		end
 		i = i + 1
 	end
 	if as_domain and not dry then
-		io.stderr:write('neanderfunk-hvblocator: -a nur zusammen mit -n\n')
+		io.stderr:write('neanderfunk-domainhelper: -a nur zusammen mit -n\n')
 		os.exit(2)
 	end
 end
@@ -345,7 +355,7 @@ end
 
 -- Ortung an? Nur, wenn die aktive Domain die URLs mitbringt (gluon.site
 -- fuehrt Site und aktive Domain zusammen).
-local site_urls = site.neanderfunk_hvblocator.urls({})
+local site_urls = site.neanderfunk_domainhelper.locator.urls({})
 local active = type(site_urls) == 'table' and #site_urls > 0
 if not active and not dry and not url_override then
 	os.exit(0)
@@ -393,7 +403,7 @@ local have_tls = io.open('/lib/libustream-ssl.so') or io.open('/usr/lib/libustre
 if have_tls then have_tls:close() end
 
 local urls = url_override and { url_override } or site_urls
-local tmp = '/tmp/neanderfunk-hvblocator.json'
+local tmp = '/tmp/neanderfunk-domainhelper-locate.json'
 local f = assert(io.open(tmp, 'w'))
 f:write(body)
 f:close()
@@ -405,7 +415,7 @@ for _, u in ipairs(urls) do
 		-- es als "HTTP error 202" mit rc 8. Jede 2xx-Antwort gilt als
 		-- angekommen.
 		local out = sh('uclient-fetch -T 20 -O /dev/null'
-			.. " -U 'neanderfunk-hvblocator/" .. VERSION .. "'"
+			.. " -U 'neanderfunk-domainhelper/" .. VERSION .. "'"
 			.. " --header='Content-Type: application/json'"
 			.. " --post-file=" .. tmp .. " '" .. u .. "' 2>&1; echo \"rc=$?\"")
 		if out:match('rc=0%s*$') or out:match('HTTP error 2%d%d') then

@@ -94,10 +94,12 @@ Daraus für uns:
   nicht über die site.conf:
 
   ```lua
-  neanderfunk_hvblocator = {
-    urls = {
-      'https://locator.ffnef.de/hvb/locate',
-      'http://locator.ffnef.de/hvb/locate',
+  neanderfunk_domainhelper = {
+    locator = {
+      urls = {
+        'https://locator.ffnef.de/hvb/locate',
+        'http://locator.ffnef.de/hvb/locate',
+      },
     },
   },
   ```
@@ -195,8 +197,8 @@ zusätzlich zum Scan mit. Das gilt auch, wenn sie nicht veröffentlicht sind.
   auf die Domain (4.4).
 
 **Senden:** HTTP-POST an die erste erreichbare URL aus
-`neanderfunk_hvblocator.urls` (siehe 4.2 zu TLS), mit eigenem User-Agent
-`neanderfunk-hvblocator/<version>`. Daran kann der Mapserver fremde POSTs schon
+`neanderfunk_domainhelper.locator.urls` (siehe 4.2 zu TLS), mit eigenem User-Agent
+`neanderfunk-domainhelper/<version>`. Daran kann der Mapserver fremde POSTs schon
 am Proxy verwerfen und die Annahme begrenzen.
 
 ```json
@@ -542,7 +544,7 @@ Stand der Recherche 20.11.2026:
 | E10 | Grenze für den Genauigkeitsradius | **20.11.:** 5000 m, gilt nur an der Außengrenze (Abgrenzung zu `21_dias`); zwischen zwei Domains entscheidet die nähere |
 | E11 | Wie viele Mesh-Partner einer Domain reichen? | **20.11.:** ein bekanntes Wifimesh ab -75 dBm oder zwei mit beliebigem Pegel; LVR-Domains zählen mit |
 | E12 | Welche HVB-Knoten dürfen überhaupt gehen? | **20.11.:** nur mit eigenem VPN-Uplink und nur, wenn kein Knoten ohne VPN dadurch abgeschnitten wird; zwei VPN-Knoten, die zueinander meshen, blockieren sich nicht |
-| E13 | Name des Pakets auf dem Router | **20.11.:** `neanderfunk-hvblocator`, Langtext „Lokator und Abschleppdienst für Halteverbots-Defaultdomain“ (adorfer); vorher Prototyp `neanderfunk-locate`. User-Agent `neanderfunk-hvblocator/<version>`, Domain-Schlüssel `neanderfunk_hvblocator` |
+| E13 | Name des Pakets auf dem Router | **20.11.:** `neanderfunk-domainhelper` (adorfer), neutral, damit später weitere Hilfen rund um die Domain hineinpassen. Die Ortung ist darin der Teil `locate`: Befehl `neanderfunk-domainhelper locate`, Schlüssel `neanderfunk_domainhelper.locator.urls`, User-Agent `neanderfunk-domainhelper/<version>`, Langtext „Lokator und Abschleppdienst für Halteverbots-Defaultdomain“. Vorher `neanderfunk-hvblocator` (0.2), als Prototyp `neanderfunk-locate` |
 
 Außerdem am 20.11. entschieden:
 
@@ -563,8 +565,8 @@ Daten tun, entscheiden wir danach.
 - **Stufe 1, läuft seit 20.11.:**
   - Der Locator legt jede Meldung roh ab (14 Tage) und wertet sie je Knoten
     aus, mit E11 als Trockenlauf.
-  - Das Skript `neanderfunk-hvblocator` lief zuerst von Hand auf
-    Testknoten im Labor. Seit 20.11. gibt es das Paket (0.2) mit Bindung an
+  - Das Skript (heute `neanderfunk-domainhelper locate`) lief zuerst von Hand auf
+    Testknoten im Labor. Seit 20.11. gibt es das Paket `neanderfunk-domainhelper` (0.3) mit Bindung an
     die Domain (4.2), Lauf nach dem Start und täglicher Wiederholung, für
     eine erste Testfirmware.
   - Deren Position ist bekannt, das Ergebnis also vorhersehbar. Es geht erst
@@ -587,7 +589,7 @@ Danach, für den echten Betrieb:
    - Liste zum Eintragen von Hand, Signieren.
    - Bericht per Mail, wer in der Zieldomain angekommen ist.
 4. **FirmwareConfigs:** `25_hvb` bekommt die nodeplacer-Mirrors auf dem
-   Mapserver, den HVB-Schlüssel mit Schwelle 1 und `neanderfunk_hvblocator.urls`.
+   Mapserver, den HVB-Schlüssel mit Schwelle 1 und `neanderfunk_domainhelper.locator.urls`.
 5. **Mapserver, zweiter Teil (Ortung):**
    - Annahme der Meldungen, Abgleich mit den Kartendaten.
    - Mesh-Partner über die Mesh-ID erkennen.

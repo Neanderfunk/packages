@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=neanderfunk-hvblocator
-PKG_VERSION:=0.2
+PKG_NAME:=neanderfunk-domainhelper
+PKG_VERSION:=0.3
 PKG_RELEASE:=1
 PKG_LICENSE:=BSD-3-Clause
 
@@ -11,7 +11,7 @@ PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
 include $(TOPDIR)/../package/gluon.mk
 
 define Package/$(PKG_NAME)
-  TITLE:=Lokator und Abschleppdienst fuer Halteverbots-Defaultdomain
+  TITLE:=Hilfen rund um die Domain eines Knotens
   DEPENDS:=+gluon-core +neanderfunk-common +gluon-mesh-batman-adv \
 	+gluon-neighbour-info +micrond +iw +uclient-fetch
   MAINTAINER:=Neanderfunk <technik@neanderfunk.de>
@@ -19,9 +19,10 @@ define Package/$(PKG_NAME)
 endef
 
 define Package/$(PKG_NAME)/description
+	Hilfen rund um die Domain eines Knotens. Bisher ein Teil, locate:
 	Lokator und Abschleppdienst fuer die Halteverbots-Defaultdomain. Nur
-	aktiv in einer Domain, deren Domain-Datei neanderfunk_hvblocator.urls
-	setzt: Der Knoten scannt die WLANs der Umgebung, fragt seine
+	aktiv in einer Domain, deren Domain-Datei
+	neanderfunk_domainhelper.locator.urls setzt: Der Knoten scannt die WLANs der Umgebung, fragt seine
 	LAN-Mesh-Nachbarn nach ihrer Domain und meldet beides per POST an den
 	Locator, einmal bald nach dem Start und danach taeglich. Haengen am
 	Kabel Nachbarn genau einer anderen Domain, die im Image steht, schaltet

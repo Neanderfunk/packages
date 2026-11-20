@@ -1,66 +1,72 @@
-neanderfunk-hvblocator
-======================
+neanderfunk-domainhelper
+========================
 
-Lokator und Abschleppdienst für Halteverbots-Defaultdomain.
+Hilfen rund um die Domain eines Knotens. Das Paket ist als Sammelstelle
+gedacht, weitere Teile können dazukommen. Bisher gibt es einen:
 
+**locate: Lokator und Abschleppdienst für die Halteverbots-Defaultdomain.**
 Scannt die WLANs in der Umgebung eines Knotens und meldet sie per POST an den
 Locator (`locator.ffnef.de`). Hängt ein Knoten per LAN-Mesh an genau einer
 anderen Domain, schaltet er selbst dorthin um. Konzept und Format:
 [docs/konzept-hvb-ortung.md](../docs/konzept-hvb-ortung.md), Abschnitte 4.2
 und 4.3.
 
-**Stand 0.2 (20.11.2026):** erstes Paket für eine Testfirmware.
+**Stand 0.3 (20.11.2026):** erstes Paket für eine Testfirmware. Bis 0.2
+hieß es `neanderfunk-hvblocator`, davor als Prototyp `neanderfunk-locate`.
 
-Einschalten
------------
+Einschalten (locate)
+--------------------
 
 Nur über die Domain-Datei, nicht über die site.conf (`check_site.lua`
 erlaubt den Schlüssel nur `in_domain`):
 
 ```lua
-neanderfunk_hvblocator = {
-  urls = {
-    'https://locator.ffnef.de/hvb/locate',
-    'http://locator.ffnef.de/hvb/locate',
+neanderfunk_domainhelper = {
+  locator = {
+    urls = {
+      'https://locator.ffnef.de/hvb/locate',
+      'http://locator.ffnef.de/hvb/locate',
+    },
   },
 },
 ```
 
 Bei uns steht das nur in `25_hvb`. In jeder anderen Domain fehlt der
-Schlüssel, dann tut das Paket nichts. Nach einer Verschiebung ist die Ortung
+Schlüssel, dann tut locate nichts. Nach einer Verschiebung ist die Ortung
 damit von selbst aus. Im Code steht keine Domain.
 
-Wann es läuft
--------------
+Wann locate läuft
+-----------------
 
-- **Nach dem Start:** `/etc/init.d/neanderfunk-hvblocator` startet
-  `run.sh boot` im Hintergrund. Es wartet 60 s, dann bis batman einen
-  Nachbarn hat, höchstens bis 600 s Uptime, und meldet dann einmal. Die
-  LAN-Mesh-Prüfung braucht kein Internet.
-- **Täglich:** micron.d ruft `run.sh cron` stündlich zur Minute 9 auf. Es
-  meldet erst, wenn die letzte Meldung 24 h her ist (nach einem
+- **Nach dem Start:** `/etc/init.d/neanderfunk-domainhelper` startet
+  `/lib/gluon/neanderfunk-domainhelper/locate.sh boot` im Hintergrund. Es
+  wartet 60 s, dann bis batman einen Nachbarn hat, höchstens bis 600 s
+  Uptime, und meldet dann einmal. Die LAN-Mesh-Prüfung braucht kein
+  Internet.
+- **Täglich:** micron.d ruft `locate.sh cron` stündlich zur Minute 9 auf.
+  Es meldet erst, wenn die letzte Meldung 24 h her ist (nach einem
   Fehlschlag 6 h). Gemessen wird in Uptime, Stand in
-  `/tmp/neanderfunk-hvblocator.stamp`. Gemeldet wird je Knoten fest 0 bis
-  49 min später (letztes Byte der primären MAC). Ohne Schlüssel endet
-  `run.sh` nach einem `jsonfilter`, ohne Lua zu starten.
+  `/tmp/neanderfunk-domainhelper-locate.stamp`. Gemeldet wird je Knoten
+  fest 0 bis 49 min später (letztes Byte der primären MAC). Ohne Schlüssel
+  endet `locate.sh` nach einem `jsonfilter`, ohne Lua zu starten.
 - Nicht im Setup-Mode, nie zwei Läufe gleichzeitig (Sperre in `/tmp`).
 
 Aufruf
 ------
 
 ```sh
-neanderfunk-hvblocator        # scannen und melden
-neanderfunk-hvblocator -n     # nur scannen, JSON ausgeben, nichts senden
-neanderfunk-hvblocator -u URL # an diese URL melden, auch ohne Schlüssel
-                              # in der Domain (schaltet dann nie um)
-neanderfunk-hvblocator -n -a 25_hvb  # Trockenlauf, als stünde der Knoten mit
-                                     # eingeschalteter Ortung in 25_hvb
+neanderfunk-domainhelper locate        # scannen und melden
+neanderfunk-domainhelper locate -n     # nur scannen, JSON ausgeben, nichts senden
+neanderfunk-domainhelper locate -u URL # an diese URL melden, auch ohne
+                                       # Schlüssel in der Domain (schaltet nie um)
+neanderfunk-domainhelper locate -n -a 25_hvb  # Trockenlauf, als stünde der
+                                              # Knoten mit Ortung in 25_hvb
 ```
 
-Ergebnis steht im Syslog (`logread | grep neanderfunk-hvblocator`).
+Ergebnis steht im Syslog (`logread | grep neanderfunk-domainhelper`).
 
-Was das Skript tut
-------------------
+Was locate tut
+--------------
 
 - **Scan:** je Band ein Interface. Ein Mesh-Punkt kommt zuerst, dann eine
   Station, zuletzt ein AP; nur beim AP wird mit `ap-force` gescannt. Auf
@@ -96,7 +102,7 @@ Was das Skript tut
 - **Koordinaten:** aus `gluon-node-info`, falls eingetragen, auch wenn sie
   nicht veröffentlicht sind.
 - **Senden:** zuerst `https`, wenn `libustream-ssl` da ist, sonst `http`.
-  User-Agent ist `neanderfunk-hvblocator/<version>`. Der Locator antwortet mit
+  User-Agent ist `neanderfunk-domainhelper/<version>`. Der Locator antwortet mit
   200. Das Skript nimmt trotzdem jede 2xx-Antwort an: `uclient-fetch` zählt
   nur 200 als Erfolg und meldet etwa 202 als „HTTP error 202“ mit rc 8. Den
   Inhalt der Antwort wertet das Skript nicht aus.
@@ -104,12 +110,14 @@ Was das Skript tut
 Getestet
 --------
 
-20.11.2026 auf einer Gluon-x86-VM (26111816bro, Multi-Key) in `25_hvb`:
+20.11.2026 als neanderfunk-hvblocator 0.2 auf einer Gluon-x86-VM
+(26111816bro, Multi-Key) in `25_hvb`:
 ohne Schlüssel kein Lauf und keine Ausgabe; mit Schlüssel in der
 Domain-Datei liest `gluon.site` die URLs, der Startlauf meldete nach dem
 ersten batman-Nachbarn (VPN) an `https://locator.ffnef.de/hvb/locate`, ein
 `run.sh cron` direkt danach tat nichts. Den Paketbau selbst prüft erst der
-Testbau.
+Testbau. 0.3 benennt nur um (Paket, Befehl `locate`, Schlüssel
+`neanderfunk_domainhelper.locator`), ohne neuen Lauf auf einem Knoten.
 
 Lizenz
 ------

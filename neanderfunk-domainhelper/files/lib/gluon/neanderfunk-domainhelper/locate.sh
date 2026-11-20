@@ -1,25 +1,25 @@
 #!/bin/sh
 # SPDX-License-Identifier: BSD-3-Clause
-# Wann neanderfunk-hvblocator laeuft.
+# Wann "neanderfunk-domainhelper locate" laeuft.
 #
-#   run.sh boot   aus /etc/init.d: nach dem Start warten, bis batman einen
+#   locate.sh boot   aus /etc/init.d: nach dem Start warten, bis batman einen
 #                 Nachbarn hat (hoechstens BOOT_WAIT s Uptime), dann melden.
 #                 Die LAN-Mesh-Pruefung braucht kein Internet.
-#   run.sh cron   aus micron.d, stuendlich: melden, wenn die letzte Meldung
+#   locate.sh cron   aus micron.d, stuendlich: melden, wenn die letzte Meldung
 #                 OK_INTERVAL (Erfolg) bzw. FAIL_INTERVAL (Fehlschlag) her
 #                 ist. Zeiten als Uptime, nicht als Uhrzeit.
 #
-# Ohne neanderfunk_hvblocator.urls in der aktiven Domain endet es sofort.
+# Ohne neanderfunk_domainhelper.locator.urls in der aktiven Domain endet es sofort.
 
 OK_INTERVAL=86400
 FAIL_INTERVAL=21600
 BOOT_WAIT=600
-STAMP=/tmp/neanderfunk-hvblocator.stamp
-LOCK=/tmp/neanderfunk-hvblocator.lock
+STAMP=/tmp/neanderfunk-domainhelper-locate.stamp
+LOCK=/tmp/neanderfunk-domainhelper-locate.lock
 
 . /lib/gluon/neanderfunk/site.sh
 
-[ -n "$(nf_site_get '@.neanderfunk_hvblocator.urls[0]')" ] || exit 0
+[ -n "$(nf_site_get '@.neanderfunk_domainhelper.locator.urls[0]')" ] || exit 0
 [ "$(uci -q get gluon-setup-mode.@setup_mode[0].configured)" = 1 ] || exit 0
 
 uptime_s() {
@@ -64,7 +64,7 @@ fi
 mkdir "$LOCK" 2>/dev/null || exit 0
 trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 
-if /usr/sbin/neanderfunk-hvblocator ; then
+if /usr/sbin/neanderfunk-domainhelper locate ; then
 	res=ok
 else
 	res=fail

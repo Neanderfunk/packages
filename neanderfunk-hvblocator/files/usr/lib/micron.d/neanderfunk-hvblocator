@@ -1,5 +1,0 @@
-# Stuendlich nachsehen, ob die taegliche Meldung faellig ist; run.sh endet
-# sofort, wenn nicht (Shell und jsonfilter, kein Lua). Minute 9 ist im Plan
-# aus /usr/lib/micron.d/hotfix frei. Die Verteilung ueber die Stunde macht
-# run.sh selbst, erst wenn wirklich gemeldet wird.
-9 * * * * /lib/gluon/neanderfunk-hvblocator/run.sh cron

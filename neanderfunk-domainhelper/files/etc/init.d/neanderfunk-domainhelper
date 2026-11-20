@@ -1,0 +1,9 @@
+#!/bin/sh /etc/rc.common
+# Einmal bald nach dem Start melden (LAN-Mesh-Pruefung), im Hintergrund.
+# Ohne neanderfunk_domainhelper.locator.urls in der aktiven Domain endet locate.sh sofort.
+
+START=99
+
+start() {
+	/lib/gluon/neanderfunk-domainhelper/locate.sh boot </dev/null >/dev/null 2>&1 &
+}
