@@ -12,9 +12,9 @@ manifest are simply called `nodeplacer`.
 A node that finds its own node id in the verified body switches:
 
 * `domain`: multi-domain firmware, target domain contained in the image.
-  Uses `gluon-switch-domain <target>` (reboot). **Lab-tested only**: passed
-  a round trip in an x86-64 VM with a multi-domain image on 2026-11-20
-  (docs/TESTING.md); not yet used on devices in the field.
+  Uses `gluon-switch-domain <target>` (reboot). Tested on 2026-11-20 with a
+  multi-domain image, round trip in an x86-64 VM and on one real test device
+  (docs/TESTING.md); not yet used on operators' nodes.
 * `firmware`: installs the target domain's image via the regular autoupdater
   (`autoupdater -f --force-version -b <branch> <mirror...>`). Branch name,
   signing keys (`pubkey=`) and signature threshold (`good_signatures=`) of

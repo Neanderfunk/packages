@@ -343,8 +343,9 @@ Status: **offen** / **entschieden** / **verworfen**.
   gekennzeichnet. Kein Multidomain-Testimage, kein qemu-Test dafuer.
 * Nachtrag 2026-11-20: Mit dem Multi-Image (2025.1) hat der `domain`-Pfad
   einen Labortest in einer x86-64-VM bestanden, hin und zurueck (TESTING.md,
-  Protokoll 2026-11-20). "Ungetestet" heisst seitdem: an echten Geraeten im
-  Feld noch nicht erprobt.
+  Protokoll 2026-11-20), am selben Tag auch an einem echten Testgeraet
+  (WS-AP3825i, eigenes WAN). Offen ist nur noch der Einsatz an
+  Betreiberknoten.
 
 ## D-027 Release wartet auf Aenderungen im Buildsystem
 

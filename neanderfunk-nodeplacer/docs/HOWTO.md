@@ -4,12 +4,12 @@ Kurzanleitung für den eiligen Admin. Die vollständige Beschreibung des
 Formats steht in [MANIFEST-FORMAT.md](MANIFEST-FORMAT.md), die Begründungen
 in [DESIGN.md](DESIGN.md) und [DECISIONS.md](DECISIONS.md).
 
-> **Multidomain-Firmware ist erst im Labor erprobt.** Die Methode `domain`
-> hat am 20.11.2026 einen Labortest in einer x86-64-VM mit Multi-Image
-> bestanden: hin und zurück, Spiegel der Zieldomain übernommen,
-> Schleifenschutz greift (TESTING.md). An echten Geräten im Feld lief sie noch
-> nicht. Der Rest dieser Anleitung beschreibt vor allem Single-Domain-Firmware
-> (Methode `firmware`).
+> **Multidomain-Firmware ist im Labor und an einem Gerät erprobt.** Die
+> Methode `domain` hat am 20.11.2026 mit dem Multi-Image bestanden, jeweils
+> hin und zurück: in einer x86-64-VM und an einem echten Gerät mit eigenem
+> WAN. Die Spiegel der Zieldomain wurden übernommen, der Schleifenschutz
+> greift (TESTING.md). An Betreiberknoten lief sie noch nicht. Der Rest dieser
+> Anleitung beschreibt vor allem Single-Domain-Firmware (Methode `firmware`).
 
 ## In drei Sätzen
 

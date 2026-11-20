@@ -54,8 +54,8 @@ kopieren und damit schlafen.
 
 ### Noch nicht getestet
 
-* `domain`-Pfad an echten Geraeten im Feld (im Labor bestanden, siehe
-  Protokoll 2026-11-20).
+* `domain`-Pfad an Betreiberknoten (in der VM und an einem Testgeraet
+  bestanden, siehe Protokolle 2026-11-20).
 * Echter Flash in eine andere Domain (ohne `-n`). Der Trockenlauf zeigt,
   dass alles bis unmittelbar vor `sysupgrade` funktioniert.
 * C-Helfer `nodeplacer-fetch` (Signaturpruefung, Kopfpruefung, Exit-Codes):
@@ -475,4 +475,18 @@ Beobachtungen:
   mirrors" als `daemon.err` ins Log. Bekanntes Log-Rauschen, Entscheidung
   fuer 2025.1 steht aus.
 
-Offen: der `domain`-Pfad an echten Testknoten im Feld.
+### Protokoll 2026-11-20, zweiter Teil: Methode `domain` an echter Hardware
+
+Auftrag adorfer. Geraet: Extreme WS-AP3825i (Testknoten), `26111912bro`,
+eigenes WAN, keine Mesh-Nachbarn. Schluessel und Spiegel wie in der VM (drei
+eigene Testschluessel, nur uci-Delta).
+
+* `21_dias` -> `19_agi` -> `21_dias`, jeweils etwa 2,5 min vom Start bis SSH
+  an der neuen Adresse.
+* In `19_agi`: Gateway von 19, IPv4 ging. `510-nodeplacer` hatte die Spiegel
+  auf die von 19 gesetzt, `pubkey`-Delta weg, keine offenen uci-Aenderungen.
+* Alte Steuerdatei in `19_agi`: still, rc 0.
+* Rueckweg mit einer neuer datierten Datei, per IPv4 ueber das WAN. Zurueck
+  in `21_dias`: Gateway von 21, Spiegel von 21, neue Cron-Minute.
+
+Offen: der `domain`-Pfad an Betreiberknoten.
