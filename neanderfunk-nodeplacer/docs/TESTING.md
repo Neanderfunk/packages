@@ -490,3 +490,28 @@ eigene Testschluessel, nur uci-Delta).
   in `21_dias`: Gateway von 21, Spiegel von 21, neue Cron-Minute.
 
 Offen: der `domain`-Pfad an Betreiberknoten.
+
+### Protokoll 2026-11-20, dritter Teil: Schluessel und Schwelle aus der Domain (D-045)
+
+Gluon-x86-VM (Multi-Key 26111816bro, Domain `25_hvb`, Branch `stable`
+mit `good_signatures` 3), geaenderte `510-nodeplacer` und `nodeplacer`
+eingespielt. `nodeplacer-fetch` durch einen Stub ersetzt, der den
+Manifest-Rumpf ohne Signaturpruefung ausgibt; Laeufe mit `-n`. Die
+Domain-Datei wurde je Fall umgeschrieben, als HVB-Schluessel diente der
+echte Pubkey vom Mapserver (f7eb4b7d...).
+
+| Fall | Ergebnis |
+|---|---|
+| Domain ohne Schluessel/Schwelle, Zeile `firmware` | wie bisher: Weg zum Autoupdater (hier "branch ... not configured"), keine neue Sperre |
+| Domain `pubkeys={HVB}`, `good_signatures=1`, eigene Mirrors | uci: Schwelle 1, nur der HVB-Pubkey, Domain-Mirror |
+| dazu Zeile `firmware` | abgelehnt: "the domain sets its own keys or threshold, only the method "domain" is accepted", rc 1 |
+| dazu Zeile `domain target=21_dias` | "would switch to domain 21_dias (no-action)", rc 0 |
+| dazu Zeile `domain target=25_hvb` | still, rc 0 |
+| Domain `good_signatures=5` (ueber Branch 3) | uci: Schwelle 3 (Obergrenze) |
+| Domain nur `good_signatures=1`, ohne pubkeys | uci: Schwelle 1, Schluessel aus dem Branch; `firmware` abgelehnt |
+| Domain-Datei zurueck | uci wieder wie vorher |
+
+Nicht getestet: check_site im Build (Pfad ohne in_site/in_domain wie in
+Gluons eigenen check_site-Dateien), echte Signaturpruefung mit dem
+HVB-Schluessel (kommt mit dem Manifest vom Mapserver).
+

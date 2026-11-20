@@ -14,6 +14,7 @@ local unistd = require 'posix.unistd'
 local uci = require('simple-uci').cursor()
 local util = require 'gluon.util'
 local site = require 'gluon.site'
+local json = require 'jsonc'
 local manifest = require 'nodeplacer.manifest'
 local state = require 'nodeplacer.state'
 
@@ -192,6 +193,32 @@ end
 -- Action ---------------------------------------------------------------------
 
 local has_domains = unistd.access('/lib/gluon/domains/') == 0
+
+-- D-045: if the active domain file sets its own keys or threshold (the
+-- no-parking default domain 25_hvb does, with a key of its own), the
+-- manifest may only move the node to another domain of this image. Under
+-- D-032 the same trust level would otherwise also be enough for 'firmware',
+-- i.e. for flashing another image. Read from the domain file itself on every
+-- run, not from uci, so nothing written to the config can lift it.
+local function domain_sets_trust()
+	if not has_domains then
+		return false
+	end
+	local d = uci:get('gluon', 'core', 'domain')
+	if not d or not d:match('^[%w_%-]+$') then
+		return false
+	end
+	local s = util.readfile('/lib/gluon/domains/' .. d .. '.json')
+	local j = s and json.parse(s)
+	local np = type(j) == 'table' and j.nodeplacer
+	return type(np) == 'table' and (np.pubkeys ~= nil or np.good_signatures ~= nil)
+end
+
+if entry.method ~= 'domain' and domain_sets_trust() then
+	log('the domain sets its own keys or threshold, only the method "domain" is '
+		.. 'accepted; ignoring "' .. tostring(entry.method) .. '"')
+	os.exit(1)
+end
 
 if entry.method == 'domain' then
 	if not has_domains then

@@ -805,3 +805,31 @@ ist DEPENDS-Syntax; OpenWrt entfernt es nur dort.
   `nodeplacer.settings.mirror`, das `nodeplacer-fetch` liest. Nach
   `gluon-switch-domain` (auch der nodeplacer-Methode `domain`) laeuft beim
   Neustart `gluon-reconfigure` und damit 510 mit der neuen Domain.
+
+## D-045 Schluessel und Schwelle auch in der Domain-Datei
+
+* Status: **entschieden** (2026-11-20, adorfer; Konzept HVB-Ortung im
+  Packages-Repo, docs/konzept-hvb-ortung.md 4.5, E1 bis E3)
+* Anlass: Knoten in der Halteverbots-Defaultdomain `25_hvb` sollen mit
+  einem eigenen Schluessel und einer Unterschrift verschoben werden koennen,
+  ohne drei Release-Unterschriften. Der private Schluessel liegt nur auf dem
+  Mapserver.
+* `nodeplacer.pubkeys` und `nodeplacer.good_signatures` duerfen jetzt in der
+  site.conf **oder** in der Domain-Datei stehen (check_site ohne `in_site`).
+  Zur Laufzeit ersetzt eine Liste aus der Domain die der Site ganz
+  (`merge_json` in libgluonutil fuehrt nur Objekte zusammen). In `25_hvb`
+  gilt dann nur der HVB-Schluessel.
+* **Obergrenze (E3):** Setzt die Domain `good_signatures`, schreibt
+  `510-nodeplacer` den kleineren Wert aus Domain und Schwelle des laufenden
+  Autoupdater-Branches. Eine Domain kann die Huerde fuer ihren Schluessel
+  also senken, nie ueber den Branch heben.
+* **Nur `domain` (E2):** Setzt die aktive Domain-Datei `pubkeys` oder
+  `good_signatures`, lehnt `nodeplacer` Zeilen der Methode `firmware` ab.
+  Nach D-032 haette dasselbe Vertrauensniveau sonst auch fuer einen
+  Firmwarewechsel gereicht. Gelesen wird bei jedem Lauf direkt aus
+  `/lib/gluon/domains/<domain>.json`, nicht aus uci.
+* Ziel gleich eigener Domain: wie bisher stiller Abbruch (Zeile veraltet).
+* Nach dem Verschieben laeuft beim Neustart `gluon-reconfigure`, die neue
+  Domain hat die Werte nicht, es gelten wieder Site und Branch.
+* Mirrors bleiben `http://`: `nodeplacer-fetch` hat kein TLS.
+

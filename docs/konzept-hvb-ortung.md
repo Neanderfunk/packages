@@ -435,7 +435,7 @@ Danach bleiben nur `node_id`, Zieldomain und Zeit (für die Berichte).
 
 ```lua
 nodeplacer = {
-  mirrors = { 'https://locator.ffnef.de/hvb/nodeplacer', 'http://locator.ffnef.de/hvb/nodeplacer' },
+  mirrors = { 'http://locator.ffnef.de/hvb/nodeplacer' },
   pubkeys = { '<hvb-key>' },
   good_signatures = 1,
 },
@@ -443,8 +443,9 @@ nodeplacer = {
 
 - `510-nodeplacer` liest diese Werte schon heute über `gluon.site`. Bei
   jedem `gluon-reconfigure` schreibt es sie nach `/etc/config/nodeplacer`.
-- Zu ändern ist `check_site.lua`: `pubkeys` und `good_signatures` dürfen dann
-  auch in der Domain-Datei stehen. Bisher geht das nur in der Site (D-044).
+- `check_site.lua`: `pubkeys` und `good_signatures` dürfen seit 20.11. auch
+  in der Domain-Datei stehen (nodeplacer D-045). Bis dahin ging das nur in
+  der Site (D-044).
 - Zur Laufzeit ersetzt eine Liste aus der Domain-Datei die Liste der Site
   vollständig: `merge_json` in libgluonutil führt nur Objekte zusammen,
   keine Arrays. In `25_hvb` gilt dann nur der HVB-Schlüssel, die
@@ -457,8 +458,9 @@ nodeplacer = {
 
 - Heute zeigen alle Domains auf denselben Pfad (`.../firmware/nodeplacer`).
   `25_hvb` bekommt eigene Mirrors auf dem Mapserver, mit eigenem Manifest.
-- https wie in 4.2: `nodeplacer-fetch` nutzt uclient wie der Autoupdater,
-  https geht also nur mit TLS im Image [prüfen].
+- Nur `http://`: `nodeplacer-fetch` hat kein TLS, und check_site lässt für
+  die Mirrors nur `http://` zu (geprüft 20.11.). Den Inhalt schützt die
+  Signatur.
 
 **Nur Domainwechsel annehmen:**
 
@@ -468,7 +470,8 @@ nodeplacer = {
 - Deshalb: Sind Schlüssel oder Schwelle über die Domain gesetzt, nimmt der
   nodeplacer nur Zeilen der Methode `domain` an.
 - Ziel darf nicht die aktuelle Domain sein.
-- Kleine Codeänderung in `nodeplacer` (Lua) plus Test.
+- Umgesetzt 20.11. in `nodeplacer` (Lua), getestet auf einer Labor-VM
+  (nodeplacer docs/TESTING.md).
 
 **Schwelle als Obergrenze:**
 
@@ -538,7 +541,7 @@ Stand der Recherche 20.11.2026:
 | E4 | Ortungsanbieter? | **20.11.:** beide gestaffelt, beaconDB zuerst, dann Google (Kosten 4.6) |
 | E5 | Wie wird aus der Position eine Domain? | **20.11.:** Mapserver berechnet einmalig Domainflächen, statisches Datenmodell; Mesh-Partner haben Vorrang |
 | E6 | Was wird gespeichert, wie lange? | **20.11.:** 14 Tage, 200-m-Raster, mit Genauigkeitsradius. Zu unsicher heißt nicht verschieben, sondern Klärung von Hand. Speicherort ist der Mapserver |
-| E7 | Name und Adresse des Dienstes | **20.11.:** `locator.ffnef.de`, Pfade `/hvb/locate` und `/hvb/nodeplacer`, je https und http |
+| E7 | Name und Adresse des Dienstes | **20.11.:** `locator.ffnef.de`, Pfade `/hvb/locate` (https und http) und `/hvb/nodeplacer` (nur http, nodeplacer-fetch hat kein TLS) |
 | E8 | Was passiert mit Knoten außerhalb aller Domains? | **19.11.:** nach `21_dias` |
 | E9 | Wiederholung? | **20.11.:** täglich, bis zur Verschiebung |
 | E10 | Grenze für den Genauigkeitsradius | **20.11.:** 5000 m, gilt nur an der Außengrenze (Abgrenzung zu `21_dias`); zwischen zwei Domains entscheidet die nähere |

@@ -6,7 +6,28 @@
 -- pubkeys of the configured autoupdater branch.
 
 local site = require 'gluon.site'
+local json = require 'jsonc'
 local uci = require('simple-uci').cursor()
+
+-- The nodeplacer block of the active domain file alone, without the site
+-- (D-045): what the domain sets itself, as opposed to the merged view of
+-- gluon.site. Empty without domains.
+local function domain_nodeplacer()
+	local d = uci:get('gluon', 'core', 'domain')
+	if not d or not d:match('^[%w_%-]+$') then
+		return {}
+	end
+	local f = io.open('/lib/gluon/domains/' .. d .. '.json')
+	if not f then
+		return {}
+	end
+	local j = json.parse(f:read('*a'))
+	f:close()
+	if type(j) == 'table' and type(j.nodeplacer) == 'table' then
+		return j.nodeplacer
+	end
+	return {}
+end
 
 local cronfile = '/usr/lib/micron.d/nodeplacer'
 
@@ -30,6 +51,19 @@ end
 
 -- Keys and threshold are optional overrides as well (D-031).
 local good_signatures = site.nodeplacer.good_signatures()
+
+-- D-045: a threshold from the domain file is an upper bound only. The
+-- smaller of it and the running autoupdater branch's threshold applies, so a
+-- domain can lower the bar for its own key but never raise it above the
+-- branch (500-autoupdater has written the branch section by now).
+if good_signatures and domain_nodeplacer().good_signatures ~= nil then
+	local branch = uci:get('autoupdater', 'settings', 'branch')
+	local branch_gs = branch and tonumber(uci:get('autoupdater', branch, 'good_signatures'))
+	if branch_gs and branch_gs < good_signatures then
+		good_signatures = branch_gs
+	end
+end
+
 if good_signatures then
 	uci:set('nodeplacer', 'settings', 'good_signatures', good_signatures)
 else

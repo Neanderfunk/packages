@@ -66,6 +66,15 @@ nodeplacer = {
 },
 ```
 
+`pubkeys` and `good_signatures` may also be set in a domain file (D-045),
+for a domain whose nodes are to be moved with a key of their own, such as a
+default domain nodes should not stay in. A list from the domain replaces the
+site's list as a whole. Set in the domain, `good_signatures` is an upper
+bound (the smaller of it and the running autoupdater branch's threshold
+applies), and the node then accepts only the method `domain`, never
+`firmware`. Mirrors are plain `http://`: `nodeplacer-fetch` has no TLS, the
+signatures protect the content.
+
 ## Manifest
 
 ```
