@@ -146,12 +146,23 @@ zusätzlich zum Scan mit. Das gilt auch, wenn sie nicht veröffentlicht sind.
 ```json
 { "node_id": "0123456789ab",
   "wifi": [ { "bssid": "aa:bb:cc:dd:ee:ff", "ssid": "Freifunk", "mesh_id": "", "signal": -61, "channel": 6 } ],
-  "coordinates": { "lat": 51.0, "lon": 7.0 } }
+  "coordinates": { "lat": 51.0, "lon": 7.0 },
+  "exit_ip": { "ipv4": "192.0.2.10", "ipv6": "2001:db8::1" } }
 ```
 
 - `ssid` und `mesh_id` gehen mit, damit der Dienst Freifunk-Knoten erkennt.
   Mesh-Punkte (802.11s) zeigen im Scan eine Mesh-ID statt einer SSID.
 - `coordinates` nur, wenn der Knoten welche hat.
+- `exit_ip`: die öffentlichen Adressen, mit denen der Knoten über seinen
+  Uplink ins Internet geht. Er ermittelt sie selbst, so wie es `nodestatus`
+  (Paket `neanderfunk-banner`) für IPv4 schon tut: Abfrage bei
+  `ipv4.icanhazip.com` und `checkip.amazonaws.com` über das WAN. Ein schwacher
+  Hinweis auf den Standort (4.4), aber genug, um nicht im falschen Land zu
+  landen. Fehlt eine Adresse, bleibt das Feld weg.
+- Der Mapserver sieht außerdem die Absenderadresse der Meldung. Die ist nur
+  dann die Exit-IP des Uplinks, wenn die Meldung über das WAN geht und nicht
+  durch das Mesh [prüfen, welchen Weg Gluon für Verkehr des Knotens selbst
+  nimmt]. Deshalb schickt der Knoten die Exit-IP ausdrücklich mit.
 
 **Antwort:**
 
@@ -195,6 +206,17 @@ HVB-Manifest, Signieren, Berichte.
    - Rückfall auf IP-Ortung ausschalten (Google `considerIp: false`,
      beaconDB `fallbacks`). Sonst käme die Position des Mapservers zurück.
    - Google braucht mindestens 2 WLANs.
+4. **Exit-IP** (schwacher Hinweis): Land und Netzbetreiber aus einer lokalen
+   GeoIP-Datenbank auf dem Mapserver. Die Adresse geht an keinen
+   Ortungsanbieter.
+   - Wählt nie allein eine Ortsdomain: Mobilfunk, CGNAT, VPN-Anbieter oder
+     Satellit verorten oft weit daneben.
+   - Dient zur Plausibilität: Liegt die Position aus Schritt 1 bis 3 in
+     unserem Gebiet, die Exit-IP aber klar in einem anderen Land, ist der Fall
+     widersprüchlich und geht zur Klärung von Hand.
+   - Gibt es sonst gar nichts und liegt die Exit-IP klar im Ausland, ist
+     `21_dias` der naheliegende Vorschlag. Vorschlag: auch das erst von Hand
+     bestätigen.
 
 **3. Position zu Domain:** Der Mapserver berechnet die Domaingrenzen einmal
 als statisches Datenmodell: eine Fläche je Domain aus den Positionen ihrer
@@ -235,7 +257,8 @@ ein.
 **7. Speichern:** Gespeichert wird auf dem Mapserver, 14 Tage lang:
 
 - die Position, auf ein 200-m-Raster vergröbert,
-- dazu der Genauigkeitsradius, wenn der Anbieter einen liefert.
+- dazu der Genauigkeitsradius, wenn der Anbieter einen liefert,
+- die gemeldete Exit-IP.
 
 Danach bleiben nur `node_id`, Zieldomain und Zeit (für die Berichte).
 
@@ -327,7 +350,8 @@ Stand der Recherche 20.11.2026:
   - Ohne `node_id` und ohne SSIDs zum Anbieter.
   - Keine Veröffentlichung.
   - `_nomap` beachten.
-  - 14 Tage Speicherung, Position auf 200 m vergröbert.
+  - 14 Tage Speicherung, Position auf 200 m vergröbert, Exit-IP ebenso
+    nur 14 Tage.
 - **HVB-Schlüssel auf dem Mapserver:** Der Mapserver kann damit Knoten
   verschieben, aber nur Knoten in `25_hvb`, nur per Methode `domain` und nur
   in andere Domains derselben Firmware.
@@ -351,14 +375,15 @@ Stand der Recherche 20.11.2026:
 | E8 | Was passiert mit Knoten außerhalb aller Domains? | **19.11.:** nach `21_dias` |
 | E9 | Wiederholung? | **20.11.:** täglich, bis zur Verschiebung |
 | E10 | Grenze für den Genauigkeitsradius | offen, Vorschlag 1000 m |
-| E11 | Wie viele Mesh-Partner einer Domain reichen? | offen, Vorschlag mindestens 2, keine andere Domain gleich stark |
+| E11 | Wie viele Mesh-Partner einer Domain reichen? | **20.11.:** mindestens 2, keine andere Domain gleich stark |
 
 Außerdem am 20.11. entschieden:
 
 - keine Übertragung über ULA oder interne Adressen,
 - TLS, wo der Knoten es kann,
 - HVB-Manifest auf dem Mapserver,
-- Berichte per Mail.
+- Berichte per Mail,
+- die Exit-IP des Knotens geht als schwacher Hinweis mit.
 
 ## 7. Arbeitspakete und Reihenfolge
 
@@ -378,8 +403,9 @@ Außerdem am 20.11. entschieden:
    - Annahme der Meldungen, Abgleich mit den Kartendaten.
    - Mesh-Partner erkennen.
    - Domainflächen einmalig berechnen.
-   - Anbieterabfrage, Genauigkeitsprüfung, Speicherung 14 Tage.
-6. **Neues Paket auf dem Knoten:** Scan, Filter, Meldung, tägliche
+   - Anbieterabfrage, Exit-IP-Prüfung, Genauigkeitsprüfung, Speicherung
+     14 Tage.
+6. **Neues Paket auf dem Knoten:** Scan, Filter, Exit-IP, Meldung, tägliche
    Wiederholung.
 7. **Test:** Knoten im Labor in `25_hvb`, Meldung, Verschiebung per
    HVB-Manifest, Rückkehr der normalen Schwelle nach dem Neustart, Bericht.
