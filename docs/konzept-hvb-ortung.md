@@ -126,6 +126,41 @@ Daraus für uns:
 - Danach einmal am Tag, solange der Knoten in `25_hvb` ist. Ohne
   Obergrenze: Es endet mit der Verschiebung.
 
+**LAN-Mesh-Nachbarn einer anderen Domain** (adorfer 20.11.): Hier
+entscheidet der Knoten selbst, ohne den Mapserver.
+
+- Unsere Domains meshen am Kabel ohne VXLAN (`mesh.vxlan = false` in der
+  Site). Ein LAN-Mesh-Nachbar aus einer anderen Domain ist also sofort
+  batman-Partner, die Wolken sind schon verbunden. Ein sinnvolles Szenario,
+  in dem der Knoten dann in `25_hvb` bleiben sollte, gibt es nicht.
+- Der Knoten fragt die direkten Nachbarn je LAN-Mesh-Interface per respondd,
+  wie die Statusseite: `gluon-neighbour-info -i <if> -d ff02::2:1001 -p 1001
+  -r nodeinfo`. LAN-Mesh heißt jedes batman-Interface außer `mesh-vpn` und
+  den WLAN-Meshes `meshN`.
+- Die Domain steht in `system.domain_code`. Ältere Single-Domain-Images
+  haben das Feld nicht; dann gilt der Teil des `site_code` hinter dem
+  Bindestrich (`nef-21_dias`, `bgl-43_bggl`).
+- **Umgeschaltet wird**, wenn am Kabel genau eine andere Domain als `25_hvb`
+  zu sehen ist und sie im Image steht. Auch eine LVR-Domain ist dann Ziel.
+- **Nicht umgeschaltet wird**, wenn die Domain nicht im Image steht (etwa
+  Gluon einer Nachbar-Community am Kabel) oder wenn mehrere fremde Domains am
+  Kabel hängen. Dann geht es weiter über den Mapserver bzw. von Hand.
+  Nachbarn ohne Domainangabe zählen nicht, die eigene `node_id` auch nicht
+  (der Knoten antwortet auf jedem Interface selbst).
+- **Ablauf:** erst die Meldung an den Locator, mit `lan_mesh` und
+  `lan_switch`, damit der Knoten im Mailbericht steht. Dann
+  `gluon-switch-domain <domain>`, das ist ein Neustart. Die Meldung ist
+  Beiwerk: Kommt sie nicht an, schaltet der Knoten trotzdem um.
+- „Wer darf gehen?“ (E12, 4.4) gilt hier nicht. Wer am Kabel in der anderen
+  Domain hängt, geht ohnehin über sie ins Netz. HVB-Knoten, die per WLAN an
+  ihm hängen, sehen danach die Mesh-ID der neuen Domain und folgen über E11.
+- Kein Schutz gegen falsche Antworten: Ein Nachbar am Kabel könnte eine
+  falsche Domain melden. Wer schon am Kabel hängt, verbindet die Wolken aber
+  ohnehin.
+- Am 20.11. am M60 (LAN-Mesh über `br-mesh_other`) erprobt, als Trockenlauf
+  mit `-n -a 25_hvb`: Der Nachbar meldet `21_dias`, das Skript würde dorthin
+  umschalten.
+
 **Hat der Knoten schon Koordinaten** (`gluon-node-info`), schickt er sie
 zusätzlich zum Scan mit. Das gilt auch, wenn sie nicht veröffentlicht sind.
 
@@ -159,6 +194,8 @@ am Proxy verwerfen und die Annahme begrenzen.
   "wifi": [ { "bssid": "aa:bb:cc:dd:ee:ff", "ssid": "Freifunk", "mesh_id": "", "signal": -61, "freq": 2437, "age_ms": 320 } ],
   "uplink": { "vpn": true, "gw_via": "mesh-vpn", "gw_nexthop": "02:ca:ff:ee:21:00",
               "mesh_macs": [ "12:3d:87:ce:a7:bb" ], "neighbours": { "vpn": 1, "wifi": 3, "lan": 0 } },
+  "lan_mesh": [ { "iface": "br-mesh_other", "node_id": "0123456789cd", "domain": "01_vel" } ],
+  "lan_switch": "01_vel",
   "coordinates": { "lat": 51.0, "lon": 7.0 },
   "exit_ip": { "ipv4": "192.0.2.10" } }
 ```
@@ -172,6 +209,10 @@ am Proxy verwerfen und die Annahme begrenzen.
   (`mesh_macs`) und wie viele batman-Nachbarn er je Art hat. Wer über ihn ins
   Netz geht, sieht der Knoten selbst nicht; das ergibt sich aus den
   Meldungen der anderen (siehe „Wer darf gehen?“ in 4.4).
+- `lan_mesh`: die direkten Nachbarn am LAN-Mesh mit ihrer Domain (siehe
+  oben). Ohne LAN-Mesh-Nachbarn leer.
+- `lan_switch`: nur, wenn der Knoten gleich nach der Meldung selbst in diese
+  Domain umschaltet.
 - `exit_ip`: die öffentlichen Adressen, mit denen der Knoten über seinen
   Uplink ins Internet geht. Er ermittelt sie selbst, so wie es `nodestatus`
   (Paket `neanderfunk-banner`) für IPv4 schon tut: Abfrage bei
@@ -188,7 +229,8 @@ am Proxy verwerfen und die Annahme begrenzen.
 
 - Der Knoten selbst tut mit der Antwort nichts: keine Koordinaten
   eintragen, nichts veröffentlichen.
-- Die Verschiebung kommt allein über den nodeplacer (4.5).
+- Die Verschiebung kommt über den nodeplacer (4.5). Einzige Ausnahme ist
+  das Umschalten wegen LAN-Mesh-Nachbarn (oben).
 
 ### 4.4 Ortungsdienst auf dem Mapserver
 
@@ -214,6 +256,10 @@ HVB-Manifest, Signieren, Berichte.
   eine feste Liste der Domains, die über die Position Ziel sein dürfen.
 
 **2. Domain bestimmen, in dieser Reihenfolge:**
+
+Meldet ein Knoten `lan_switch`, hat er schon selbst entschieden (4.3). Der
+Locator führt ihn nur im Bericht; abgeschleppt ist er, sobald er in der
+Zieldomain auftaucht.
 
 1. **Bekanntes Wifimesh in Funkreichweite (Mesh-Partner).** Jede unserer
    Domains hat eine eigene 802.11s-Mesh-ID, meist `<kurzname>-mesh` (etwa
@@ -292,7 +338,9 @@ selbst nicht:
 
 - **Ohne eigenen VPN-Uplink nie.** Ein Knoten, der nur per WLAN-Mesh oder
   LAN-Mesh im Netz hängt, bleibt in `25_hvb`. In einer anderen Domain fände
-  er seine Mesh-Partner nicht mehr und hätte gar kein Netz.
+  er seine Mesh-Partner nicht mehr und hätte gar kein Netz. Das betrifft nur
+  den Weg über den Mapserver. Hängt der Knoten am Kabel an einer anderen
+  Domain, schaltet er selbst um (4.3).
 - **Mit VPN-Uplink nur, wenn niemand an ihm hängt.** Gehen andere Knoten in
   `25_hvb` über ihn ins Netz, bleibt er ebenfalls.
 - **Zwei Knoten, die beide VPN haben und zusätzlich zueinander meshen,
@@ -460,7 +508,7 @@ Stand der Recherche 20.11.2026:
 
 | Nr. | Frage | Entscheidung |
 |---|---|---|
-| E1 | Weniger Signaturen oder eigener Schlüssel? | **20.11.:** eigener Schlüssel, nur für den Umzug aus `25_hvb` in eine andere Domain derselben Firmware |
+| E1 | Weniger Signaturen oder eigener Schlüssel? | **20.11.:** eigener Schlüssel, nur für den Umzug aus `25_hvb` in eine andere Domain derselben Firmware. Einzige Ausnahme: LAN-Mesh-Nachbarn genau einer anderen Domain, dann schaltet der Knoten selbst um (4.3) |
 | E2 | Bei gesenkter Schwelle nur Methode `domain` annehmen? | **20.11.:** ja, nur `domain` |
 | E3 | Domain-Schwelle als fester Wert oder als Obergrenze? | **20.11.:** Obergrenze |
 | E4 | Ortungsanbieter? | **20.11.:** beide gestaffelt, beaconDB zuerst, dann Google (Kosten 4.6) |
@@ -522,9 +570,12 @@ Danach, für den echten Betrieb:
    - Anbieterabfrage, Exit-IP-Prüfung, Genauigkeitsprüfung, Speicherung
      14 Tage.
 6. **Neues Paket auf dem Knoten:** Scan, Filter, Exit-IP, Meldung, tägliche
-   Wiederholung.
+   Wiederholung. Dazu die Prüfung der LAN-Mesh-Nachbarn bald nach dem Start,
+   sobald batman Nachbarn hat, auch ohne Internet (im Prototyp schon drin).
 7. **Test:** Knoten im Labor in `25_hvb`, Meldung, Verschiebung per
    HVB-Manifest, Rückkehr der normalen Schwelle nach dem Neustart, Bericht.
+   Dazu ein Knoten in `25_hvb` am Kabel an einem Knoten einer anderen
+   Domain: Umschalten ohne Mapserver.
 
 Punkt 2 bis 4 lohnen sich auch ohne Ortung: Das Abschleppen aus `25_hvb` von
 Hand geht damit schon ohne drei Unterschriften.

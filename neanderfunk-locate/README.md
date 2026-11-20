@@ -2,7 +2,8 @@ neanderfunk-locate (Prototyp)
 =============================
 
 Scannt die WLANs in der Umgebung eines Knotens und meldet sie per POST an den
-Locator (`locator.ffnef.de`). Konzept und Format:
+Locator (`locator.ffnef.de`). Hängt ein Knoten in `25_hvb` per LAN-Mesh an
+genau einer anderen Domain, schaltet er selbst dorthin um. Konzept und Format:
 [docs/konzept-hvb-ortung.md](../docs/konzept-hvb-ortung.md), Abschnitt 4.3.
 
 **Stand: Prototyp.** Es gibt noch kein Makefile, das Skript kommt nicht ins
@@ -18,6 +19,7 @@ Aufruf
 neanderfunk-locate        # scannen und melden
 neanderfunk-locate -n     # nur scannen, JSON ausgeben, nichts senden
 neanderfunk-locate -u URL # an eine andere URL melden
+neanderfunk-locate -n -a 25_hvb  # Trockenlauf, als stünde der Knoten in 25_hvb
 ```
 
 Ergebnis steht im Syslog (`logread | grep neanderfunk-locate`).
@@ -41,6 +43,17 @@ Was das Skript tut
   `mesh-vpn`), über welches Interface sein Gateway läuft (`batctl gwl`) und
   wie viele batman-Nachbarn er je Art hat. Ein Knoten ohne eigenes VPN wird
   nicht verschoben (Konzept 4.4, „Wer darf gehen?“).
+- **LAN-Mesh-Nachbarn:** Je batman-Interface außer `mesh-vpn` und `meshN`
+  fragt das Skript die direkten Nachbarn per respondd
+  (`gluon-neighbour-info ... -r nodeinfo`) und meldet sie mit Domain im Feld
+  `lan_mesh`. Die Domain kommt aus `system.domain_code`, bei älteren Images
+  aus dem `site_code` hinter dem Bindestrich.
+- **Umschalten:** Steht der Knoten in `25_hvb` und hängen am Kabel Nachbarn
+  genau einer anderen Domain, die im Image steht, meldet das Skript
+  `lan_switch` und ruft danach `gluon-switch-domain` auf (Neustart), auch wenn
+  die Meldung nicht ankam. Mehrere fremde Domains oder eine, die das Image
+  nicht kennt: kein Umschalten. Mit `-n` schaltet das Skript nie um; `-a`
+  gibt es nur zusammen mit `-n`.
 - **Koordinaten:** aus `gluon-node-info`, falls eingetragen, auch wenn sie
   nicht veröffentlicht sind.
 - **Senden:** zuerst `https`, wenn `libustream-ssl` da ist, sonst `http`.

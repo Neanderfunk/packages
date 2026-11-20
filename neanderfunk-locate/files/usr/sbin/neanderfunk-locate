@@ -2,8 +2,12 @@
 -- SPDX-License-Identifier: BSD-3-Clause
 --
 -- neanderfunk-locate (Prototyp): scannt die WLANs in der Umgebung und meldet
--- sie per POST an den Locator. Der Knoten wertet die Antwort nicht aus und
--- aendert nichts an seiner Konfiguration.
+-- sie per POST an den Locator. Der Knoten wertet die Antwort nicht aus.
+--
+-- Einzige eigene Entscheidung: Steht der Knoten in 25_hvb und haengen am
+-- LAN-Mesh Nachbarn genau einer anderen Domain, die im Image steht, schaltet
+-- er nach der Meldung selbst in diese Domain um (gluon-switch-domain,
+-- Neustart). Ohne VXLAN sind die batman-Wolken dann ohnehin schon verbunden.
 --
 -- Konzept: docs/konzept-hvb-ortung.md, Format v1 (Abschnitt 4.3).
 --
@@ -11,9 +15,12 @@
 --   neanderfunk-locate            scannen und melden
 --   neanderfunk-locate -n         nur scannen, JSON ausgeben, nichts senden
 --   neanderfunk-locate -u <url>   an diese URL statt an die Vorgabe
+--   neanderfunk-locate -n -a <d>  zum Testen: so tun, als stuende der Knoten
+--                                 in Domain <d> (nur mit -n, schaltet nie)
 
 local VERSION = '0.1'
 local MAX_NETS = 50
+local HVB_DOMAIN = '25_hvb'
 local URLS = {
 	'https://locator.ffnef.de/hvb/locate',
 	'http://locator.ffnef.de/hvb/locate',
@@ -46,7 +53,7 @@ local function log(msg)
 end
 
 -- Argumente
-local dry, url_override = false, nil
+local dry, url_override, as_domain = false, nil, nil
 do
 	local i = 1
 	while arg[i] do
@@ -55,11 +62,18 @@ do
 		elseif arg[i] == '-u' and arg[i + 1] then
 			url_override = arg[i + 1]
 			i = i + 1
+		elseif arg[i] == '-a' and arg[i + 1] then
+			as_domain = arg[i + 1]
+			i = i + 1
 		else
-			io.stderr:write('usage: neanderfunk-locate [-n] [-u url]\n')
+			io.stderr:write('usage: neanderfunk-locate [-n] [-u url] [-a domain]\n')
 			os.exit(2)
 		end
 		i = i + 1
+	end
+	if as_domain and not dry then
+		io.stderr:write('neanderfunk-locate: -a nur zusammen mit -n\n')
+		os.exit(2)
 	end
 end
 
@@ -213,15 +227,83 @@ local function uplink()
 	}
 end
 
+-- LAN-Mesh: alle batman-Interfaces ausser mesh-vpn und den WLAN-Meshes.
+-- Je Interface die direkten Nachbarn per respondd fragen (wie die
+-- Statusseite). Die Domain steht in system.domain_code; aeltere
+-- Single-Domain-Images haben das Feld nicht, dann der Teil des site_code
+-- hinter dem Bindestrich (nef-21_dias, bgl-43_bggl).
+local function lan_mesh(own_id)
+	local ifs, seen = {}, {}
+	for line in sh('batctl n -H'):gmatch('[^\n]+') do
+		local ifname = line:match('^%s*(%S+)%s+%x%x:')
+		if ifname and ifname ~= 'mesh-vpn' and not ifname:match('^mesh%d+$')
+				and not seen[ifname] then
+			seen[ifname] = true
+			table.insert(ifs, ifname)
+		end
+	end
+	local out, dup = {}, {}
+	for _, ifname in ipairs(ifs) do
+		local text = sh('gluon-neighbour-info -i ' .. ifname
+			.. ' -d ff02::2:1001 -p 1001 -t 2 -r nodeinfo')
+		for line in text:gmatch('[^\n]+') do
+			local ni = json.parse(line)
+			local id = type(ni) == 'table' and type(ni.node_id) == 'string'
+				and ni.node_id:lower()
+			if id and id ~= own_id and not dup[ifname .. id] then
+				dup[ifname .. id] = true
+				local sys = type(ni.system) == 'table' and ni.system or {}
+				local dom = type(sys.domain_code) == 'string' and sys.domain_code
+					or (type(sys.site_code) == 'string'
+						and sys.site_code:match('^[^-]+%-(.+)$'))
+					or nil
+				table.insert(out, { iface = ifname, node_id = id, domain = dom })
+			end
+		end
+	end
+	return out
+end
+
+-- Umschalten nur, wenn genau eine fremde Domain am Kabel haengt, sie im
+-- Image steht und es keine weitere fremde Domain gibt (auch keine, die das
+-- Image nicht kennt). Nachbarn ohne Domainangabe zaehlen nicht.
+local function lan_target(neigh, own_domain)
+	local doms, n = {}, 0
+	for _, x in ipairs(neigh) do
+		if x.domain and x.domain ~= own_domain and x.domain ~= HVB_DOMAIN
+				and not doms[x.domain] then
+			doms[x.domain] = true
+			n = n + 1
+		end
+	end
+	if n ~= 1 then return nil end
+	local d = next(doms)
+	if not d:match('^[%w_%-]+$') then return nil end
+	local f = io.open('/lib/gluon/domains/' .. d .. '.json')
+	if not f then return nil end
+	f:close()
+	return d
+end
+
+local own_id = require('gluon.util').node_id():lower()
+local own_domain = trim(sh('uci -q get gluon.core.domain'))
+local lan = lan_mesh(own_id)
+local switch_to
+if (as_domain or own_domain) == HVB_DOMAIN then
+	switch_to = lan_target(lan, HVB_DOMAIN)
+end
+
 local report = {
 	v = 1,
-	node_id = require('gluon.util').node_id():lower(),
-	domain = trim(sh('uci -q get gluon.core.domain')),
+	node_id = own_id,
+	domain = own_domain,
 	release = trim(readfile('/lib/gluon/release')),
 	uptime = math.floor(tonumber((readfile('/proc/uptime') or '0'):match('^[%d%.]+')) or 0),
 	scan = scans,
 	wifi = wifi,
 	uplink = uplink(),
+	lan_mesh = lan,
+	lan_switch = switch_to,
 }
 
 local v4 = public_v4()
@@ -269,5 +351,15 @@ os.remove(tmp)
 
 if not sent then
 	log('Meldung fehlgeschlagen (' .. #wifi .. ' Netze)')
-	os.exit(1)
 end
+
+-- Umschalten auch, wenn die Meldung nicht ankam: Der Bericht des Mapservers
+-- ist Beiwerk, das Kabel entscheidet.
+if switch_to then
+	log('LAN-Mesh-Nachbarn in ' .. switch_to .. ', schalte von '
+		.. own_domain .. ' dorthin um')
+	os.execute('gluon-switch-domain ' .. switch_to)
+	os.exit(0)
+end
+
+if not sent then os.exit(1) end
