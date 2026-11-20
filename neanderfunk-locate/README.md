@@ -40,10 +40,10 @@ Was das Skript tut
 - **Koordinaten:** aus `gluon-node-info`, falls eingetragen, auch wenn sie
   nicht veröffentlicht sind.
 - **Senden:** zuerst `https`, wenn `libustream-ssl` da ist, sonst `http`.
-  User-Agent ist `neanderfunk-locate/<version>`. Jede 2xx-Antwort gilt als
-  angekommen: `uclient-fetch` nimmt nur 200 als Erfolg und meldet den 202
-  des Locators als „HTTP error 202“ mit rc 8. Den Inhalt der Antwort wertet
-  das Skript nicht aus.
+  User-Agent ist `neanderfunk-locate/<version>`. Der Locator antwortet mit
+  200. Das Skript nimmt trotzdem jede 2xx-Antwort an: `uclient-fetch` zählt
+  nur 200 als Erfolg und meldet etwa 202 als „HTTP error 202“ mit rc 8. Den
+  Inhalt der Antwort wertet das Skript nicht aus.
 
 Lizenz
 ------
