@@ -190,28 +190,33 @@ HVB-Manifest, Signieren, Berichte.
   HVB-Knoten gehört. Eine gefälschte Meldung kann höchstens einen Knoten aus
   `25_hvb` in eine falsche Domain verschieben.
 
-**Zieldomains:** Der Locator verschiebt nur in Ortsdomains und nach
-`21_dias`, **nie in LVR-Domains** (11, 31 bis 34). Der Mapserver führt dazu
-eine feste Liste der erlaubten Zieldomains. Was nicht darauf steht, ist nie
-Ziel einer automatischen Verschiebung.
+**Zieldomains:**
+
+- **Über Mesh-Partner** (Schritt 1) in jede unserer Domains, auch in eine
+  LVR-Domain. Der LVR bietet Wifimesh ausdrücklich an: Unsere Bedingung für
+  Freifunk dort ist, dass an jedem Standort mindestens ein Knoten Wifimesh
+  anbietet.
+- **Über die Position** (Schritte 2 bis 4) nur in Ortsdomains und nach
+  `21_dias`, nie in LVR-Domains (11, 31 bis 36). Der Mapserver führt dazu
+  eine feste Liste der Domains, die über die Position Ziel sein dürfen.
 
 **2. Domain bestimmen, in dieser Reihenfolge:**
 
-1. **Freifunk-Knoten in Funkreichweite (Mesh-Partner).** Der Dienst gleicht
-   die gemeldeten BSSIDs und Mesh-IDs mit den Kartendaten ab und erkennt so
-   eigene Knoten anderer Domains. Sieht der HVB-Knoten mehrere Knoten
-   derselben Domain und keine nennenswerte Zahl aus einer anderen, kommt er
-   in diese Domain. Das hat Vorrang vor jeder Ortung: Mesh-Partner vor Ort
-   binden stärker als eine Position.
-   - Es zählen nur Knoten aus erlaubten Zieldomains. Mesh-Partner aus einer
-     LVR-Domain zählen nicht: Dann entscheidet die Position, und der Fall
-     steht mit diesem Hinweis im Bericht. Ob der Knoten doch in die
-     LVR-Domain gehört, entscheidet ein Mensch.
-   - Wie die BSSIDs eines Knotens aus seinen respondd-Daten abzuleiten sind
-     (Gluon erzeugt die Interface-MACs aus der primären MAC), ist zu prüfen
-     [prüfen]. Ersatzweise helfen die SSIDs, wo Domains eigene SSIDs haben.
-   - Knoten von Nachbar-Communities: Liegen deren Kartendaten vor, zeigen sie,
-     dass der Knoten außerhalb unserer Domains steht (dann `21_dias`).
+1. **Bekanntes Wifimesh in Funkreichweite (Mesh-Partner).** Jede unserer
+   Domains hat eine eigene 802.11s-Mesh-ID (`<kurzname>-mesh`, etwa
+   `vel-mesh`, `lvrno-mesh`). Die Mesh-ID im Scan zeigt also direkt die
+   Domain, ohne Abgleich mit Kartendaten. `hvb-mesh` zählt nicht.
+   - **Es reicht** für eine Domain:
+     - ein Mesh-Punkt dieser Domain mit mindestens -75 dBm (E11), oder
+     - zwei Mesh-Punkte dieser Domain (verschiedene BSSIDs) mit beliebigem
+       Pegel.
+   - Erfüllen mehrere Domains die Bedingung, entscheidet der stärkste
+     Mesh-Punkt.
+   - Das hat Vorrang vor jeder Ortung: Mesh-Partner vor Ort binden stärker
+     als eine Position.
+   - Es zählen nur Mesh-Punkte (Mesh-ID), keine Client-SSIDs.
+   - Knoten von Nachbar-Communities: Ihre Mesh-IDs sind nicht unsere. Sie
+     zählen hier nicht, können aber im Bericht stehen.
 2. **Eingetragene Koordinaten** des Knotens, wenn er welche mitschickt.
 3. **Ortungsanbieter**, gestaffelt (Kosten siehe 4.6):
    - zuerst **beaconDB** (`https://api.beacondb.net/v1/geolocate`,
@@ -400,7 +405,7 @@ Stand der Recherche 20.11.2026:
 | E8 | Was passiert mit Knoten außerhalb aller Domains? | **19.11.:** nach `21_dias` |
 | E9 | Wiederholung? | **20.11.:** täglich, bis zur Verschiebung |
 | E10 | Grenze für den Genauigkeitsradius | **20.11.:** 5000 m, gilt nur an der Außengrenze (Abgrenzung zu `21_dias`); zwischen zwei Domains entscheidet die nähere |
-| E11 | Wie viele Mesh-Partner einer Domain reichen? | **20.11.:** mindestens 2, keine andere Domain gleich stark |
+| E11 | Wie viele Mesh-Partner einer Domain reichen? | **20.11.:** ein bekanntes Wifimesh mit ausreichendem Pegel (Vorschlag -75 dBm, -80 dBm in der Diskussion) oder zwei mit beliebigem Pegel; LVR-Domains zählen mit |
 
 Außerdem am 20.11. entschieden:
 
@@ -409,8 +414,8 @@ Außerdem am 20.11. entschieden:
 - HVB-Manifest auf dem Mapserver,
 - Berichte per Mail,
 - die Exit-IP des Knotens geht als schwacher Hinweis mit,
-- der Locator verschiebt nie in LVR-Domains, nur in Ortsdomains und nach
-  `21_dias`.
+- in LVR-Domains verschiebt der Locator nur über Mesh-Partner, nie über
+  die Position.
 
 ## 7. Arbeitspakete und Reihenfolge
 
@@ -428,8 +433,9 @@ Außerdem am 20.11. entschieden:
    Mapserver, den HVB-Schlüssel mit Schwelle 1 und `neanderfunk_locate.urls`.
 5. **Mapserver, zweiter Teil (Ortung):**
    - Annahme der Meldungen, Abgleich mit den Kartendaten.
-   - Mesh-Partner erkennen.
-   - Domainflächen einmalig berechnen, Liste der erlaubten Zieldomains.
+   - Mesh-Partner über die Mesh-ID erkennen.
+   - Domainflächen einmalig berechnen, Liste der Domains, die über die
+     Position Ziel sein dürfen (ohne LVR).
    - Anbieterabfrage, Exit-IP-Prüfung, Genauigkeitsprüfung, Speicherung
      14 Tage.
 6. **Neues Paket auf dem Knoten:** Scan, Filter, Exit-IP, Meldung, tägliche
