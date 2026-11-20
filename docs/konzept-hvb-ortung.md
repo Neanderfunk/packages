@@ -190,6 +190,11 @@ HVB-Manifest, Signieren, Berichte.
   HVB-Knoten gehört. Eine gefälschte Meldung kann höchstens einen Knoten aus
   `25_hvb` in eine falsche Domain verschieben.
 
+**Zieldomains:** Der Locator verschiebt nur in Ortsdomains und nach
+`21_dias`, **nie in LVR-Domains** (11, 31 bis 34). Der Mapserver führt dazu
+eine feste Liste der erlaubten Zieldomains. Was nicht darauf steht, ist nie
+Ziel einer automatischen Verschiebung.
+
 **2. Domain bestimmen, in dieser Reihenfolge:**
 
 1. **Freifunk-Knoten in Funkreichweite (Mesh-Partner).** Der Dienst gleicht
@@ -198,6 +203,10 @@ HVB-Manifest, Signieren, Berichte.
    derselben Domain und keine nennenswerte Zahl aus einer anderen, kommt er
    in diese Domain. Das hat Vorrang vor jeder Ortung: Mesh-Partner vor Ort
    binden stärker als eine Position.
+   - Es zählen nur Knoten aus erlaubten Zieldomains. Mesh-Partner aus einer
+     LVR-Domain zählen nicht: Dann entscheidet die Position, und der Fall
+     steht mit diesem Hinweis im Bericht. Ob der Knoten doch in die
+     LVR-Domain gehört, entscheidet ein Mensch.
    - Wie die BSSIDs eines Knotens aus seinen respondd-Daten abzuleiten sind
      (Gluon erzeugt die Interface-MACs aus der primären MAC), ist zu prüfen
      [prüfen]. Ersatzweise helfen die SSIDs, wo Domains eigene SSIDs haben.
@@ -226,20 +235,29 @@ HVB-Manifest, Signieren, Berichte.
      bestätigen.
 
 **3. Position zu Domain:** Der Mapserver berechnet die Domaingrenzen einmal
-als statisches Datenmodell: eine Fläche je Domain aus den Positionen ihrer
-Knoten, ähnlich wie man Gebiete von Communities aus Knotenpositionen
+als statisches Datenmodell: eine Fläche je Ortsdomain aus den Positionen
+ihrer Knoten, ähnlich wie man Gebiete von Communities aus Knotenpositionen
 berechnet. Das Ergebnis ist zum Beispiel eine GeoJSON-Datei mit einem Polygon
-je Domain. Neu berechnet wird nur bei Bedarf und von Hand.
+je Domain. Neu berechnet wird nur bei Bedarf und von Hand. Die Vereinigung
+aller Flächen ist unser Gebiet.
 
-**4. Sicher genug?** Automatisch verschoben wird nur, wenn
+**4. Sicher genug?** Die Genauigkeit zählt nur an der Außengrenze unseres
+Gebiets, also für die Abgrenzung zu `21_dias` (E10):
 
-- die Mesh-Partner eindeutig sind (Schritt 1), oder
-- der Anbieter einen Genauigkeitsradius liefert, dieser unter einer Grenze
-  liegt (E10) und der ganze Kreis in einer Domainfläche liegt.
+- **Position in unserem Gebiet:** Zieldomain ist die Fläche, in der die
+  Position liegt, an einer Grenze zwischen zwei Domains die nähere. Ein
+  Genauigkeitskreis über die Grenze zwischen zwei Domains hält die
+  Verschiebung nicht auf.
+- **Position außerhalb unseres Gebiets:** nach `21_dias` (Diaspora), wenn
+  der ganze Genauigkeitskreis außerhalb liegt. Reicht der Kreis in unser
+  Gebiet hinein, Klärung von Hand.
+- **Genauigkeitsradius über 5000 m, oder keiner geliefert:** keine
+  automatische Verschiebung, Klärung von Hand.
+- **Eindeutige Mesh-Partner** (Schritt 1) gehen allem vor; dort spielt die
+  Genauigkeit keine Rolle.
 
-Sonst wird nichts automatisch verschoben: Der Fall landet im Bericht zur
-Klärung von Hand. Liegt die Position sicher außerhalb aller Domains, geht der
-Knoten nach `21_dias` (Diaspora).
+Alles, was nicht automatisch verschoben wird, landet im Bericht zur Klärung
+von Hand.
 
 - Google liefert `accuracy` als Radius in Metern, ohne Angabe eines
   Konfidenzniveaus. Mit zwei oder mehr WLANs nennt Google typisch etwa
@@ -381,7 +399,7 @@ Stand der Recherche 20.11.2026:
 | E7 | Name und Adresse des Dienstes | **20.11.:** `locator.ffnef.de`, Pfade `/hvb/locate` und `/hvb/nodeplacer`, je https und http |
 | E8 | Was passiert mit Knoten außerhalb aller Domains? | **19.11.:** nach `21_dias` |
 | E9 | Wiederholung? | **20.11.:** täglich, bis zur Verschiebung |
-| E10 | Grenze für den Genauigkeitsradius | offen, Vorschlag 1000 m |
+| E10 | Grenze für den Genauigkeitsradius | **20.11.:** 5000 m, gilt nur an der Außengrenze (Abgrenzung zu `21_dias`); zwischen zwei Domains entscheidet die nähere |
 | E11 | Wie viele Mesh-Partner einer Domain reichen? | **20.11.:** mindestens 2, keine andere Domain gleich stark |
 
 Außerdem am 20.11. entschieden:
@@ -390,7 +408,9 @@ Außerdem am 20.11. entschieden:
 - TLS, wo der Knoten es kann,
 - HVB-Manifest auf dem Mapserver,
 - Berichte per Mail,
-- die Exit-IP des Knotens geht als schwacher Hinweis mit.
+- die Exit-IP des Knotens geht als schwacher Hinweis mit,
+- der Locator verschiebt nie in LVR-Domains, nur in Ortsdomains und nach
+  `21_dias`.
 
 ## 7. Arbeitspakete und Reihenfolge
 
@@ -409,7 +429,7 @@ Außerdem am 20.11. entschieden:
 5. **Mapserver, zweiter Teil (Ortung):**
    - Annahme der Meldungen, Abgleich mit den Kartendaten.
    - Mesh-Partner erkennen.
-   - Domainflächen einmalig berechnen.
+   - Domainflächen einmalig berechnen, Liste der erlaubten Zieldomains.
    - Anbieterabfrage, Exit-IP-Prüfung, Genauigkeitsprüfung, Speicherung
      14 Tage.
 6. **Neues Paket auf dem Knoten:** Scan, Filter, Exit-IP, Meldung, tägliche
