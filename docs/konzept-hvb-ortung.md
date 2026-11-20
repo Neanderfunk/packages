@@ -96,8 +96,8 @@ Daraus für uns:
   ```lua
   neanderfunk_locate = {
     urls = {
-      'https://<mapserver>/hvb/locate',
-      'http://<mapserver>/hvb/locate',
+      'https://locator.ffnef.de/hvb/locate',
+      'http://locator.ffnef.de/hvb/locate',
     },
   },
   ```
@@ -111,6 +111,10 @@ Daraus für uns:
 - **Öffentliche Adresse, kein Weg über ULA oder interne Namen.** Die Meldung
   geht direkt über das Internet zum Mapserver. Das hält das Konzept einfach,
   auch wenn die gemeldeten Netze dabei durchs Internet gehen.
+- **Adresse:** `locator.ffnef.de`, öffentlich über IPv4 und IPv6. Der Name
+  ist für Geräte und Configs gedacht. Zieht der Dienst um, ändern sich nur
+  DNS und Proxy, nicht das Image. Unter `http` gibt es keine Umleitung auf
+  `https`, damit POST auch ohne TLS ankommt.
 - **TLS, wo der Knoten es kann:** Hat das Image TLS (`libustream-ssl`), nimmt
   der Knoten die `https`-Adresse. Sonst überspringt er sie und nimmt `http`.
 
@@ -141,7 +145,9 @@ zusätzlich zum Scan mit. Das gilt auch, wenn sie nicht veröffentlicht sind.
   auf die Domain (4.4).
 
 **Senden:** HTTP-POST an die erste erreichbare URL aus
-`neanderfunk_locate.urls` (siehe 4.2 zu TLS):
+`neanderfunk_locate.urls` (siehe 4.2 zu TLS), mit eigenem User-Agent
+`neanderfunk-locate/<version>`. Daran kann der Mapserver fremde POSTs schon
+am Proxy verwerfen und die Annahme begrenzen.
 
 ```json
 { "node_id": "0123456789ab",
@@ -159,10 +165,11 @@ zusätzlich zum Scan mit. Das gilt auch, wenn sie nicht veröffentlicht sind.
   `ipv4.icanhazip.com` und `checkip.amazonaws.com` über das WAN. Ein schwacher
   Hinweis auf den Standort (4.4), aber genug, um nicht im falschen Land zu
   landen. Fehlt eine Adresse, bleibt das Feld weg.
-- Der Mapserver sieht außerdem die Absenderadresse der Meldung. Die ist nur
-  dann die Exit-IP des Uplinks, wenn die Meldung über das WAN geht und nicht
-  durch das Mesh [prüfen, welchen Weg Gluon für Verkehr des Knotens selbst
-  nimmt]. Deshalb schickt der Knoten die Exit-IP ausdrücklich mit.
+- Die Absenderadresse der Meldung taugt nicht als Ersatz: Der Dienst sieht
+  sie nur über den Proxy (`X-Forwarded-For`). Außerdem ist sie nur dann die
+  Exit-IP des Uplinks, wenn die Meldung über das WAN geht und nicht durch das
+  Mesh [prüfen, welchen Weg Gluon für Verkehr des Knotens selbst nimmt].
+  Deshalb schickt der Knoten die Exit-IP ausdrücklich mit.
 
 **Antwort:**
 
@@ -268,7 +275,7 @@ Danach bleiben nur `node_id`, Zieldomain und Zeit (für die Berichte).
 
 ```lua
 nodeplacer = {
-  mirrors = { 'https://<mapserver>/hvb/nodeplacer', 'http://<mapserver>/hvb/nodeplacer' },
+  mirrors = { 'https://locator.ffnef.de/hvb/nodeplacer', 'http://locator.ffnef.de/hvb/nodeplacer' },
   pubkeys = { '<hvb-key>' },
   good_signatures = 1,
 },
@@ -371,7 +378,7 @@ Stand der Recherche 20.11.2026:
 | E4 | Ortungsanbieter? | **20.11.:** beide gestaffelt, beaconDB zuerst, dann Google (Kosten 4.6) |
 | E5 | Wie wird aus der Position eine Domain? | **20.11.:** Mapserver berechnet einmalig Domainflächen, statisches Datenmodell; Mesh-Partner haben Vorrang |
 | E6 | Was wird gespeichert, wie lange? | **20.11.:** 14 Tage, 200-m-Raster, mit Genauigkeitsradius. Zu unsicher heißt nicht verschieben, sondern Klärung von Hand. Speicherort ist der Mapserver |
-| E7 | Name und Adresse des Dienstes | offen, legt der Mapserver-Betrieb fest |
+| E7 | Name und Adresse des Dienstes | **20.11.:** `locator.ffnef.de`, Pfade `/hvb/locate` und `/hvb/nodeplacer`, je https und http |
 | E8 | Was passiert mit Knoten außerhalb aller Domains? | **19.11.:** nach `21_dias` |
 | E9 | Wiederholung? | **20.11.:** täglich, bis zur Verschiebung |
 | E10 | Grenze für den Genauigkeitsradius | offen, Vorschlag 1000 m |
