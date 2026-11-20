@@ -190,8 +190,27 @@ local function uplink()
 			n.lan = n.lan + 1
 		end
 	end
-	local via = sh('batctl gwl -H'):match('^%*[^%[]*%[%s*(%S+)%]')
-	return { vpn = n.vpn > 0, gw_via = via, neighbours = n }
+	-- "* <gateway> (tq) <next hop> [ <if>]: ..."
+	local gw = sh('batctl gwl -H'):match('^%*[^\n]*')
+	local nexthop, via
+	if gw then
+		nexthop, via = gw:match('%)%s+(%x%x:%x%x:%x%x:%x%x:%x%x:%x%x)%s+%[%s*(%S+)%]')
+	end
+	-- MACs der eigenen batman-Interfaces: daran erkennt der Locator, wenn
+	-- ein anderer HVB-Knoten ohne VPN diesen Knoten als Next Hop meldet
+	local macs = {}
+	for line in sh('batctl if'):gmatch('[^\n]+') do
+		local ifname = line:match('^(%S+):')
+		local mac = ifname and trim(readfile('/sys/class/net/' .. ifname .. '/address'))
+		if mac and mac:match('^%x%x:') then table.insert(macs, mac:lower()) end
+	end
+	return {
+		vpn = n.vpn > 0,
+		gw_via = via,
+		gw_nexthop = nexthop and nexthop:lower(),
+		mesh_macs = macs,
+		neighbours = n,
+	}
 end
 
 local report = {

@@ -157,7 +157,8 @@ am Proxy verwerfen und die Annahme begrenzen.
   "uptime": 12345,
   "scan": [ { "iface": "mesh0", "ok": true, "count": 17 } ],
   "wifi": [ { "bssid": "aa:bb:cc:dd:ee:ff", "ssid": "Freifunk", "mesh_id": "", "signal": -61, "freq": 2437, "age_ms": 320 } ],
-  "uplink": { "vpn": true, "gw_via": "mesh-vpn", "neighbours": { "vpn": 1, "wifi": 3, "lan": 0 } },
+  "uplink": { "vpn": true, "gw_via": "mesh-vpn", "gw_nexthop": "02:ca:ff:ee:21:00",
+              "mesh_macs": [ "12:3d:87:ce:a7:bb" ], "neighbours": { "vpn": 1, "wifi": 3, "lan": 0 } },
   "coordinates": { "lat": 51.0, "lon": 7.0 },
   "exit_ip": { "ipv4": "192.0.2.10" } }
 ```
@@ -166,10 +167,11 @@ am Proxy verwerfen und die Annahme begrenzen.
   Mesh-Punkte (802.11s) zeigen im Scan eine Mesh-ID statt einer SSID.
 - `coordinates` nur, wenn der Knoten welche hat.
 - `uplink`: ob der Knoten selbst einen VPN-Uplink hat (batman-Nachbar auf
-  `mesh-vpn`), über welches Interface sein Gateway läuft, und wie viele
-  batman-Nachbarn er je Art hat (VPN, WLAN-Mesh, LAN-Mesh). Wer über ihn ins
-  Netz geht, sieht der Knoten selbst nicht; das zeigen die Kartendaten
-  (siehe „Wer darf gehen?“ in 4.4).
+  `mesh-vpn`), über welches Interface und welchen Next Hop sein Gateway
+  läuft (`gw_via`, `gw_nexthop`), die MACs seiner batman-Interfaces
+  (`mesh_macs`) und wie viele batman-Nachbarn er je Art hat. Wer über ihn ins
+  Netz geht, sieht der Knoten selbst nicht; das ergibt sich aus den
+  Meldungen der anderen (siehe „Wer darf gehen?“ in 4.4).
 - `exit_ip`: die öffentlichen Adressen, mit denen der Knoten über seinen
   Uplink ins Internet geht. Er ermittelt sie selbst, so wie es `nodestatus`
   (Paket `neanderfunk-banner`) für IPv4 schon tut: Abfrage bei
@@ -296,11 +298,34 @@ selbst nicht:
 - **Zwei Knoten, die beide VPN haben und zusätzlich zueinander meshen,
   blockieren sich nicht.** Jeder darf einzeln gehen.
 
-Prüfung auf dem Mapserver anhand der Kartendaten: Betrachtet wird die
-Mesh-Wolke des Knotens in `25_hvb`, also alle Knoten, die über WLAN- oder
-LAN-Mesh mit ihm zusammenhängen. Der Knoten darf gehen, wenn er selbst VPN
-hat und danach jeder Knoten ohne VPN in der Wolke noch einen Knoten mit VPN
-erreicht. Die `uplink`-Angaben aus der Meldung (4.3) dienen zum Abgleich.
+**Prüfung nur aus den Meldungen, ohne Kartendaten:** Jeder HVB-Knoten
+meldet ohnehin, ob er eigenes VPN hat und über welchen Next Hop sein Gateway
+läuft (`uplink.gw_nexthop`, aus `batctl gwl`), dazu die MACs seiner
+batman-Interfaces (`uplink.mesh_macs`). Damit ist die Regel eine einfache
+Nachschlage-Operation:
+
+- Knoten X darf nicht gehen, wenn X selbst `vpn: false` meldet.
+- Knoten X darf nicht gehen, wenn ein HVB-Knoten ohne VPN einen
+  `gw_nexthop` meldet, der unter den `mesh_macs` von X steht.
+- Ketten erledigen sich von selbst: Hängt C an B und B an A, dann meldet B
+  kein VPN (bleibt) und hat A als Next Hop (A bleibt auch).
+- Zwei VPN-Knoten, die zueinander meshen, melden beide `mesh-vpn` als
+  Gateway-Weg und blockieren sich deshalb nicht.
+
+Das ist vorsichtig: Hat ein Knoten ohne VPN zwei mögliche Uplinks, blockiert
+er den, den batman gerade gewählt hat. Mit der täglichen Meldung löst sich
+das, sobald sich die Lage ändert. Ein Wolkenabgleich mit den Kartendaten ist
+dafür nicht nötig.
+
+Verworfen (20.11.): die Zahl der Originatoren hinter einem Nachbarn
+(`batctl o`) als Zeichen für einen zweiten Uplink. Das täuscht in beide
+Richtungen:
+
+- Hat der Nachbar eigenes VPN, ist für fast alle Originatoren der eigene
+  VPN-Weg besser. Hinter dem Nachbarn stehen dann nur wenige, und zwei
+  VPN-Knoten würden sich gegenseitig blockieren.
+- Hängt dagegen ein großer Ast ohne VPN am Nachbarn, stehen viele dahinter,
+  ohne dass es einen zweiten Uplink gibt.
 
 Was hängen bleibt, kommt in den Bericht. Bei der Klärung von Hand kann man
 eine ganze Wolke gemeinsam verschieben, mit einer Zeile je Knoten im selben
