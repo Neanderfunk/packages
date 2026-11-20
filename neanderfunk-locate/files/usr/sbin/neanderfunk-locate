@@ -232,33 +232,88 @@ end
 -- Statusseite). Die Domain steht in system.domain_code; aeltere
 -- Single-Domain-Images haben das Feld nicht, dann der Teil des site_code
 -- hinter dem Bindestrich (nef-21_dias, bgl-43_bggl).
-local function lan_mesh(own_id)
-	local ifs, seen = {}, {}
-	for line in sh('batctl n -H'):gmatch('[^\n]+') do
-		local ifname = line:match('^%s*(%S+)%s+%x%x:')
-		if ifname and ifname ~= 'mesh-vpn' and not ifname:match('^mesh%d+$')
-				and not seen[ifname] then
-			seen[ifname] = true
-			table.insert(ifs, ifname)
+--
+-- Die Antworten kommen nicht sofort: Auf der Statusseite stehen Nachbarn
+-- oft bis zu 30 s nur als MAC da. Deshalb wird wiederholt gefragt, bis
+-- jeder batman-Nachbar am LAN geantwortet hat (erkannt an seinen MACs in
+-- network.mesh), hoechstens LAN_WAIT Sekunden lang.
+local LAN_WAIT = 60
+
+local function nodeinfo_macs(ni)
+	local macs = {}
+	local mesh = type(ni.network) == 'table' and ni.network.mesh
+	if type(mesh) ~= 'table' then return macs end
+	for _, bat in pairs(mesh) do
+		local ifs = type(bat) == 'table' and bat.interfaces
+		if type(ifs) == 'table' then
+			for _, list in pairs(ifs) do
+				if type(list) == 'table' then
+					for _, m in ipairs(list) do
+						if type(m) == 'string' then macs[m:lower()] = true end
+					end
+				end
+			end
 		end
 	end
-	local out, dup = {}, {}
-	for _, ifname in ipairs(ifs) do
-		local text = sh('gluon-neighbour-info -i ' .. ifname
-			.. ' -d ff02::2:1001 -p 1001 -t 2 -r nodeinfo')
-		for line in text:gmatch('[^\n]+') do
-			local ni = json.parse(line)
-			local id = type(ni) == 'table' and type(ni.node_id) == 'string'
-				and ni.node_id:lower()
-			if id and id ~= own_id and not dup[ifname .. id] then
-				dup[ifname .. id] = true
-				local sys = type(ni.system) == 'table' and ni.system or {}
-				local dom = type(sys.domain_code) == 'string' and sys.domain_code
-					or (type(sys.site_code) == 'string'
-						and sys.site_code:match('^[^-]+%-(.+)$'))
-					or nil
-				table.insert(out, { iface = ifname, node_id = id, domain = dom })
+	return macs
+end
+
+local function lan_mesh(own_id)
+	local ifs, pending, npending = {}, {}, 0
+	for line in sh('batctl n -H'):gmatch('[^\n]+') do
+		local ifname, mac = line:match('^%s*(%S+)%s+(%x%x:%x%x:%x%x:%x%x:%x%x:%x%x)')
+		if ifname and ifname ~= 'mesh-vpn' and not ifname:match('^mesh%d+$') then
+			if not pending[ifname] then
+				pending[ifname] = {}
+				table.insert(ifs, ifname)
 			end
+			mac = mac:lower()
+			if not pending[ifname][mac] then
+				pending[ifname][mac] = true
+				npending = npending + 1
+			end
+		end
+	end
+
+	local out, by_key = {}, {}
+	local deadline = os.time() + LAN_WAIT
+	while npending > 0 and os.time() < deadline do
+		for _, ifname in ipairs(ifs) do
+			if next(pending[ifname]) then
+				local text = sh('gluon-neighbour-info -i ' .. ifname
+					.. ' -d ff02::2:1001 -p 1001 -t 5 -r nodeinfo')
+				for line in text:gmatch('[^\n]+') do
+					local ni = json.parse(line)
+					local id = type(ni) == 'table' and type(ni.node_id) == 'string'
+						and ni.node_id:lower()
+					if id and id ~= own_id then
+						local e = by_key[ifname .. id]
+						if not e then
+							local sys = type(ni.system) == 'table' and ni.system or {}
+							local dom = type(sys.domain_code) == 'string' and sys.domain_code
+								or (type(sys.site_code) == 'string'
+									and sys.site_code:match('^[^-]+%-(.+)$'))
+								or nil
+							e = { iface = ifname, node_id = id, domain = dom }
+							by_key[ifname .. id] = e
+							table.insert(out, e)
+						end
+						for m in pairs(nodeinfo_macs(ni)) do
+							if pending[ifname][m] then
+								pending[ifname][m] = nil
+								npending = npending - 1
+								e.mac = m
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	-- Wer bis zum Schluss nicht geantwortet hat, steht nur mit MAC da
+	for _, ifname in ipairs(ifs) do
+		for m in pairs(pending[ifname]) do
+			table.insert(out, { iface = ifname, mac = m })
 		end
 	end
 	return out
