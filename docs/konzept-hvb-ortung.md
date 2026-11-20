@@ -1,7 +1,8 @@
 # Konzept: Ortung und vereinfachtes Verschieben in der Domain 25_hvb
 
-Entwurf zur Diskussion und Entscheidung, Stand 19.11.2026. Nichts davon ist
-gebaut, außer der Ankündigung im Wizard (Abschnitt 4.1).
+Entwurf zur Diskussion und Entscheidung. Stand 20.11.2026: Die meisten
+Entscheidungen sind gefallen (Abschnitt 6). Gebaut ist bisher nur die
+Ankündigung im Wizard (Abschnitt 4.1).
 
 ## 1. Ausgangslage
 
@@ -22,11 +23,14 @@ gebaut, außer der Ankündigung im Wizard (Abschnitt 4.1).
 
 Ziel:
 
-- Ein Knoten, der in `25_hvb` läuft, ermittelt grob seinen Standort über
-  die WLANs in seiner Umgebung und meldet sie an einen eigenen Dienst.
-- Der Dienst schlägt daraus die passende Domain vor.
-- Das Verschieben aus `25_hvb` heraus braucht weniger Aufwand als in
-  anderen Domains (weniger Signaturen oder ein eigener Schlüssel).
+- Ein Knoten, der in `25_hvb` läuft, meldet die WLANs in seiner Umgebung an
+  einen Dienst auf dem Mapserver.
+- Der Dienst bestimmt daraus die passende Domain: zuerst über Freifunk-Knoten
+  in Funkreichweite, sonst über einen Ortungsanbieter.
+- Ist das Ergebnis sicher genug, verschiebt der Dienst den Knoten selbst
+  („abschleppen“). Dazu nutzt er einen eigenen Schlüssel, der nur für den
+  Umzug aus `25_hvb` in eine andere Domain gilt.
+- Der Mapserver berichtet per Mail, welche Knoten wann abgeschleppt wurden.
 
 Nicht-Ziele:
 
@@ -34,6 +38,8 @@ Nicht-Ziele:
 - Keine automatische Veröffentlichung der ermittelten Position auf der
   Karte.
 - Kein Ersatz für die Domainwahl durch den Betreiber im Wizard.
+- Kein Firmwarewechsel über diesen Weg, nur der Domainwechsel innerhalb der
+  installierten Firmware.
 
 ## 3. Erfahrungen anderer Communities
 
@@ -65,6 +71,8 @@ Daraus für uns:
 - Das Verfahren funktioniert.
 - Der heikle Teil ist das automatische Veröffentlichen der Position. Den
   lassen wir weg.
+- Nachbar-Knoten als Hinweis auf die Domain (wie bei Nordwest) nehmen wir
+  dazu, und zwar mit Vorrang (4.4).
 
 ## 4. Bausteine
 
@@ -88,8 +96,8 @@ Daraus für uns:
   ```lua
   neanderfunk_locate = {
     urls = {
-      'http://<dienst>.25-hvb.ffnef/locate',
-      'http://[<ULA von 25_hvb>::<host>]/locate',
+      'https://<mapserver>/hvb/locate',
+      'http://<mapserver>/hvb/locate',
     },
   },
   ```
@@ -100,21 +108,22 @@ Daraus für uns:
   nirgends „25_hvb“.
 - Nach einer Verschiebung läuft beim Neustart `gluon-reconfigure`. Die neue
   Domain hat den Schlüssel nicht, die Ortung ist damit aus.
-- Nur interne Adressen (`.ffnef`-Name oder ULA), so wie die
-  Autoupdater-Mirrors von `25_hvb`: Die Daten gehen durch den Tunnel zum
-  eigenen Server, nicht im Klartext über das Internet. `25_hvb` hat eigene
-  VPN-Broker.
+- **Öffentliche Adresse, kein Weg über ULA oder interne Namen.** Die Meldung
+  geht direkt über das Internet zum Mapserver. Das hält das Konzept einfach,
+  auch wenn die gemeldeten Netze dabei durchs Internet gehen.
+- **TLS, wo der Knoten es kann:** Hat das Image TLS (`libustream-ssl`), nimmt
+  der Knoten die `https`-Adresse. Sonst überspringt er sie und nimmt `http`.
 
 ### 4.3 Knoten: Ortungsskript (neues Paket)
 
 **Auslöser:**
 
-- Einmal nach dem Start, sobald der Mesh-VPN steht.
-- Danach einmal am Tag, solange der Knoten in `25_hvb` ist und keine
-  Antwort bekommen hat.
+- Einmal nach dem Start, sobald der Knoten Internet hat.
+- Danach einmal am Tag, solange der Knoten in `25_hvb` ist. Ohne
+  Obergrenze: Es endet mit der Verschiebung.
 
-**Hat der Knoten schon Koordinaten** (`gluon-node-info`), schickt er die
-statt eines Scans. Das gilt auch, wenn sie nicht veröffentlicht sind.
+**Hat der Knoten schon Koordinaten** (`gluon-node-info`), schickt er sie
+zusätzlich zum Scan mit. Das gilt auch, wenn sie nicht veröffentlicht sind.
 
 **Scan:**
 
@@ -124,151 +133,259 @@ statt eines Scans. Das gilt auch, wenn sie nicht veröffentlicht sind.
 
 **Filter vor dem Senden:**
 
-- Eigene Netze raus: die BSSIDs aller Freifunk-Knoten, mindestens die mit
-  unseren SSIDs und der Mesh-ID.
+- Die eigenen Interfaces des Knotens raus.
 - Netze, deren SSID auf `_nomap` endet, raus. Das ist die übliche
   Kennzeichnung für „nicht für Ortung verwenden“.
 - Höchstens 30 Netze, die stärksten zuerst.
+- Freifunk-Netze anderer Knoten bleiben drin: Sie sind der stärkste Hinweis
+  auf die Domain (4.4).
 
-**Senden:** HTTP-POST an die erste erreichbare URL aus `neanderfunk_locate.urls`:
+**Senden:** HTTP-POST an die erste erreichbare URL aus
+`neanderfunk_locate.urls` (siehe 4.2 zu TLS):
 
 ```json
-{ "node_id": "0123456789ab", "wifi": [ { "bssid": "aa:bb:cc:dd:ee:ff", "signal": -61, "channel": 6 } ] }
+{ "node_id": "0123456789ab",
+  "wifi": [ { "bssid": "aa:bb:cc:dd:ee:ff", "ssid": "Freifunk", "mesh_id": "", "signal": -61, "channel": 6 } ],
+  "coordinates": { "lat": 51.0, "lon": 7.0 } }
 ```
 
-Die SSIDs werden nicht mitgeschickt; die Ortung braucht nur die BSSIDs.
+- `ssid` und `mesh_id` gehen mit, damit der Dienst Freifunk-Knoten erkennt.
+  Mesh-Punkte (802.11s) zeigen im Scan eine Mesh-ID statt einer SSID.
+- `coordinates` nur, wenn der Knoten welche hat.
 
 **Antwort:**
 
 - Der Knoten selbst tut mit der Antwort nichts: keine Koordinaten
   eintragen, nichts veröffentlichen.
-- Er merkt sich nur, dass gemeldet wurde (für die tägliche Wiederholung).
+- Die Verschiebung kommt allein über den nodeplacer (4.5).
 
-### 4.4 Ortungsdienst (Wrapper auf dem Mapserver)
+### 4.4 Ortungsdienst auf dem Mapserver
 
-1. Nimmt die Meldung an, nur aus den Netzen von `25_hvb`.
-2. Fragt einen Ortungsanbieter. Die `node_id` gibt er dabei nicht weiter;
-   der Anbieter sieht nur die Adresse unseres Servers.
-   - **beaconDB** (`https://api.beacondb.net/v1/geolocate`): Nachfolger des
-     2024 abgeschalteten Mozilla Location Service, gleiche Schnittstelle,
-     ohne Schlüssel. Laut Nutzerberichten noch schwache Abdeckung.
-   - **Google Geolocation API**: Schlüssel nötig, kostenpflichtig, gute
-     Abdeckung.
-   - Möglich: erst beaconDB, nur wenn nichts kommt Google.
-   - Ein Schlüssel liegt nur auf dem Server, nie im Image.
-3. Ordnet die Position einer Domain zu (siehe Entscheidung E5).
-4. Schreibt eine Zeile `<node_id> domain target=<code>` in die Liste für
-   das nächste HVB-Manifest (siehe 4.5) und legt das Ergebnis zur
-   Nachkontrolle ab.
+Der Dienst läuft komplett auf dem Mapserver: Annahme, Auswertung,
+HVB-Manifest, Signieren, Berichte.
 
-Liegt die Position außerhalb aller Domains, geht der Knoten nach `21_dias`
-(Diaspora), wie jede andere Verschiebung per Zeile im HVB-Manifest
-(Entscheidung E8).
+**1. Annahme:**
 
-### 4.5 nodeplacer: vereinfachtes Verschieben aus 25_hvb
+- Nur für `node_id`s, die laut Kartendaten (respondd) gerade in `25_hvb`
+  sind. Meldungen für andere Knoten werden verworfen.
+- Ohne internes Netz ist das die einzige Prüfung, dass die Meldung zu einem
+  HVB-Knoten gehört. Eine gefälschte Meldung kann höchstens einen Knoten aus
+  `25_hvb` in eine falsche Domain verschieben.
 
-**Ort der Einstellung:**
+**2. Domain bestimmen, in dieser Reihenfolge:**
 
-- In der Domain-Datei von `25_hvb`, im vorhandenen `nodeplacer`-Block.
-- `510-nodeplacer` liest `good_signatures` und `pubkeys` schon heute über
-  `gluon.site` (Site und aktive Domain zusammengeführt). Bei jedem
-  `gluon-reconfigure` schreibt es die Werte nach `/etc/config/nodeplacer`.
-- Zu ändern ist nur `check_site.lua`: Beide Schlüssel dürfen dann auch in
-  der Domain-Datei stehen. Bisher sind sie nur in der Site erlaubt (D-044).
+1. **Freifunk-Knoten in Funkreichweite (Mesh-Partner).** Der Dienst gleicht
+   die gemeldeten BSSIDs und Mesh-IDs mit den Kartendaten ab und erkennt so
+   eigene Knoten anderer Domains. Sieht der HVB-Knoten mehrere Knoten
+   derselben Domain und keine nennenswerte Zahl aus einer anderen, kommt er
+   in diese Domain. Das hat Vorrang vor jeder Ortung: Mesh-Partner vor Ort
+   binden stärker als eine Position.
+   - Wie die BSSIDs eines Knotens aus seinen respondd-Daten abzuleiten sind
+     (Gluon erzeugt die Interface-MACs aus der primären MAC), ist zu prüfen
+     [prüfen]. Ersatzweise helfen die SSIDs, wo Domains eigene SSIDs haben.
+   - Knoten von Nachbar-Communities: Liegen deren Kartendaten vor, zeigen sie,
+     dass der Knoten außerhalb unserer Domains steht (dann `21_dias`).
+2. **Eingetragene Koordinaten** des Knotens, wenn er welche mitschickt.
+3. **Ortungsanbieter**, gestaffelt (Kosten siehe 4.6):
+   - zuerst **beaconDB** (`https://api.beacondb.net/v1/geolocate`,
+     MLS-kompatibel, ohne Schlüssel, mit eigenem User-Agent),
+   - wenn dort nichts Brauchbares kommt, die **Google Geolocation API**.
+   - An beide gehen nur BSSIDs und Signalstärken, keine `node_id`, keine
+     SSIDs, keine Freifunk-BSSIDs.
+   - Rückfall auf IP-Ortung ausschalten (Google `considerIp: false`,
+     beaconDB `fallbacks`). Sonst käme die Position des Mapservers zurück.
+   - Google braucht mindestens 2 WLANs.
+
+**3. Position zu Domain:** Der Mapserver berechnet die Domaingrenzen einmal
+als statisches Datenmodell: eine Fläche je Domain aus den Positionen ihrer
+Knoten, ähnlich wie man Gebiete von Communities aus Knotenpositionen
+berechnet. Das Ergebnis ist zum Beispiel eine GeoJSON-Datei mit einem Polygon
+je Domain. Neu berechnet wird nur bei Bedarf und von Hand.
+
+**4. Sicher genug?** Automatisch verschoben wird nur, wenn
+
+- die Mesh-Partner eindeutig sind (Schritt 1), oder
+- der Anbieter einen Genauigkeitsradius liefert, dieser unter einer Grenze
+  liegt (E10) und der ganze Kreis in einer Domainfläche liegt.
+
+Sonst wird nichts automatisch verschoben: Der Fall landet im Bericht zur
+Klärung von Hand. Liegt die Position sicher außerhalb aller Domains, geht der
+Knoten nach `21_dias` (Diaspora).
+
+- Google liefert `accuracy` als Radius in Metern, ohne Angabe eines
+  Konfidenzniveaus. Mit zwei oder mehr WLANs nennt Google typisch etwa
+  20 m.
+- Die MLS-Schnittstelle, die beaconDB übernimmt, hat dasselbe Feld. Ob
+  beaconDB es sinnvoll füllt, ist ungeprüft [prüfen].
+
+**5. Verschieben:** Der Dienst schreibt eine Zeile
+`<node_id> domain target=<code>` ins HVB-Manifest. Der Mapserver signiert es
+mit dem HVB-Schlüssel und liefert es selbst aus (4.5). Eine Klärung von Hand
+endet genauso: Wer den Fall klärt, trägt die Zieldomain auf dem Mapserver
+ein.
+
+**6. Berichte per Mail:**
+
+- Welche Knoten wann erfolgreich abgeschleppt wurden. Erfolg heißt: Der
+  Knoten taucht in den Kartendaten in der Zieldomain auf.
+- Fälle zur Klärung von Hand (unsicher, widersprüchlich, kein Ergebnis).
+- Den Rhythmus (je Ereignis oder täglich gesammelt) und die Empfänger legt
+  der Mapserver-Betrieb fest.
+
+**7. Speichern:** Gespeichert wird auf dem Mapserver, 14 Tage lang:
+
+- die Position, auf ein 200-m-Raster vergröbert,
+- dazu der Genauigkeitsradius, wenn der Anbieter einen liefert.
+
+Danach bleiben nur `node_id`, Zieldomain und Zeit (für die Berichte).
+
+### 4.5 nodeplacer: Umzug aus 25_hvb mit eigenem Schlüssel
+
+**Schlüssel und Schwelle in der Domain-Datei von `25_hvb`:**
+
+```lua
+nodeplacer = {
+  mirrors = { 'https://<mapserver>/hvb/nodeplacer', 'http://<mapserver>/hvb/nodeplacer' },
+  pubkeys = { '<hvb-key>' },
+  good_signatures = 1,
+},
+```
+
+- `510-nodeplacer` liest diese Werte schon heute über `gluon.site`. Bei
+  jedem `gluon-reconfigure` schreibt es sie nach `/etc/config/nodeplacer`.
+- Zu ändern ist `check_site.lua`: `pubkeys` und `good_signatures` dürfen dann
+  auch in der Domain-Datei stehen. Bisher geht das nur in der Site (D-044).
+- Zur Laufzeit ersetzt eine Liste aus der Domain-Datei die Liste der Site
+  vollständig: `merge_json` in libgluonutil führt nur Objekte zusammen,
+  keine Arrays. In `25_hvb` gilt dann nur der HVB-Schlüssel, die
+  Release-Schlüssel gelten dort nicht.
 - Nach dem Verschieben gilt beim Neustart wieder die Schwelle des
-  Autoupdater-Branches.
+  Autoupdater-Branches. Der HVB-Schlüssel wirkt in keiner anderen Domain.
+- Der private HVB-Schlüssel liegt nur auf dem Mapserver.
 
-**Varianten:**
+**Eigenes Manifest auf dem Mapserver:**
 
-- **A: weniger Signaturen.** `good_signatures = 2` mit den Release-Schlüsseln.
-  Zwei Menschen unterschreiben die vom Dienst vorbereitete Liste.
-- **B: eigener Schlüssel.** `pubkeys = { '<hvb-key>' }, good_signatures = 1`.
-  Der Dienst signiert selbst, Verschieben geht ohne Menschen. Die
-  Release-Schlüssel bleiben, wo sie sind.
-- **A und B kombinieren** geht nur über eine Codeänderung: Heute gilt eine
-  Schlüsselliste mit einer Schwelle.
-
-**Eigener Mirror-Pfad für 25_hvb:**
-
-- Heute zeigen alle Domains auf denselben Pfad (`.../firmware/nodeplacer`),
-  also auf ein gemeinsames Manifest. Knoten anderer Domains verlangen
-  3 Signaturen und würden ein HVB-Manifest mit weniger ablehnen.
-- Deshalb braucht `25_hvb` einen eigenen Pfad, etwa
-  `.../firmware/nodeplacer-hvb`, mit eigenem Manifest.
+- Heute zeigen alle Domains auf denselben Pfad (`.../firmware/nodeplacer`).
+  `25_hvb` bekommt eigene Mirrors auf dem Mapserver, mit eigenem Manifest.
+- https wie in 4.2: `nodeplacer-fetch` nutzt uclient wie der Autoupdater,
+  https geht also nur mit TLS im Image [prüfen].
 
 **Nur Domainwechsel annehmen:**
 
 - Nach D-032 richtet sich auch die Schwelle für eine Zielfirmware
-  (Methode `firmware`) nach dem eigenen Vertrauensniveau. Eine gesenkte
-  Schwelle würde also auch einen Firmwarewechsel mit weniger Signaturen
-  erlauben.
-- Vorschlag: Ist die Schwelle über die Domain gesenkt, nimmt der nodeplacer
-  nur Zeilen der Methode `domain` an.
+  (Methode `firmware`) nach dem eigenen Vertrauensniveau. Ohne Einschränkung
+  könnte der HVB-Schlüssel also auch einen Firmwarewechsel auslösen.
+- Deshalb: Sind Schlüssel oder Schwelle über die Domain gesetzt, nimmt der
+  nodeplacer nur Zeilen der Methode `domain` an.
+- Ziel darf nicht die aktuelle Domain sein.
 - Kleine Codeänderung in `nodeplacer` (Lua) plus Test.
 
-**broken-Knoten:**
+**Schwelle als Obergrenze:**
 
-- Ihr Branch verlangt 1 Signatur. Ein fester Domain-Wert 2 würde ihre
-  Schwelle anheben.
-- Wenn das stört: Der Domain-Wert gilt als Obergrenze, es gilt der kleinere
-  Wert.
+- Der Domain-Wert gilt als Obergrenze: Es gilt der kleinere von Domain-Wert
+  und Branch-Wert.
+- Mit `good_signatures = 1` ändert das für `broken`-Knoten nichts. Es
+  schützt aber vor einem späteren höheren Domain-Wert.
+
+### 4.6 Kosten der Ortungsanbieter (zu E4)
+
+Stand der Recherche 20.11.2026:
+
+- **beaconDB:**
+  - Kostenlos, ohne Schlüssel.
+  - Die Seite bittet um einen eigenen User-Agent.
+  - Eine Nutzungsrichtlinie oder Ratenbegrenzung ist auf der Startseite
+    nicht genannt.
+  - Die Seite nennt den Dienst selbst „experimentell“.
+- **Google Geolocation API:**
+  - Was man braucht: ein Google-Cloud-Projekt mit aktivierter Abrechnung
+    (Rechnungskonto mit Zahlungsmittel) und einen API-Schlüssel.
+  - Preis: SKU „Geolocation“, Kategorie Essentials. 10.000 Abfragen im
+    Monat kostenlos, danach 5,00 US-$ je 1.000 Abfragen (bis 100.000), in
+    höheren Stufen günstiger.
+  - Es gibt keine automatische Ausgabengrenze. Eine harte Grenze geht nur
+    über eine Quote (Abfragen je Tag) in der Cloud-Konsole. Die sollte von
+    Anfang an gesetzt sein.
+  - Abschätzung: Google wird nur gefragt, wenn beaconDB nichts liefert, und
+    nur solange ein Knoten noch kein sicheres Ergebnis hat. Selbst 100
+    HVB-Knoten mit täglicher Abfrage über 30 Tage wären 3.000 Abfragen im
+    Monat, also im kostenlosen Rahmen.
+  - Ob die Nutzungsbedingungen von Google erlauben, die Ergebnisse 14 Tage
+    zu speichern, ist ungeprüft [prüfen].
 
 ## 5. Datenschutz und Sicherheit
 
-- Die BSSIDs der Nachbar-WLANs gehen an einen Dritten, und die ermittelte
-  Position ist meist eine Privatwohnung.
+- Die BSSIDs der Nachbar-WLANs gehen an einen Dritten (beaconDB, Google), und
+  die ermittelte Position ist meist eine Privatwohnung.
+- Die Meldung des Knotens geht über das Internet. Bei Knoten ohne TLS geht
+  sie im Klartext, mit BSSIDs und SSIDs der Umgebung. Das ist bewusst so
+  entschieden, damit das Konzept einfach bleibt.
 - Abmilderung:
   - Ankündigung im Wizard (4.1).
   - Nur in `25_hvb`.
-  - Nur interne Übertragung bis zum Dienst.
-  - Ohne `node_id` zum Anbieter.
+  - TLS, wo der Knoten es kann.
+  - Ohne `node_id` und ohne SSIDs zum Anbieter.
   - Keine Veröffentlichung.
   - `_nomap` beachten.
-- Gespeichert wird so wenig wie möglich. Vorschlag: Zieldomain und Zeit
-  dauerhaft, die Position nur vergröbert (etwa auf 0.01°) und nur bis zur
-  Verschiebung (Entscheidung E6).
-- **Variante B** (Dienst signiert selbst) macht den Server zu einem Punkt,
-  der Knoten verschieben kann. Das ist begrenzt auf Knoten in `25_hvb` und
-  auf die Methode `domain`, wenn die Einschränkung aus 4.5 kommt.
-- **Genauigkeit:** Die Daten der Anbieter stammen überwiegend von Handys
-  auf der Straße. Für die Wahl einer Ortsdomain sollte das in der Regel
-  reichen. An Domaingrenzen kann es danebenliegen [nicht gemessen].
+  - 14 Tage Speicherung, Position auf 200 m vergröbert.
+- **HVB-Schlüssel auf dem Mapserver:** Der Mapserver kann damit Knoten
+  verschieben, aber nur Knoten in `25_hvb`, nur per Methode `domain` und nur
+  in andere Domains derselben Firmware.
+- **Genauigkeit:**
+  - Die Daten der Anbieter stammen überwiegend von Handys auf der Straße.
+    Für die Wahl einer Ortsdomain sollte das in der Regel reichen.
+  - An Domaingrenzen kann es danebenliegen [nicht gemessen].
+  - Dagegen helfen die Genauigkeitsprüfung in 4.4 und die Klärung von Hand.
 
-## 6. Offene Entscheidungen
+## 6. Entscheidungen
 
-| Nr. | Frage | Vorschlag |
+| Nr. | Frage | Entscheidung |
 |---|---|---|
-| E1 | Variante A (2 Signaturen) oder B (eigener Schlüssel, Dienst signiert)? | B für den Normalfall, A als Rückfall von Hand |
-| E2 | Bei gesenkter Schwelle nur Methode `domain` annehmen? | ja |
-| E3 | Domain-Schwelle als fester Wert oder als Obergrenze (broken)? | Obergrenze |
-| E4 | Ortungsanbieter: beaconDB, Google oder beide gestaffelt? | beaconDB zuerst, Google als Rückfall, wenn der Schlüssel bezahlt wird |
-| E5 | Wie wird aus der Position eine Domain: nächster Domain-Mittelpunkt, Gemeindegrenzen oder Polygone je Domain? | Polygone je Domain, wo vorhanden, sonst Handarbeit |
-| E6 | Was wird gespeichert, wie lange? | Domain und Zeit; Position vergröbert bis zur Verschiebung |
-| E7 | Name und Adresse des Dienstes (vhost, ULA) | legt der Mapserver fest |
-| E8 | Was passiert mit Knoten außerhalb aller Domains? | **entschieden 19.11.2026:** nach `21_dias` |
-| E9 | Wiederholung: täglich bis zur Verschiebung, oder nach n Versuchen aufhören? | täglich, höchstens 30 Tage |
+| E1 | Weniger Signaturen oder eigener Schlüssel? | **20.11.:** eigener Schlüssel, nur für den Umzug aus `25_hvb` in eine andere Domain derselben Firmware |
+| E2 | Bei gesenkter Schwelle nur Methode `domain` annehmen? | **20.11.:** ja, nur `domain` |
+| E3 | Domain-Schwelle als fester Wert oder als Obergrenze? | **20.11.:** Obergrenze |
+| E4 | Ortungsanbieter? | **20.11.:** beide gestaffelt, beaconDB zuerst, dann Google (Kosten 4.6) |
+| E5 | Wie wird aus der Position eine Domain? | **20.11.:** Mapserver berechnet einmalig Domainflächen, statisches Datenmodell; Mesh-Partner haben Vorrang |
+| E6 | Was wird gespeichert, wie lange? | **20.11.:** 14 Tage, 200-m-Raster, mit Genauigkeitsradius. Zu unsicher heißt nicht verschieben, sondern Klärung von Hand. Speicherort ist der Mapserver |
+| E7 | Name und Adresse des Dienstes | offen, legt der Mapserver-Betrieb fest |
+| E8 | Was passiert mit Knoten außerhalb aller Domains? | **19.11.:** nach `21_dias` |
+| E9 | Wiederholung? | **20.11.:** täglich, bis zur Verschiebung |
+| E10 | Grenze für den Genauigkeitsradius | offen, Vorschlag 1000 m |
+| E11 | Wie viele Mesh-Partner einer Domain reichen? | offen, Vorschlag mindestens 2, keine andere Domain gleich stark |
+
+Außerdem am 20.11. entschieden:
+
+- keine Übertragung über ULA oder interne Adressen,
+- TLS, wo der Knoten es kann,
+- HVB-Manifest auf dem Mapserver,
+- Berichte per Mail.
 
 ## 7. Arbeitspakete und Reihenfolge
 
 1. **Ankündigung im Wizard:** erledigt, kommt mit dem nächsten Multi-Bau.
 2. **nodeplacer:**
    - `good_signatures`/`pubkeys` auch in der Domain-Datei zulassen.
-   - Einschränkung auf `domain` (E2).
+   - Einschränkung auf `domain`, Ziel nicht die eigene Domain (E2).
    - Obergrenze (E3).
    - Tests.
-3. **FirmwareConfigs:** `25_hvb` bekommt den eigenen nodeplacer-Mirror-Pfad,
-   die Schwelle oder den Schlüssel und `neanderfunk_locate.urls`.
-4. **Ortungsdienst auf dem Mapserver:**
-   - Annahme der Meldungen.
-   - Anbieterabfrage.
-   - Domainzuordnung.
-   - Manifest-Liste, bei Variante B auch Signieren.
-5. **Neues Paket auf dem Knoten:** Scan, Filter, Meldung, Wiederholung.
-6. **Test:** Knoten im Labor in `25_hvb`, Meldung, Verschiebung per
-   HVB-Manifest, Rückkehr der normalen Schwelle nach dem Neustart.
+3. **Mapserver, erster Teil (Abschleppen von Hand):**
+   - HVB-Schlüssel erzeugen, Manifest unter eigenem Pfad ausliefern.
+   - Liste zum Eintragen von Hand, Signieren.
+   - Bericht per Mail, wer in der Zieldomain angekommen ist.
+4. **FirmwareConfigs:** `25_hvb` bekommt die nodeplacer-Mirrors auf dem
+   Mapserver, den HVB-Schlüssel mit Schwelle 1 und `neanderfunk_locate.urls`.
+5. **Mapserver, zweiter Teil (Ortung):**
+   - Annahme der Meldungen, Abgleich mit den Kartendaten.
+   - Mesh-Partner erkennen.
+   - Domainflächen einmalig berechnen.
+   - Anbieterabfrage, Genauigkeitsprüfung, Speicherung 14 Tage.
+6. **Neues Paket auf dem Knoten:** Scan, Filter, Meldung, tägliche
+   Wiederholung.
+7. **Test:** Knoten im Labor in `25_hvb`, Meldung, Verschiebung per
+   HVB-Manifest, Rückkehr der normalen Schwelle nach dem Neustart, Bericht.
 
-Punkt 2 und 3 lohnen sich auch ohne Ortung: Verschieben aus `25_hvb` per
-Hand wird damit schon einfacher.
+Punkt 2 bis 4 lohnen sich auch ohne Ortung: Das Abschleppen aus `25_hvb` von
+Hand geht damit schon ohne drei Unterschriften.
 
 ## 8. Quellen
 
@@ -277,5 +394,11 @@ Hand wird damit schon einfacher.
 - GSoC-Bericht Geolocator: https://blog.freifunk.net/2017/08/29/geolocator-software-defined-gps-final-evaluation/
 - Franken, Beispielskript: https://git.freifunk-franken.de/freifunk-franken/monitoring/src/branch/master/contrib/geolocate.py
 - Geolocate-Schnittstelle (MLS, von beaconDB übernommen): https://ichnaea.readthedocs.io/en/latest/api/geolocate.html
+- beaconDB: https://beacondb.net/
+- Google Geolocation API, Anfragen und Antwort: https://developers.google.com/maps/documentation/geolocation/requests-geolocation
+- Google Geolocation API, Nutzung und Abrechnung: https://developers.google.com/maps/documentation/geolocation/usage-and-billing
+- Google Maps Platform, Preisliste: https://developers.google.com/maps/billing-and-pricing/pricing
+- Gluon, Zusammenführen von Site und Domain zur Laufzeit:
+  `package/libgluonutil/src/libgluonutil.c` (`merge_json`)
 - nodeplacer: `neanderfunk-nodeplacer/docs/DECISIONS.md` (D-031, D-032,
   D-044), `docs/MANIFEST-FORMAT.md`
