@@ -173,7 +173,8 @@ entscheidet der Knoten selbst, ohne den Mapserver.
 - Gegenprobe am selben Tag: beide VMs in `25_hvb`, VM 2 ohne WAN, also ohne
   VPN. VM 1 erkannte VM 2 als Nachbarn in `25_hvb`, setzte kein
   `lan_switch` und blieb in `25_hvb`. Die Meldung scheiterte mangels Uplink
-  (rc 1), umgeschaltet wurde nicht.
+  (rc 1), umgeschaltet wurde nicht. Ohne Kabel (kein batman-Nachbar) kam
+  `lan_mesh: []`, ohne Wartezeit, nach etwa 10 s.
 
 **Hat der Knoten schon Koordinaten** (`gluon-node-info`), schickt er sie
 zusätzlich zum Scan mit. Das gilt auch, wenn sie nicht veröffentlicht sind.
