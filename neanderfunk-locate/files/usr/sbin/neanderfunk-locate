@@ -1,0 +1,232 @@
+#!/usr/bin/lua
+-- SPDX-License-Identifier: BSD-3-Clause
+--
+-- neanderfunk-locate (Prototyp): scannt die WLANs in der Umgebung und meldet
+-- sie per POST an den Locator. Der Knoten wertet die Antwort nicht aus und
+-- aendert nichts an seiner Konfiguration.
+--
+-- Konzept: docs/konzept-hvb-ortung.md, Format v1 (Abschnitt 4.3).
+--
+-- Aufruf:
+--   neanderfunk-locate            scannen und melden
+--   neanderfunk-locate -n         nur scannen, JSON ausgeben, nichts senden
+--   neanderfunk-locate -u <url>   an diese URL statt an die Vorgabe
+
+local VERSION = '0.1'
+local MAX_NETS = 50
+local URLS = {
+	'https://locator.ffnef.de/hvb/locate',
+	'http://locator.ffnef.de/hvb/locate',
+}
+
+local json = require 'jsonc'
+
+local function sh(cmd)
+	local f = io.popen(cmd .. ' 2>/dev/null')
+	if not f then return '' end
+	local out = f:read('*a') or ''
+	f:close()
+	return out
+end
+
+local function readfile(path)
+	local f = io.open(path)
+	if not f then return nil end
+	local s = f:read('*a')
+	f:close()
+	return s
+end
+
+local function trim(s)
+	return (s or ''):match('^%s*(.-)%s*$')
+end
+
+local function log(msg)
+	os.execute("logger -t neanderfunk-locate '" .. msg:gsub("'", '') .. "'")
+end
+
+-- Argumente
+local dry, url_override = false, nil
+do
+	local i = 1
+	while arg[i] do
+		if arg[i] == '-n' then
+			dry = true
+		elseif arg[i] == '-u' and arg[i + 1] then
+			url_override = arg[i + 1]
+			i = i + 1
+		else
+			io.stderr:write('usage: neanderfunk-locate [-n] [-u url]\n')
+			os.exit(2)
+		end
+		i = i + 1
+	end
+end
+
+-- Eigene WLAN-Interfaces: Typ und MAC, je phy
+local function wifi_interfaces()
+	local list, cur = {}, nil
+	for line in sh('iw dev'):gmatch('[^\n]+') do
+		local name = line:match('^%s*Interface%s+(%S+)')
+		if name then
+			cur = { name = name }
+			table.insert(list, cur)
+		elseif cur then
+			local mac = line:match('^%s*addr%s+(%x%x:%x%x:%x%x:%x%x:%x%x:%x%x)')
+			if mac then cur.mac = mac:lower() end
+			local typ = line:match('^%s*type%s+(.+)$')
+			if typ then cur.type = trim(typ) end
+			local mhz = line:match('%((%d+) MHz%)')
+			if mhz and not cur.freq then cur.freq = tonumber(mhz) end
+		end
+	end
+	return list
+end
+
+-- Je Band ein Interface zum Scannen: Mesh-Punkt zuerst, dann Station,
+-- zuletzt AP (der braucht ap-force).
+local function scan_targets(ifaces)
+	local rank = { ['mesh point'] = 1, managed = 2, AP = 3 }
+	local best = {}
+	for _, i in ipairs(ifaces) do
+		local band = (i.freq or 0) >= 4000 and '5' or '2.4'
+		local r = rank[i.type or '']
+		if r and (not best[band] or r < best[band].r) then
+			best[band] = { r = r, iface = i }
+		end
+	end
+	local out = {}
+	for _, b in pairs(best) do table.insert(out, b.iface) end
+	table.sort(out, function(a, b) return a.name < b.name end)
+	return out
+end
+
+local function parse_scan(text, nets)
+	local cur
+	for line in text:gmatch('[^\n]+') do
+		local bssid = line:match('^BSS%s+(%x%x:%x%x:%x%x:%x%x:%x%x:%x%x)')
+		if bssid then
+			cur = { bssid = bssid:lower(), ssid = '', mesh_id = '' }
+			table.insert(nets, cur)
+		elseif cur then
+			local v
+			v = line:match('^\tfreq:%s*([%d%.]+)')
+			if v then cur.freq = math.floor(tonumber(v) + 0.5) end
+			v = line:match('^\tsignal:%s*(%-?[%d%.]+)%s*dBm')
+			if v then cur.signal = math.floor(tonumber(v) + 0.5) end
+			v = line:match('^\tlast seen:%s*(%d+)%s*ms ago')
+			if v then cur.age_ms = tonumber(v) end
+			v = line:match('^\tSSID: ?(.*)$')
+			if v then cur.ssid = v end
+			v = line:match('^\tMESH ID: ?(.*)$')
+			if v then cur.mesh_id = v end
+		end
+	end
+end
+
+local ifaces = wifi_interfaces()
+local own = {}
+for _, i in ipairs(ifaces) do
+	if i.mac then own[i.mac] = true end
+end
+
+local scans, raw = {}, {}
+for _, i in ipairs(scan_targets(ifaces)) do
+	local cmd = 'iw dev ' .. i.name .. ' scan'
+	local text = sh(cmd)
+	if not text:match('^BSS') and i.type == 'AP' then
+		text = sh(cmd .. ' ap-force')
+	end
+	local before = #raw
+	parse_scan(text, raw)
+	table.insert(scans, { iface = i.name, ok = text:match('^BSS') ~= nil, count = #raw - before })
+end
+
+-- Filtern: eigene Interfaces, _nomap, Eintraege ohne Pegel; doppelte BSSIDs
+-- (auf zwei Interfaces gesehen) nur einmal, mit dem staerkeren Pegel
+local by_bssid = {}
+for _, n in ipairs(raw) do
+	if n.signal and not own[n.bssid] and not n.ssid:match('_nomap$') then
+		local old = by_bssid[n.bssid]
+		if not old or n.signal > old.signal then
+			by_bssid[n.bssid] = n
+		end
+	end
+end
+local wifi = {}
+for _, n in pairs(by_bssid) do table.insert(wifi, n) end
+table.sort(wifi, function(a, b) return a.signal > b.signal end)
+while #wifi > MAX_NETS do table.remove(wifi) end
+
+-- Exit-IPv4 ueber das WAN, so wie nodestatus sie ermittelt. Ohne IPv4-Uplink
+-- (etwa ein reiner Mesh-Knoten) bleibt das Feld weg.
+local function public_v4()
+	for _, u in ipairs({ 'http://ipv4.icanhazip.com', 'http://checkip.amazonaws.com' }) do
+		local a = trim(sh('uclient-fetch -4 -q -T 5 -O - ' .. u))
+		local o = { a:match('^(%d+)%.(%d+)%.(%d+)%.(%d+)$') }
+		if #o == 4 then
+			local ok = true
+			for _, x in ipairs(o) do if tonumber(x) > 255 then ok = false end end
+			if ok then return a end
+		end
+	end
+	return nil
+end
+
+local report = {
+	v = 1,
+	node_id = require('gluon.util').node_id():lower(),
+	domain = trim(sh('uci -q get gluon.core.domain')),
+	release = trim(readfile('/lib/gluon/release')),
+	uptime = math.floor(tonumber((readfile('/proc/uptime') or '0'):match('^[%d%.]+')) or 0),
+	scan = scans,
+	wifi = wifi,
+}
+
+local v4 = public_v4()
+if v4 then report.exit_ip = { ipv4 = v4 } end
+
+local lat = tonumber(trim(sh('uci -q get gluon-node-info.@location[0].latitude')))
+local lon = tonumber(trim(sh('uci -q get gluon-node-info.@location[0].longitude')))
+if lat and lon then report.coordinates = { lat = lat, lon = lon } end
+
+local body = json.stringify(report)
+
+if dry then
+	print(body)
+	os.exit(0)
+end
+
+-- https nur mit TLS im Image
+local have_tls = io.open('/lib/libustream-ssl.so') or io.open('/usr/lib/libustream-ssl.so')
+if have_tls then have_tls:close() end
+
+local urls = url_override and { url_override } or URLS
+local tmp = '/tmp/neanderfunk-locate.json'
+local f = assert(io.open(tmp, 'w'))
+f:write(body)
+f:close()
+
+local sent = false
+for _, u in ipairs(urls) do
+	if have_tls or not u:match('^https:') then
+		-- uclient-fetch nimmt nur 200 als Erfolg; den 202 des Locators meldet
+		-- es als "HTTP error 202" mit rc 8. Jede 2xx-Antwort gilt als
+		-- angekommen.
+		local out = sh('uclient-fetch -T 20 -O /dev/null'
+			.. " -U 'neanderfunk-locate/" .. VERSION .. "'"
+			.. " --header='Content-Type: application/json'"
+			.. " --post-file=" .. tmp .. " '" .. u .. "' 2>&1; echo \"rc=$?\"")
+		if out:match('rc=0%s*$') or out:match('HTTP error 2%d%d') then
+			log('gemeldet: ' .. #wifi .. ' Netze an ' .. u)
+			sent = true
+			break
+		end
+	end
+end
+os.remove(tmp)
+
+if not sent then
+	log('Meldung fehlgeschlagen (' .. #wifi .. ' Netze)')
+	os.exit(1)
+end

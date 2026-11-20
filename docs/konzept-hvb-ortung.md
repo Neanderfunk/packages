@@ -203,9 +203,12 @@ HVB-Manifest, Signieren, Berichte.
 **2. Domain bestimmen, in dieser Reihenfolge:**
 
 1. **Bekanntes Wifimesh in Funkreichweite (Mesh-Partner).** Jede unserer
-   Domains hat eine eigene 802.11s-Mesh-ID (`<kurzname>-mesh`, etwa
-   `vel-mesh`, `lvrno-mesh`). Die Mesh-ID im Scan zeigt also direkt die
-   Domain, ohne Abgleich mit Kartendaten. `hvb-mesh` zählt nicht.
+   Domains hat eine eigene 802.11s-Mesh-ID, meist `<kurzname>-mesh` (etwa
+   `vel-mesh`, `lvrno-mesh`), aber nicht immer: 43 bis 47 heißen
+   `mesh-<kurzname>`. Der Locator liest die Zuordnung deshalb aus den
+   Domain-Dateien, statt sie aus dem Namen abzuleiten. Die Mesh-ID im Scan
+   zeigt dann direkt die Domain, ohne Abgleich mit Kartendaten. `hvb-mesh`
+   zählt nicht.
    - **Es reicht** für eine Domain:
      - ein Mesh-Punkt dieser Domain mit mindestens -75 dBm (E11), oder
      - zwei Mesh-Punkte dieser Domain (verschiedene BSSIDs) mit beliebigem
@@ -405,7 +408,7 @@ Stand der Recherche 20.11.2026:
 | E8 | Was passiert mit Knoten außerhalb aller Domains? | **19.11.:** nach `21_dias` |
 | E9 | Wiederholung? | **20.11.:** täglich, bis zur Verschiebung |
 | E10 | Grenze für den Genauigkeitsradius | **20.11.:** 5000 m, gilt nur an der Außengrenze (Abgrenzung zu `21_dias`); zwischen zwei Domains entscheidet die nähere |
-| E11 | Wie viele Mesh-Partner einer Domain reichen? | **20.11.:** ein bekanntes Wifimesh mit ausreichendem Pegel (Vorschlag -75 dBm, -80 dBm in der Diskussion) oder zwei mit beliebigem Pegel; LVR-Domains zählen mit |
+| E11 | Wie viele Mesh-Partner einer Domain reichen? | **20.11.:** ein bekanntes Wifimesh ab -75 dBm oder zwei mit beliebigem Pegel; LVR-Domains zählen mit |
 
 Außerdem am 20.11. entschieden:
 
@@ -418,6 +421,23 @@ Außerdem am 20.11. entschieden:
   die Position.
 
 ## 7. Arbeitspakete und Reihenfolge
+
+**Zuerst ein Prototyp, der Daten liefert** (adorfer 20.11.). Was wir mit den
+Daten tun, entscheiden wir danach.
+
+- **Stufe 1, läuft seit 20.11.:**
+  - Der Locator legt jede Meldung roh ab (14 Tage) und wertet sie je Knoten
+    aus, mit E11 als Trockenlauf.
+  - Das Skript `neanderfunk-locate` (Prototyp, noch nicht im Image) läuft
+    von Hand auf Testknoten im Labor.
+  - Deren Position ist bekannt, das Ergebnis also vorhersehbar. Es geht erst
+    einmal um Format, Scan und Übertragung.
+- **Stufe 2:** eine Ansible-Rolle für den Betrieb. Sie führt die
+  Datensammlung einmal auf Knoten aus, auf die wir per SSH kommen, auch
+  außerhalb von `25_hvb`. Das liefert Testdaten aus vielen Standorten, an
+  denen sich Ortung und E11 messen lassen.
+
+Danach, für den echten Betrieb:
 
 1. **Ankündigung im Wizard:** erledigt, kommt mit dem nächsten Multi-Bau.
 2. **nodeplacer:**
