@@ -94,7 +94,7 @@ Daraus für uns:
   nicht über die site.conf:
 
   ```lua
-  neanderfunk_locate = {
+  neanderfunk_hvblocator = {
     urls = {
       'https://locator.ffnef.de/hvb/locate',
       'http://locator.ffnef.de/hvb/locate',
@@ -195,8 +195,8 @@ zusätzlich zum Scan mit. Das gilt auch, wenn sie nicht veröffentlicht sind.
   auf die Domain (4.4).
 
 **Senden:** HTTP-POST an die erste erreichbare URL aus
-`neanderfunk_locate.urls` (siehe 4.2 zu TLS), mit eigenem User-Agent
-`neanderfunk-locate/<version>`. Daran kann der Mapserver fremde POSTs schon
+`neanderfunk_hvblocator.urls` (siehe 4.2 zu TLS), mit eigenem User-Agent
+`neanderfunk-hvblocator/<version>`. Daran kann der Mapserver fremde POSTs schon
 am Proxy verwerfen und die Annahme begrenzen.
 
 ```json
@@ -537,6 +537,7 @@ Stand der Recherche 20.11.2026:
 | E10 | Grenze für den Genauigkeitsradius | **20.11.:** 5000 m, gilt nur an der Außengrenze (Abgrenzung zu `21_dias`); zwischen zwei Domains entscheidet die nähere |
 | E11 | Wie viele Mesh-Partner einer Domain reichen? | **20.11.:** ein bekanntes Wifimesh ab -75 dBm oder zwei mit beliebigem Pegel; LVR-Domains zählen mit |
 | E12 | Welche HVB-Knoten dürfen überhaupt gehen? | **20.11.:** nur mit eigenem VPN-Uplink und nur, wenn kein Knoten ohne VPN dadurch abgeschnitten wird; zwei VPN-Knoten, die zueinander meshen, blockieren sich nicht |
+| E13 | Name des Pakets auf dem Router | **20.11.:** `neanderfunk-hvblocator`, Langtext „Lokator und Abschleppdienst für Halteverbots-Defaultdomain“ (adorfer); vorher Prototyp `neanderfunk-locate`. User-Agent `neanderfunk-hvblocator/<version>`, Domain-Schlüssel `neanderfunk_hvblocator` |
 
 Außerdem am 20.11. entschieden:
 
@@ -556,7 +557,7 @@ Daten tun, entscheiden wir danach.
 - **Stufe 1, läuft seit 20.11.:**
   - Der Locator legt jede Meldung roh ab (14 Tage) und wertet sie je Knoten
     aus, mit E11 als Trockenlauf.
-  - Das Skript `neanderfunk-locate` (Prototyp, noch nicht im Image) läuft
+  - Das Skript `neanderfunk-hvblocator` (Prototyp, noch nicht im Image) läuft
     von Hand auf Testknoten im Labor.
   - Deren Position ist bekannt, das Ergebnis also vorhersehbar. Es geht erst
     einmal um Format, Scan und Übertragung.
@@ -578,7 +579,7 @@ Danach, für den echten Betrieb:
    - Liste zum Eintragen von Hand, Signieren.
    - Bericht per Mail, wer in der Zieldomain angekommen ist.
 4. **FirmwareConfigs:** `25_hvb` bekommt die nodeplacer-Mirrors auf dem
-   Mapserver, den HVB-Schlüssel mit Schwelle 1 und `neanderfunk_locate.urls`.
+   Mapserver, den HVB-Schlüssel mit Schwelle 1 und `neanderfunk_hvblocator.urls`.
 5. **Mapserver, zweiter Teil (Ortung):**
    - Annahme der Meldungen, Abgleich mit den Kartendaten.
    - Mesh-Partner über die Mesh-ID erkennen.

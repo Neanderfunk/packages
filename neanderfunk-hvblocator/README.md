@@ -1,5 +1,7 @@
-neanderfunk-locate (Prototyp)
-=============================
+neanderfunk-hvblocator (Prototyp)
+=================================
+
+Lokator und Abschleppdienst für Halteverbots-Defaultdomain.
 
 Scannt die WLANs in der Umgebung eines Knotens und meldet sie per POST an den
 Locator (`locator.ffnef.de`). Hängt ein Knoten in `25_hvb` per LAN-Mesh an
@@ -8,7 +10,7 @@ genau einer anderen Domain, schaltet er selbst dorthin um. Konzept und Format:
 
 **Stand: Prototyp.** Es gibt noch kein Makefile, das Skript kommt nicht ins
 Image. Es wird für Testdaten von Hand auf Testknoten kopiert und dort
-aufgerufen. Die Bindung an die Domain (`neanderfunk_locate` in der
+aufgerufen. Die Bindung an die Domain (`neanderfunk_hvblocator` in der
 Domain-Datei von `25_hvb`) und die tägliche Wiederholung kommen erst mit dem
 Paket.
 
@@ -16,13 +18,13 @@ Aufruf
 ------
 
 ```sh
-neanderfunk-locate        # scannen und melden
-neanderfunk-locate -n     # nur scannen, JSON ausgeben, nichts senden
-neanderfunk-locate -u URL # an eine andere URL melden
-neanderfunk-locate -n -a 25_hvb  # Trockenlauf, als stünde der Knoten in 25_hvb
+neanderfunk-hvblocator        # scannen und melden
+neanderfunk-hvblocator -n     # nur scannen, JSON ausgeben, nichts senden
+neanderfunk-hvblocator -u URL # an eine andere URL melden
+neanderfunk-hvblocator -n -a 25_hvb  # Trockenlauf, als stünde der Knoten in 25_hvb
 ```
 
-Ergebnis steht im Syslog (`logread | grep neanderfunk-locate`).
+Ergebnis steht im Syslog (`logread | grep neanderfunk-hvblocator`).
 
 Was das Skript tut
 ------------------
@@ -61,7 +63,7 @@ Was das Skript tut
 - **Koordinaten:** aus `gluon-node-info`, falls eingetragen, auch wenn sie
   nicht veröffentlicht sind.
 - **Senden:** zuerst `https`, wenn `libustream-ssl` da ist, sonst `http`.
-  User-Agent ist `neanderfunk-locate/<version>`. Der Locator antwortet mit
+  User-Agent ist `neanderfunk-hvblocator/<version>`. Der Locator antwortet mit
   200. Das Skript nimmt trotzdem jede 2xx-Antwort an: `uclient-fetch` zählt
   nur 200 als Erfolg und meldet etwa 202 als „HTTP error 202“ mit rc 8. Den
   Inhalt der Antwort wertet das Skript nicht aus.

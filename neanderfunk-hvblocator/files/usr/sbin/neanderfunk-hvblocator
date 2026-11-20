@@ -1,7 +1,8 @@
 #!/usr/bin/lua
 -- SPDX-License-Identifier: BSD-3-Clause
 --
--- neanderfunk-locate (Prototyp): scannt die WLANs in der Umgebung und meldet
+-- neanderfunk-hvblocator (Prototyp), Lokator und Abschleppdienst fuer die
+-- Halteverbots-Defaultdomain: scannt die WLANs in der Umgebung und meldet
 -- sie per POST an den Locator. Der Knoten wertet die Antwort nicht aus.
 --
 -- Einzige eigene Entscheidung: Steht der Knoten in 25_hvb und haengen am
@@ -12,10 +13,10 @@
 -- Konzept: docs/konzept-hvb-ortung.md, Format v1 (Abschnitt 4.3).
 --
 -- Aufruf:
---   neanderfunk-locate            scannen und melden
---   neanderfunk-locate -n         nur scannen, JSON ausgeben, nichts senden
---   neanderfunk-locate -u <url>   an diese URL statt an die Vorgabe
---   neanderfunk-locate -n -a <d>  zum Testen: so tun, als stuende der Knoten
+--   neanderfunk-hvblocator            scannen und melden
+--   neanderfunk-hvblocator -n         nur scannen, JSON ausgeben, nichts senden
+--   neanderfunk-hvblocator -u <url>   an diese URL statt an die Vorgabe
+--   neanderfunk-hvblocator -n -a <d>  zum Testen: so tun, als stuende der Knoten
 --                                 in Domain <d> (nur mit -n, schaltet nie)
 
 local VERSION = '0.1'
@@ -49,7 +50,7 @@ local function trim(s)
 end
 
 local function log(msg)
-	os.execute("logger -t neanderfunk-locate '" .. msg:gsub("'", '') .. "'")
+	os.execute("logger -t neanderfunk-hvblocator '" .. msg:gsub("'", '') .. "'")
 end
 
 -- Argumente
@@ -66,13 +67,13 @@ do
 			as_domain = arg[i + 1]
 			i = i + 1
 		else
-			io.stderr:write('usage: neanderfunk-locate [-n] [-u url] [-a domain]\n')
+			io.stderr:write('usage: neanderfunk-hvblocator [-n] [-u url] [-a domain]\n')
 			os.exit(2)
 		end
 		i = i + 1
 	end
 	if as_domain and not dry then
-		io.stderr:write('neanderfunk-locate: -a nur zusammen mit -n\n')
+		io.stderr:write('neanderfunk-hvblocator: -a nur zusammen mit -n\n')
 		os.exit(2)
 	end
 end
@@ -380,7 +381,7 @@ local have_tls = io.open('/lib/libustream-ssl.so') or io.open('/usr/lib/libustre
 if have_tls then have_tls:close() end
 
 local urls = url_override and { url_override } or URLS
-local tmp = '/tmp/neanderfunk-locate.json'
+local tmp = '/tmp/neanderfunk-hvblocator.json'
 local f = assert(io.open(tmp, 'w'))
 f:write(body)
 f:close()
@@ -392,7 +393,7 @@ for _, u in ipairs(urls) do
 		-- es als "HTTP error 202" mit rc 8. Jede 2xx-Antwort gilt als
 		-- angekommen.
 		local out = sh('uclient-fetch -T 20 -O /dev/null'
-			.. " -U 'neanderfunk-locate/" .. VERSION .. "'"
+			.. " -U 'neanderfunk-hvblocator/" .. VERSION .. "'"
 			.. " --header='Content-Type: application/json'"
 			.. " --post-file=" .. tmp .. " '" .. u .. "' 2>&1; echo \"rc=$?\"")
 		if out:match('rc=0%s*$') or out:match('HTTP error 2%d%d') then
