@@ -165,6 +165,11 @@ entscheidet der Knoten selbst, ohne den Mapserver.
 - Am 20.11. am M60 (LAN-Mesh über `br-mesh_other`) erprobt, als Trockenlauf
   mit `-n -a 25_hvb`: Der Nachbar meldet `21_dias`, das Skript würde dorthin
   umschalten.
+- Am 20.11. echt umgeschaltet, mit zwei Labor-VMs (Gluon 26111816bro): VM 1
+  in `25_hvb` ohne eigenes WAN/VPN, per Kabel (WAN-Port mit Rolle `mesh`) an
+  VM 2 in `21_dias` mit VPN. VM 1 bekam die Antwort von VM 2 im ersten
+  Durchgang, meldete `lan_switch: 21_dias` an den Locator, schaltete per
+  `gluon-switch-domain` um und meshte nach dem Neustart in `21_dias` weiter.
 
 **Hat der Knoten schon Koordinaten** (`gluon-node-info`), schickt er sie
 zusätzlich zum Scan mit. Das gilt auch, wenn sie nicht veröffentlicht sind.
