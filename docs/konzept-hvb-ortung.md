@@ -165,11 +165,11 @@ am Proxy verwerfen und die Annahme begrenzen.
   `ipv4.icanhazip.com` und `checkip.amazonaws.com` über das WAN. Ein schwacher
   Hinweis auf den Standort (4.4), aber genug, um nicht im falschen Land zu
   landen. Fehlt eine Adresse, bleibt das Feld weg.
-- Die Absenderadresse der Meldung taugt nicht als Ersatz: Der Dienst sieht
-  sie nur über den Proxy (`X-Forwarded-For`). Außerdem ist sie nur dann die
-  Exit-IP des Uplinks, wenn die Meldung über das WAN geht und nicht durch das
-  Mesh [prüfen, welchen Weg Gluon für Verkehr des Knotens selbst nimmt].
-  Deshalb schickt der Knoten die Exit-IP ausdrücklich mit.
+- Die Absenderadresse der Meldung taugt nicht als Ersatz. Gemessen am
+  20.11.: Auch ein Knoten mit eigenem WAN schickt die Meldung per IPv6 durch
+  das Mesh. Absender ist dann seine Freifunk-Adresse über den Supernode, nicht
+  sein Uplink. Die Exit-IPv4 ist damit der einzige Hinweis auf den Anschluss.
+  Ein reiner Mesh-Knoten ohne IPv4-Uplink hat keine und lässt das Feld weg.
 
 **Antwort:**
 
