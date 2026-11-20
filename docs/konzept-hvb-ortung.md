@@ -264,13 +264,18 @@ HVB-Manifest, Signieren, Berichte.
 
 **Zieldomains:**
 
-- **Über Mesh-Partner** (Schritt 1) in jede unserer Domains, auch in eine
-  LVR-Domain. Der LVR bietet Wifimesh ausdrücklich an: Unsere Bedingung für
-  Freifunk dort ist, dass an jedem Standort mindestens ein Knoten Wifimesh
-  anbietet.
+- **Über Mesh-Partner** (Schritt 1, Wifimesh) und über LAN-Mesh-Nachbarn
+  in jede unserer Domains, auch in eine LVR- oder Unterkunfts-Domain. Der
+  LVR bietet Wifimesh ausdrücklich an: Unsere Bedingung für Freifunk dort
+  ist, dass an jedem Standort mindestens ein Knoten Wifimesh anbietet.
 - **Über die Position** (Schritte 2 bis 4) nur in Ortsdomains und nach
-  `21_dias`, nie in LVR-Domains (11, 31 bis 36). Der Mapserver führt dazu
-  eine feste Liste der Domains, die über die Position Ziel sein dürfen.
+  `21_dias`, nie in eine **Mesh-only-Domain** (adorfer 20.11.):
+  - LVR-Domains: `11_lvr`, `31_lvrno` bis `36_lvrsw`;
+  - Unterkunfts-Domains: `12_dusuk`, `18_nefuk`, `22_dusukn`, `23_dusuks`,
+    `24_dusukw`.
+
+  Der Mapserver führt dazu eine feste Liste der Domains, die über die
+  Position Ziel sein dürfen; Flächen gibt es ohnehin nur für Ortsdomains.
 
 **2. Domain bestimmen, in dieser Reihenfolge:**
 
@@ -546,8 +551,9 @@ Außerdem am 20.11. entschieden:
 - HVB-Manifest auf dem Mapserver,
 - Berichte per Mail,
 - die Exit-IP des Knotens geht als schwacher Hinweis mit,
-- in LVR-Domains verschiebt der Locator nur über Mesh-Partner, nie über
-  die Position.
+- in LVR- und Unterkunfts-Domains (11, 12, 18, 22 bis 24, 31 bis 36)
+  verschiebt der Locator nur über Mesh-Partner oder LAN-Mesh, nie über die
+  Position (Unterkunfts-Domains: adorfer 20.11.).
 
 ## 7. Arbeitspakete und Reihenfolge
 
@@ -584,7 +590,7 @@ Danach, für den echten Betrieb:
    - Annahme der Meldungen, Abgleich mit den Kartendaten.
    - Mesh-Partner über die Mesh-ID erkennen.
    - Domainflächen einmalig berechnen, Liste der Domains, die über die
-     Position Ziel sein dürfen (ohne LVR).
+     Position Ziel sein dürfen (ohne LVR- und Unterkunfts-Domains).
    - Anbieterabfrage, Exit-IP-Prüfung, Genauigkeitsprüfung, Speicherung
      14 Tage.
 6. **Neues Paket auf dem Knoten:** Scan, Filter, Exit-IP, Meldung, tägliche
