@@ -1,0 +1,9 @@
+#!/bin/sh /etc/rc.common
+# Einmal bald nach dem Start melden (LAN-Mesh-Pruefung), im Hintergrund.
+# Ohne neanderfunk_hvblocator.urls in der aktiven Domain endet run.sh sofort.
+
+START=99
+
+start() {
+	/lib/gluon/neanderfunk-hvblocator/run.sh boot </dev/null >/dev/null 2>&1 &
+}

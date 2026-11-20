@@ -563,8 +563,10 @@ Daten tun, entscheiden wir danach.
 - **Stufe 1, läuft seit 20.11.:**
   - Der Locator legt jede Meldung roh ab (14 Tage) und wertet sie je Knoten
     aus, mit E11 als Trockenlauf.
-  - Das Skript `neanderfunk-hvblocator` (Prototyp, noch nicht im Image) läuft
-    von Hand auf Testknoten im Labor.
+  - Das Skript `neanderfunk-hvblocator` lief zuerst von Hand auf
+    Testknoten im Labor. Seit 20.11. gibt es das Paket (0.2) mit Bindung an
+    die Domain (4.2), Lauf nach dem Start und täglicher Wiederholung, für
+    eine erste Testfirmware.
   - Deren Position ist bekannt, das Ergebnis also vorhersehbar. Es geht erst
     einmal um Format, Scan und Übertragung.
 - **Stufe 2:** eine Ansible-Rolle für den Betrieb. Sie führt die

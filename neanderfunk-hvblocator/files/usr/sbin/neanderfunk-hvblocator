@@ -1,33 +1,36 @@
 #!/usr/bin/lua
 -- SPDX-License-Identifier: BSD-3-Clause
 --
--- neanderfunk-hvblocator (Prototyp), Lokator und Abschleppdienst fuer die
+-- neanderfunk-hvblocator, Lokator und Abschleppdienst fuer die
 -- Halteverbots-Defaultdomain: scannt die WLANs in der Umgebung und meldet
 -- sie per POST an den Locator. Der Knoten wertet die Antwort nicht aus.
 --
--- Einzige eigene Entscheidung: Steht der Knoten in 25_hvb und haengen am
--- LAN-Mesh Nachbarn genau einer anderen Domain, die im Image steht, schaltet
--- er nach der Meldung selbst in diese Domain um (gluon-switch-domain,
+-- Eingeschaltet nur ueber die Domain-Datei: Steht in der aktiven Domain
+-- neanderfunk_hvblocator.urls, meldet der Knoten dorthin. Fehlt der
+-- Schluessel (jede andere Domain), tut das Skript nichts. Im Code steht
+-- keine Domain.
+--
+-- Einzige eigene Entscheidung: Ist die Ortung an und haengen am LAN-Mesh
+-- Nachbarn genau einer anderen Domain, die im Image steht, schaltet der
+-- Knoten nach der Meldung selbst in diese Domain um (gluon-switch-domain,
 -- Neustart). Ohne VXLAN sind die batman-Wolken dann ohnehin schon verbunden.
 --
 -- Konzept: docs/konzept-hvb-ortung.md, Format v1 (Abschnitt 4.3).
 --
--- Aufruf:
+-- Aufruf (gestartet wird es sonst von run.sh, beim Start und taeglich):
 --   neanderfunk-hvblocator            scannen und melden
 --   neanderfunk-hvblocator -n         nur scannen, JSON ausgeben, nichts senden
---   neanderfunk-hvblocator -u <url>   an diese URL statt an die Vorgabe
+--   neanderfunk-hvblocator -u <url>   an diese URL melden, auch ohne den
+--                                     Schluessel in der Domain (schaltet dann nie)
 --   neanderfunk-hvblocator -n -a <d>  zum Testen: so tun, als stuende der Knoten
---                                 in Domain <d> (nur mit -n, schaltet nie)
+--                                     in Domain <d> mit eingeschalteter Ortung
+--                                     (nur mit -n, schaltet nie)
 
-local VERSION = '0.1'
+local VERSION = '0.2'
 local MAX_NETS = 50
-local HVB_DOMAIN = '25_hvb'
-local URLS = {
-	'https://locator.ffnef.de/hvb/locate',
-	'http://locator.ffnef.de/hvb/locate',
-}
 
 local json = require 'jsonc'
+local site = require 'gluon.site'
 
 local function sh(cmd)
 	local f = io.popen(cmd .. ' 2>/dev/null')
@@ -326,8 +329,7 @@ end
 local function lan_target(neigh, own_domain)
 	local doms, n = {}, 0
 	for _, x in ipairs(neigh) do
-		if x.domain and x.domain ~= own_domain and x.domain ~= HVB_DOMAIN
-				and not doms[x.domain] then
+		if x.domain and x.domain ~= own_domain and not doms[x.domain] then
 			doms[x.domain] = true
 			n = n + 1
 		end
@@ -341,12 +343,22 @@ local function lan_target(neigh, own_domain)
 	return d
 end
 
+-- Ortung an? Nur, wenn die aktive Domain die URLs mitbringt (gluon.site
+-- fuehrt Site und aktive Domain zusammen).
+local site_urls = site.neanderfunk_hvblocator.urls({})
+local active = type(site_urls) == 'table' and #site_urls > 0
+if not active and not dry and not url_override then
+	os.exit(0)
+end
+
 local own_id = require('gluon.util').node_id():lower()
 local own_domain = trim(sh('uci -q get gluon.core.domain'))
 local lan = lan_mesh(own_id)
 local switch_to
-if (as_domain or own_domain) == HVB_DOMAIN then
-	switch_to = lan_target(lan, HVB_DOMAIN)
+if as_domain then
+	switch_to = lan_target(lan, as_domain)
+elseif active then
+	switch_to = lan_target(lan, own_domain)
 end
 
 local report = {
@@ -380,7 +392,7 @@ end
 local have_tls = io.open('/lib/libustream-ssl.so') or io.open('/usr/lib/libustream-ssl.so')
 if have_tls then have_tls:close() end
 
-local urls = url_override and { url_override } or URLS
+local urls = url_override and { url_override } or site_urls
 local tmp = '/tmp/neanderfunk-hvblocator.json'
 local f = assert(io.open(tmp, 'w'))
 f:write(body)

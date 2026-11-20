@@ -1,18 +1,49 @@
-neanderfunk-hvblocator (Prototyp)
-=================================
+neanderfunk-hvblocator
+======================
 
 Lokator und Abschleppdienst für Halteverbots-Defaultdomain.
 
 Scannt die WLANs in der Umgebung eines Knotens und meldet sie per POST an den
-Locator (`locator.ffnef.de`). Hängt ein Knoten in `25_hvb` per LAN-Mesh an
-genau einer anderen Domain, schaltet er selbst dorthin um. Konzept und Format:
-[docs/konzept-hvb-ortung.md](../docs/konzept-hvb-ortung.md), Abschnitt 4.3.
+Locator (`locator.ffnef.de`). Hängt ein Knoten per LAN-Mesh an genau einer
+anderen Domain, schaltet er selbst dorthin um. Konzept und Format:
+[docs/konzept-hvb-ortung.md](../docs/konzept-hvb-ortung.md), Abschnitte 4.2
+und 4.3.
 
-**Stand: Prototyp.** Es gibt noch kein Makefile, das Skript kommt nicht ins
-Image. Es wird für Testdaten von Hand auf Testknoten kopiert und dort
-aufgerufen. Die Bindung an die Domain (`neanderfunk_hvblocator` in der
-Domain-Datei von `25_hvb`) und die tägliche Wiederholung kommen erst mit dem
-Paket.
+**Stand 0.2 (20.11.2026):** erstes Paket für eine Testfirmware.
+
+Einschalten
+-----------
+
+Nur über die Domain-Datei, nicht über die site.conf (`check_site.lua`
+erlaubt den Schlüssel nur `in_domain`):
+
+```lua
+neanderfunk_hvblocator = {
+  urls = {
+    'https://locator.ffnef.de/hvb/locate',
+    'http://locator.ffnef.de/hvb/locate',
+  },
+},
+```
+
+Bei uns steht das nur in `25_hvb`. In jeder anderen Domain fehlt der
+Schlüssel, dann tut das Paket nichts. Nach einer Verschiebung ist die Ortung
+damit von selbst aus. Im Code steht keine Domain.
+
+Wann es läuft
+-------------
+
+- **Nach dem Start:** `/etc/init.d/neanderfunk-hvblocator` startet
+  `run.sh boot` im Hintergrund. Es wartet 60 s, dann bis batman einen
+  Nachbarn hat, höchstens bis 600 s Uptime, und meldet dann einmal. Die
+  LAN-Mesh-Prüfung braucht kein Internet.
+- **Täglich:** micron.d ruft `run.sh cron` stündlich zur Minute 9 auf. Es
+  meldet erst, wenn die letzte Meldung 24 h her ist (nach einem
+  Fehlschlag 6 h). Gemessen wird in Uptime, Stand in
+  `/tmp/neanderfunk-hvblocator.stamp`. Gemeldet wird je Knoten fest 0 bis
+  49 min später (letztes Byte der primären MAC). Ohne Schlüssel endet
+  `run.sh` nach einem `jsonfilter`, ohne Lua zu starten.
+- Nicht im Setup-Mode, nie zwei Läufe gleichzeitig (Sperre in `/tmp`).
 
 Aufruf
 ------
@@ -20,8 +51,10 @@ Aufruf
 ```sh
 neanderfunk-hvblocator        # scannen und melden
 neanderfunk-hvblocator -n     # nur scannen, JSON ausgeben, nichts senden
-neanderfunk-hvblocator -u URL # an eine andere URL melden
-neanderfunk-hvblocator -n -a 25_hvb  # Trockenlauf, als stünde der Knoten in 25_hvb
+neanderfunk-hvblocator -u URL # an diese URL melden, auch ohne Schlüssel
+                              # in der Domain (schaltet dann nie um)
+neanderfunk-hvblocator -n -a 25_hvb  # Trockenlauf, als stünde der Knoten mit
+                                     # eingeschalteter Ortung in 25_hvb
 ```
 
 Ergebnis steht im Syslog (`logread | grep neanderfunk-hvblocator`).
@@ -54,7 +87,7 @@ Was das Skript tut
   LAN geantwortet hat, höchstens 60 s. Wer schweigt, steht nur mit MAC da.
   An den beiden M60-Testknoten kam die Antwort im ersten Durchgang; ein
   Lauf mit Scan dauerte etwa 10 s.
-- **Umschalten:** Steht der Knoten in `25_hvb` und hängen am Kabel Nachbarn
+- **Umschalten:** Ist die Ortung an und hängen am Kabel Nachbarn
   genau einer anderen Domain, die im Image steht, meldet das Skript
   `lan_switch` und ruft danach `gluon-switch-domain` auf (Neustart), auch wenn
   die Meldung nicht ankam. Mehrere fremde Domains oder eine, die das Image
@@ -67,6 +100,16 @@ Was das Skript tut
   200. Das Skript nimmt trotzdem jede 2xx-Antwort an: `uclient-fetch` zählt
   nur 200 als Erfolg und meldet etwa 202 als „HTTP error 202“ mit rc 8. Den
   Inhalt der Antwort wertet das Skript nicht aus.
+
+Getestet
+--------
+
+20.11.2026 auf einer Gluon-x86-VM (26111816bro, Multi-Key) in `25_hvb`:
+ohne Schlüssel kein Lauf und keine Ausgabe; mit Schlüssel in der
+Domain-Datei liest `gluon.site` die URLs, der Startlauf meldete nach dem
+ersten batman-Nachbarn (VPN) an `https://locator.ffnef.de/hvb/locate`, ein
+`run.sh cron` direkt danach tat nichts. Den Paketbau selbst prüft erst der
+Testbau.
 
 Lizenz
 ------
