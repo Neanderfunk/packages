@@ -4,9 +4,12 @@ Kurzanleitung für den eiligen Admin. Die vollständige Beschreibung des
 Formats steht in [MANIFEST-FORMAT.md](MANIFEST-FORMAT.md), die Begründungen
 in [DESIGN.md](DESIGN.md) und [DECISIONS.md](DECISIONS.md).
 
-> **Multidomain-Firmware ist ungetestet.** Alles hier beschriebene bezieht
-> sich auf Single-Domain-Firmware (Methode `firmware`). Die Methode `domain`
-> existiert, ist aber noch nicht an Geräten erprobt (D-026).
+> **Multidomain-Firmware ist erst im Labor erprobt.** Die Methode `domain`
+> hat am 20.11.2026 einen Labortest in einer x86-64-VM mit Multi-Image
+> bestanden: hin und zurück, Spiegel der Zieldomain übernommen,
+> Schleifenschutz greift (TESTING.md). An echten Geräten im Feld lief sie noch
+> nicht. Der Rest dieser Anleitung beschreibt vor allem Single-Domain-Firmware
+> (Methode `firmware`).
 
 ## In drei Sätzen
 
@@ -149,6 +152,11 @@ darauf zu verlassen, ist genau der Fallstrick.
 > öffentlicher IPv4 zur Verfügung stand. Deshalb musste beim Rückweg von Hand
 > auf die öffentliche IPv6-Adresse umgestellt werden. Im Betrieb macht man
 > das nicht nach, sondern legt die Datei gleich richtig ab.
+
+**Ein toter Spiegel kostet Zeit.** `nodeplacer-fetch` probiert die
+konfigurierten Spiegel in zufälliger Reihenfolge. Ist einer nicht erreichbar,
+wartet er über 2 Minuten auf den TCP-Timeout, bevor der nächste drankommt.
+Nicht erreichbare Spiegel also aus der Liste nehmen.
 
 **Der Rückweg ist ein zweiter vollständiger Durchgang.** Das Upgrade-Skript
 `510-nodeplacer` schreibt Spiegel, Schlüssel und Schwelle bei **jedem**

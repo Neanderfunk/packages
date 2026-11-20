@@ -54,8 +54,8 @@ kopieren und damit schlafen.
 
 ### Noch nicht getestet
 
-* `domain`-Pfad: zurueckgestellt bis nach dem ersten finalen Release
-  (D-026), braucht Multidomain-Image.
+* `domain`-Pfad an echten Geraeten im Feld (im Labor bestanden, siehe
+  Protokoll 2026-11-20).
 * Echter Flash in eine andere Domain (ohne `-n`). Der Trockenlauf zeigt,
   dass alles bis unmittelbar vor `sysupgrade` funktioniert.
 * C-Helfer `nodeplacer-fetch` (Signaturpruefung, Kopfpruefung, Exit-Codes):
@@ -437,3 +437,42 @@ Damit belegt: Die Schwelle kommt aus der site.conf (hier 2 statt der 3 von
 stable), weniger gueltige Signaturen - auch mit einer zusaetzlichen fremden -
 werden abgewiesen, und dieselbe Schwelle gilt fuer das Firmware-Manifest der
 Zieldomain.
+
+### Protokoll 2026-11-20: Methode `domain` im Multi-Image (Labor)
+
+Auftrag adorfer. Erster Test des `domain`-Pfads (D-026) an einem echten
+Multi-Image.
+
+Aufbau:
+* x86-64-VM im Labor, Image `26111912bro` (Multi-Image), Start in `21_dias`,
+  Branch stable.
+* Drei eigene ecdsautils-Testschluessel. Auf der VM nur als uci-Delta:
+  `nodeplacer.settings.pubkey` (drei Stueck) und `mirror`.
+  `good_signatures` 3 kam aus der Site.
+* Steuerdatei `<node_id> domain target=<code>`, zurueckdatiert, mit dem
+  Linter (`scripts/lint-nodeplacer-manifest.py`) geprueft.
+
+Ergebnis:
+
+| Schritt | Ergebnis |
+| --- | --- |
+| `nodeplacer -n`, Ziel `19_agi` | "would switch to domain 19_agi (no-action)" |
+| echter Lauf `21_dias` -> `19_agi` | `gluon-switch-domain`, ein Neustart. Danach Domain `19_agi`, Praefixe und Gateway von 19 ueber mesh-vpn, Hostname unveraendert |
+| `510-nodeplacer` nach dem Wechsel | `mirror` auf die Werte der Zieldomain gesetzt, `pubkey`-Delta weg, Cron-Minute neu gewuerfelt, keine offenen uci-Aenderungen |
+| alte Steuerdatei (Ziel `19_agi`) in `19_agi` | Schleifenschutz: Ende still mit rc 0, ohne Logzeile |
+| `19_agi` -> `21_dias` mit neuer datierter Datei | wie der Hinweg, zurueck in `21_dias` mit Gateway von 21 |
+
+Beobachtungen:
+* `nodeplacer-fetch` mischt die konfigurierten Spiegel (gewollt). Ein nicht
+  erreichbarer Spiegel kostet dann ueber 2 min TCP-Timeout, bevor der
+  naechste drankommt (in HOWTO.md aufgenommen).
+* Ein Spiegel auf einem Server, der selbst ein Bein im Mesh einer Domain hat,
+  war aus einer anderen Domain ueber seine oeffentliche IPv6 nicht
+  erreichbar: Er schickte die Antworten ueber sein Mesh-Interface zurueck.
+  Der Rueckweg ging ueber IPv4 und das WAN. Das stuetzt die
+  HOWTO-Empfehlung "Spiegel oeffentlich, mindestens ueber IPv4".
+* Jede Stunde schreibt `nodeplacer-fetch` "no manifest on any of the 2
+  mirrors" als `daemon.err` ins Log. Bekanntes Log-Rauschen, Entscheidung
+  fuer 2025.1 steht aus.
+
+Offen: der `domain`-Pfad an echten Testknoten im Feld.

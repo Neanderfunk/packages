@@ -341,6 +341,10 @@ Status: **offen** / **entschieden** / **verworfen**.
 * Der `domain`-Codepfad bleibt im Paket (klein, an `gluon-switch-domain`
   delegiert), gilt aber als **ungetestet** und wird im README so
   gekennzeichnet. Kein Multidomain-Testimage, kein qemu-Test dafuer.
+* Nachtrag 2026-11-20: Mit dem Multi-Image (2025.1) hat der `domain`-Pfad
+  einen Labortest in einer x86-64-VM bestanden, hin und zurueck (TESTING.md,
+  Protokoll 2026-11-20). "Ungetestet" heisst seitdem: an echten Geraeten im
+  Feld noch nicht erprobt.
 
 ## D-027 Release wartet auf Aenderungen im Buildsystem
 
