@@ -57,6 +57,13 @@ gilt dieser Abschnitt.
   greift, kommt der Teil mit Beitritt und WLAN als eigenes Binärpaket aus
   demselben Quellpaket, das die lowmem-Gruppen nicht bekommen. Der Name
   „automesh“ bleibt für den Funktionsteil.
+- **Ganz in Shell** (A, 21.11.): auch der heutige Lua-Teil von
+  `neanderfunk-domainhelper` (`locate`) wird nach Shell portiert. Werkzeuge:
+  `jsonfilter` zum Lesen, `jshn` zum Schreiben (escaped SSIDs sicher),
+  `nf_site_get` für Site und Domain, `awk` für `iw`-Ausgaben. Grund: Jeder
+  Lua-Start lädt Interpreter und Module vom Flash; auf 64-MB-Geräten zeigt
+  sich das als Refaults (C25, 12.09.). Für den 60-s-Takt von automesh zählt
+  das, und eine gemeinsame Bibliothek braucht eine Sprache.
 
 Reihenfolge:
 
@@ -487,4 +494,5 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 27 | Mesh-IDs per Muster `.*-mesh` erkennen | 6.3 | verworfen | 02.10. | Domains 43 bis 47 heißen `mesh-<kurz>`; Liste statt Muster |
 | 28 | Erlaubnisliste statt Sperrliste | 13 | verworfen | 02.10. | PPA (A); für eigene Domains ist #15 faktisch eine Liste aus der Firmware |
 | 29 | Paket: automesh in `neanderfunk-domainhelper`, Beitritt als eigenes Binärpaket | neu | geplant | 21.11. | Integration entschieden (A); Binärpaket wegen #24 |
+| 30 | Alles in Shell, auch `locate` (heute Lua) | 3.7 | geplant | 21.11. | (A); Fassung 2 sah schon „Shell, kein Lua-Daemon“ vor |
 
