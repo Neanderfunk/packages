@@ -1,10 +1,51 @@
 # Entwurf: neanderfunk-automesh
 
-Stand 02.10.2026, Fassung 2. Noch kein Code, Testtermin offen. Die
+Stand 21.11.2026, Fassung 3 (Zuschnitt in Abschnitt 0, sonst Fassung 2
+vom 02.10.2026). Noch kein Code, Testtermin offen. Die
 Entstehung mit beiden Reviews steht in der
 Git-Historie dieser Datei (Fassung 1 bis 9bfdd64). Hier steht nur noch der
 bereinigte Stand. Herkunft einzelner Regeln in Klammern: (A) = Entscheidung
 adorfer, (R1-x) / (R2-x) = erstes bzw. zweites Review.
+
+## 0. Zuschnitt 21.11.2026 (A)
+
+Fassung 3 engt den Entwurf ein. Wo die Abschnitte 1 bis 16 mehr vorsehen,
+gilt dieser Abschnitt.
+
+- **Handelnde Knoten:** nur Knoten mit der aktuellen Firmware, also
+  Multi-Domain 2025.1. Jeder Knoten hat alle Domains an Bord und meldet
+  seinen `domain_code`; die Normalisierung von Altcodes (Abschnitt 2)
+  braucht es für eigene Knoten nicht mehr, nur noch für Gegenüber mit alter
+  Firmware.
+- **VXLAN ausgeklammert:** keine Suche nach VXLAN am LAN, kein Beitritt
+  über eine zweite VNI. Der Sniffer aus 6.2 entfällt damit vorerst.
+- **Trennen von Domain-Brücken (Fall A, Abschnitt 7) ist das wichtige
+  Feature** und der erste Eingriff.
+- **Beitritt nur per WLAN-Mesh (802.11s, Abschnitt 6.3), nur für Knoten
+  ohne VPN-Uplink**, also Inseln. Die Regeln aus 6.1, 6.4, 8, 9 und 10
+  gelten weiter.
+- **Erkennen** der LAN-Nachbarn und ihrer Domain gibt es schon in
+  `neanderfunk-domainhelper` (`batctl n` und `gluon-neighbour-info` je
+  Mesh-Interface, Stand 0.3). automesh baut darauf auf.
+
+Offen:
+
+- **Welche Meshes darf eine Insel betreten?** Entscheidung 2 vom 02.10.
+  sagt „alle außer `deny`“. Vorschlag für den Anfang: nur die Mesh-IDs
+  unserer eigenen Domains, gelesen aus `/lib/gluon/domains/*.json` (wie
+  beim Locator). Fremde Communities kommen später dazu.
+- **Paket:** automesh als Teil von `neanderfunk-domainhelper` (ein
+  Quellpaket, gemeinsame Shell-Bibliothek), der Teil mit Beitritt und WLAN
+  als eigenes Binärpaket, das nicht auf 64-MB-Geräte kommt.
+
+Reihenfolge:
+
+1. Erkennen und melden in allen Domains (Syslog, respondd, Banner), ohne
+   Eingriff.
+2. linkcheck-Marker nur bei Heimat-Gateway (Abschnitt 9), auf allen
+   Geräten. Muss vor dem Beitritt im Feld sein.
+3. Trennen (Fall A).
+4. WLAN-Beitritt für Inseln.
 
 ## 1. Worum es geht
 
