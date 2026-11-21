@@ -24,6 +24,12 @@ gilt dieser Abschnitt.
 - **Beitritt nur per WLAN-Mesh (802.11s, Abschnitt 6.3), nur für Knoten
   ohne VPN-Uplink**, also Inseln. Die Regeln aus 6.1, 6.4, 8, 9 und 10
   gelten weiter.
+- **Beitritt nur zu Meshes unserer eigenen Domains** (A, 21.11.): Die
+  Mesh-IDs kommen aus `/lib/gluon/domains/*.json` der eigenen Firmware.
+  Nachbar-Communities sind vorerst draußen, und mit ihnen die Sperrliste
+  `deny` (Entscheidung 2 vom 02.10., Abschnitte 12 und 13): Sie war für den
+  Beitritt zu Nachbar-Communities gedacht und kommt erst mit diesem
+  Feature wieder.
 - **Knoten ohne eigenes VPN wechseln die Domain selbst, auch außerhalb von
   `25_hvb`** (A, 21.11.), wie `lan_switch` im domainhelper. Das ist ein
   dauerhafter Wechsel (`gluon-switch-domain`, schreibt in den Flash) und
@@ -44,10 +50,6 @@ gilt dieser Abschnitt.
 
 Offen:
 
-- **Welche Meshes darf eine Insel betreten?** Entscheidung 2 vom 02.10.
-  sagt „alle außer `deny`“. Vorschlag für den Anfang: nur die Mesh-IDs
-  unserer eigenen Domains, gelesen aus `/lib/gluon/domains/*.json` (wie
-  beim Locator). Fremde Communities kommen später dazu.
 - **Paket:** automesh als Teil von `neanderfunk-domainhelper` (ein
   Quellpaket, gemeinsame Shell-Bibliothek), der Teil mit Beitritt und WLAN
   als eigenes Binärpaket, das nicht auf 64-MB-Geräte kommt.
