@@ -1,9 +1,23 @@
 #!/bin/sh /etc/rc.common
-# Einmal bald nach dem Start melden (LAN-Mesh-Pruefung), im Hintergrund.
-# Ohne neanderfunk_domainhelper.locator.urls in der aktiven Domain endet locate.sh sofort.
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Zwei Instanzen:
+#   bridge  Domain-Bruecken am LAN-Mesh erkennen und trennen, Schleife alle
+#           91 s (bridge-loop.sh), von procd neu gestartet, falls sie endet.
+#   locate  einmal bald nach dem Start melden (LAN-Mesh-Pruefung). Ohne
+#           neanderfunk_domainhelper.locator.urls in der aktiven Domain endet
+#           locate.sh sofort.
 
 START=99
+USE_PROCD=1
 
-start() {
-	/lib/gluon/neanderfunk-domainhelper/locate.sh boot </dev/null >/dev/null 2>&1 &
+start_service() {
+	procd_open_instance bridge
+	procd_set_param command /lib/gluon/neanderfunk-domainhelper/bridge-loop.sh
+	procd_set_param respawn 3600 5 0
+	procd_close_instance
+
+	procd_open_instance locate
+	procd_set_param command /lib/gluon/neanderfunk-domainhelper/locate.sh boot
+	procd_close_instance
 }

@@ -2,7 +2,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-domainhelper
-PKG_VERSION:=0.5
+PKG_VERSION:=0.6
 PKG_RELEASE:=1
 PKG_LICENSE:=BSD-3-Clause
 
@@ -34,8 +34,9 @@ define Package/$(PKG_NAME)/description
 	taeglich. Haengen am Kabel Nachbarn genau einer anderen Domain, die im
 	Image steht, schaltet er selbst dorthin um.
 	bridge: Domain-Bruecken am LAN-Mesh erkennen und, wenn beide Seiten
-	einen eigenen Uplink haben, zur Laufzeit trennen (ifdown, kein uci
-	commit), in allen Domains.
+	einen eigenen Uplink haben, zur Laufzeit bis zum naechsten Neustart
+	trennen (ebtables bzw. ifdown, kein uci commit), in allen Domains,
+	alle 91 s als procd-Dienst.
 endef
 
 define Build/Prepare

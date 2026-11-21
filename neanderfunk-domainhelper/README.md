@@ -144,9 +144,14 @@ bridge
 
 Wir fahren `mesh.vxlan = false`. Steckt am LAN-Mesh ein Knoten einer
 anderen Domain, verschmelzen beide batman-Wolken sofort (Domain-Brücke).
-`neanderfunk-domainhelper bridge` läuft jede Minute aus micron.d und
-trennt solche Brücken, wo es niemanden abschneidet. Fall A aus dem
-automesh-Entwurf.
+`neanderfunk-domainhelper bridge` läuft alle 91 s und trennt solche
+Brücken, wo es niemanden abschneidet. Fall A aus dem automesh-Entwurf.
+Die Schleife `bridge-loop.sh` ist eine procd-Instanz von
+`/etc/init.d/neanderfunk-domainhelper` (respawn). 91 s statt jeder vollen
+Minute aus micron.d, damit die Läufe nicht immer auf denselben
+Sekundenpunkt fallen und zwei Knoten an derselben Brücke nicht im
+Gleichschritt prüfen. Die Schleife belegt dauerhaft etwa 50 bis 60 KB
+eigenen Speicher.
 
 - **Erkennen:** LAN-Mesh-Nachbarn (alle batman-Interfaces außer
   `mesh-vpn` und `meshN`) per respondd nach ihrer Domain fragen, wie
@@ -159,7 +164,8 @@ automesh-Entwurf.
   (`nodestatus` liest `/tmp/neanderfunk-domainhelper.banner`), Zustand in
   `/tmp/neanderfunk-domainhelper.bridge/state`. Ein Feld in respondd fehlt
   noch.
-- **Trennen** nach 120 s und frischer Nachfrage, nur wenn alles zutrifft:
+- **Trennen** im nächsten Durchgang (91 s später) nach frischer Nachfrage,
+  nur wenn alles zutrifft:
   - Trennen ist nicht abgeschaltet (`neanderfunk-domainhelper.bridge.cut`);
   - der Knoten hat eigenes VPN, behält also seinen Uplink;
   - die Gegenseite hat einen eigenen Uplink: Ein fremder Nachbar an dieser
@@ -180,9 +186,16 @@ automesh-Entwurf.
     `gluon_wired`-Interface.
   - Jeder Lauf prüft, ob die Trennung noch greift (ein Neuladen der
     Firewall löscht die Regeln), und setzt sie neu.
-- **Neuprüfung** nach 10, 20, 40, 80, dann alle 120 min; 24 h ohne Trennen
-  setzen die Stufe zurück. Ein Neustart hebt jede Trennung auf, die
-  Prüfung beginnt dann von vorn.
+- **Getrennt bis zum Neustart** (adorfer 21.11.): keine Freigabe
+  zwischendurch, die Domains wachsen also nicht alle paar Stunden wieder
+  zusammen. Fällt danach ein VPN weg und steht die Wolke ohne Gateway da,
+  startet ein Wächter (linkcheck `no_gateway`) den Knoten neu, dann
+  beginnt die Prüfung von vorn. Nach jedem Neustart hängen die Domains
+  etwa 2 bis 3 min zusammen, bis wieder getrennt ist.
+- **Beide Seiten trennen**, wenn beide die Bedingungen erfüllen, ohne
+  Absprache: Die Regeln sperren nur batman-Frames von und zu diesem
+  Knoten, eine Seite allein reicht schon, beide schaden nicht. Läuft auf
+  der Gegenseite eine Firmware ohne `bridge`, trennt eben nur unsere.
 - **In einer Domain mit Ortung** (`25_hvb`) trennt `bridge` nicht, sondern
   startet einmal `locate`, das meldet und selbst in die Domain des
   Nachbarn umschaltet.
@@ -266,6 +279,11 @@ die Nachbarn standen wirklich in `21_dias`:
   wäre `ifdown mesh_other`.
 - Nicht getestet: eine echte Brücke zwischen zwei Domains und der Fall
   „Gegenseite ohne eigenen Uplink“ mit eigenem VPN.
+
+21.11.2026, 0.6 auf dem M60, gekürzt wie aus dem Bau
+(`strip-shell-comments`): Schleife als procd-Instanz, Brücke um 06:38:09
+erkannt, um 06:39:51 getrennt (ein Durchgang später, nicht auf der vollen
+Minute), keine Freigabe mehr.
 
 Lizenz
 ------

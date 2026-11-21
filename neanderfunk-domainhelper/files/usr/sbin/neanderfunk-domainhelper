@@ -14,14 +14,15 @@
 #                       eingeschalteter Ortung (schaltet nie)
 #
 #   neanderfunk-domainhelper bridge [-n]
-#       Domain-Bruecken am LAN-Mesh erkennen und trennen, jede Minute aus
-#       micron.d. -n: nur zeigen, was passieren wuerde.
+#       Domain-Bruecken am LAN-Mesh erkennen und bis zum Neustart trennen,
+#       alle 91 s aus bridge-loop.sh (procd). -n: nur zeigen, was passieren
+#       wuerde.
 #
 # Bis 0.3 war das ein Lua-Skript. Seit 0.4 Shell; die Unterbefehle liegen in
 # /lib/gluon/neanderfunk-domainhelper/cmd_<name>.sh, gemeinsame Funktionen
 # in lib.sh. So laedt der Minutenlauf von "bridge" weder jshn noch locate.
 
-VERSION=0.5
+VERSION=0.6
 
 . /lib/gluon/neanderfunk/site.sh
 . /lib/gluon/neanderfunk-domainhelper/lib.sh

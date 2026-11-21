@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # Unterbefehl "bridge" von neanderfunk-domainhelper, wird von
-# /usr/sbin/neanderfunk-domainhelper gesourct. Jede Minute aus micron.d.
+# /usr/sbin/neanderfunk-domainhelper gesourct. Alle 91 s aus bridge-loop.sh
+# (procd-Dienst, Teil von /etc/init.d/neanderfunk-domainhelper).
 #
 # Domain-Bruecken erkennen und trennen (docs/entwurf-automesh.md, Fall A).
 # Wir fahren mesh.vxlan = false: Steckt am LAN-Mesh ein Knoten einer anderen
@@ -15,9 +16,9 @@
 #   2. Ein Nachbar ist fremd nur auf positiven Beleg: Er nennt eine Domain,
 #      die in dieser Firmware steht und nicht die eigene ist (_EOL der
 #      Sackgasse zaehlt nicht). Unbekannte Codes loesen nichts aus.
-#   3. Bruecke gesehen: melden (Syslog, Banner, Statusdatei), dann BR_FRIST
-#      Sekunden warten.
-#   4. Nach der Frist frisch nachfragen und trennen, wenn ALLES zutrifft:
+#   3. Bruecke gesehen: melden (Syslog, Banner, Statusdatei), bis zum
+#      naechsten Lauf warten (BR_FRIST, ein Durchgang der Schleife).
+#   4. Dann frisch nachfragen und trennen, wenn ALLES zutrifft:
 #      - Trennen nicht abgeschaltet (uci neanderfunk-domainhelper.bridge.cut);
 #      - eigenes VPN (batman-Nachbar auf mesh-vpn): Wir behalten unseren
 #        Uplink;
@@ -26,8 +27,12 @@
 #        eigenen Tunnel moeglich), oder in batctl gwl steht ein Gateway, das
 #        wir ueber genau diese Schnittstelle erreichen. Sonst schnitte das
 #        Trennen die Gegenseite vom Netz ab.
-#      Getrennt wird nur zur Laufzeit, kein uci commit, ein Neustart hebt es
-#      auf:
+#      Getrennt wird nur zur Laufzeit, kein uci commit, und es bleibt
+#      getrennt bis zum naechsten Neustart (adorfer 21.11.): keine
+#      Freigabe zwischendurch, also kein erneutes Zusammenwachsen. Faellt
+#      danach ein VPN weg und die Wolke steht ohne Gateway da, startet ein
+#      Waechter (linkcheck no_gateway) den Knoten neu, dann beginnt die
+#      Pruefung von vorn:
 #      - Ist der Hardif eine Bridge (br-mesh_other, br-wan bei Mesh-on-WAN):
 #        zwei ebtables-Regeln verwerfen batman-Frames (0x4305) von und zu
 #        diesem Knoten an der Bridge. Die Weiterleitung zwischen den Ports
@@ -38,8 +43,6 @@
 #        gluon_wired-Interface (mesh_other, ...).
 #      Solange getrennt, prueft jeder Lauf, ob die Trennung noch greift
 #      (ein Neuladen der Firewall loescht die Regeln), und setzt sie neu.
-#   5. Nach 10, 20, 40, 80, dann 120 min wieder freigeben und neu pruefen.
-#      24 h ohne Trennen setzen die Stufe zurueck.
 #
 # Nur zum Testen: uci set neanderfunk-domainhelper.bridge.test_domain=<d>
 # (ohne commit) laesst bridge so tun, als stuende der Knoten in <d>. So
@@ -55,7 +58,9 @@
 
 BR_DIR=/tmp/neanderfunk-domainhelper.bridge
 BR_BANNER=/tmp/neanderfunk-domainhelper.banner
-BR_FRIST=120
+# Ein Durchgang der Schleife (91 s) minus Spiel: erkannt in einem Lauf,
+# getrennt im naechsten
+BR_FRIST=80
 BR_CACHE_AGE=900
 BR_REEVAL=600
 
@@ -124,12 +129,6 @@ br_cut_enabled() {
 		0|false|no|off|disabled) return 1 ;;
 	esac
 	return 0
-}
-
-br_backoff_min() {
-	case "$1" in
-		0) echo 10 ;; 1) echo 20 ;; 2) echo 40 ;; 3) echo 80 ;; *) echo 120 ;;
-	esac
 }
 
 # Erster fremder Nachbar aus einer dh_lan_mesh-Datei: "<iface> <node_id> <domain>"
@@ -209,13 +208,6 @@ br_do_cut() {
 	esac
 }
 
-br_do_release() {
-	case "$1" in
-		eb:*) while br_rules_present "${1#eb:}" ; do br_rules -D "${1#eb:}" ; done ;;
-		if:*) ifup "${1#if:}" ;;
-	esac
-}
-
 # Greift die Trennung noch?
 br_still_cut() {
 	case "$1" in
@@ -242,19 +234,11 @@ br_target() {
 	echo "if:$p"
 }
 
-# --- getrennt: halten, nach Ablauf der Stufe freigeben ----------------------
+# --- getrennt: bis zum Neustart halten ----------------------------------------
 
 if [ "$state" = cut ] ; then
-	lvl=0 last=0
-	[ -r "$BR_DIR/backoff" ] && read -r lvl last < "$BR_DIR/backoff"
-	wait=$(( $(br_backoff_min "$lvl") * 60 ))
-	if [ $((now - s_since)) -ge "$wait" ] ; then
-		br_say "Domain-Bruecke: $s_if wieder frei, pruefe erneut"
-		[ "$dry" = 1 ] || br_do_release "$s_if"
-		br_save idle
-		br_banner ''
-	elif [ "$dry" = 1 ] ; then
-		echo "getrennt: $s_if seit $((now - s_since)) s, frei nach $wait s"
+	if [ "$dry" = 1 ] ; then
+		echo "getrennt: $s_if seit $((now - s_since)) s, bis zum Neustart"
 	elif ! br_still_cut "$s_if" ; then
 		br_say "Domain-Bruecke: Trennung $s_if war aufgehoben, setze sie neu"
 		br_do_cut "$s_if"
@@ -378,24 +362,13 @@ fi
 
 # --- Trennen --------------------------------------------------------------------
 
-lvl=-1 last=0
-[ -r "$BR_DIR/backoff" ] && read -r lvl last < "$BR_DIR/backoff"
-if [ "$lvl" -lt 0 ] || [ $((now - last)) -ge 86400 ] ; then
-	lvl=0
-else
-	lvl=$((lvl + 1))
-	[ "$lvl" -gt 4 ] && lvl=4
-fi
-min="$(br_backoff_min "$lvl")"
-
 if [ "$dry" = 1 ] ; then
-	echo "wuerde trennen: $target ($f_if), Nachbar $f_id in $f_dom, Neupruefung nach $min min"
+	echo "wuerde trennen: $target ($f_if), Nachbar $f_id in $f_dom, bis zum Neustart"
 	exit 0
 fi
 
 br_do_cut "$target"
-echo "$lvl $now" > "$BR_DIR/backoff"
 br_save cut "$target" "$now" "$f_dom" "$f_id" "$now" getrennt
-br_say "Domain-Bruecke getrennt: $target ($f_if), Nachbar $f_id in $f_dom, eigene Domain $own_domain${test_domain:+ (Test)}, Neupruefung in $min min"
-br_banner "yellow|Domain-Bruecke zu $f_dom an $f_if getrennt, Neupruefung in $min min (oder Neustart)"
+br_say "Domain-Bruecke getrennt: $target ($f_if), Nachbar $f_id in $f_dom, eigene Domain $own_domain${test_domain:+ (Test)}, bis zum Neustart"
+br_banner "yellow|Domain-Bruecke zu $f_dom an $f_if getrennt (Nachbar $f_id), bis zum Neustart"
 exit 0

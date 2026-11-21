@@ -472,7 +472,7 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 5 | Normalisierung von Altcodes, `home_extra` | 2, 12 | aufgeschoben | 21.11. | handeln dürfen nur Multi-Knoten (A); nötig höchstens für Nachbarn mit alter Firmware |
 | 6 | linkcheck: Gateway-Marker nur bei Heimat-Gateway, alle Geräte | 9, 10 | geplant | 21.11. | Schritt 2, Voraussetzung für Beitritt |
 | 7 | Fall A: Domain-Brücke trennen, Knoten mit VPN, nur Laufzeit | 7 | umgesetzt | 21.11. | 0.5; an einer Bridge per ebtables (0x4305 von und zu uns), nicht `ifdown`: das baute die ganze Bridge ab und trennte auch die anderen Knoten an unseren Ports; nur bei Einzelgerät `ifdown`. Zusätzlich: Gegenseite muss eigenen Uplink haben |
-| 8 | Frist 120 s und Notbremse „eigener Randknoten meldet sich“ | 7 | teilweise umgesetzt | 21.11. | Frist umgesetzt; Notbremse erst mit dem Beitritt (#14) nötig |
+| 8 | Frist und Notbremse „eigener Randknoten meldet sich“ | 7 | teilweise umgesetzt | 21.11. | Frist ein Durchgang (91 s, nicht auf der vollen Minute, A); Notbremse erst mit dem Beitritt (#14) nötig |
 | 9 | Domainwechsel ohne eigenes VPN am Kabel, alle Domains | neu | geplant | 21.11. | Schritt 3 (A); Flash-Ausnahme, höchstens 1 je Tag (Vorschlag) |
 | 10 | Fall B `merged`: ohne VPN im fremden Mesh bleiben, Filter für fremde Präfixe | 6.4, 6.5 | aufgeschoben | 21.11. | für eigene Domains ersetzt durch #9; bleibt Thema für Nachbar-Communities |
 | 11 | Beitritt am LAN per VXLAN (zweite VNI) | 6.2 | aufgeschoben | 21.11. | VXLAN ausgeklammert (A) |
@@ -484,7 +484,7 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 17 | Sperrliste `deny`, PPA-Begründung | 12, 13 | aufgeschoben | 21.11. | war für Nachbar-Communities gedacht (A) |
 | 18 | Kanalwechsel für den Beitritt, AP wechselt mit | 6.3, 16.5 | geplant | 02.10. | gilt weiter, nur Laufzeit-Delta |
 | 19 | Zustände in `/tmp/automesh.state` | 5 | geplant | 21.11. | ohne `merged` und VXLAN-Zustände kleiner |
-| 20 | Sperren gegen Pendeln, exponentiell, global und je Netz | 8 | teilweise umgesetzt | 21.11. | für Fall A: Neuprüfung nach 10, 20, 40, 80, 120 min, Rücksetzen nach 24 h; global und je Netz erst mit dem Beitritt |
+| 20 | Sperren gegen Pendeln, exponentiell, global und je Netz | 8 | aufgeschoben | 21.11. | für Fall A entfällt die Freigabe: getrennt bis zum Neustart (A, 0.6); global und je Netz erst mit dem Beitritt |
 | 21 | Gemeinsames WLAN-Lock `/var/lock/neanderfunk-wifi.lock` | 3, 9 | geplant | 02.10. | Schritt 4 |
 | 22 | Rücksicht auf autoupdater-wifi-fallback | 9 | geplant | 02.10. | ob ohne Gluon-Patch möglich, offen |
 | 23 | Doppel-Randknoten: höhere MAC löst auf | 5 | geplant | 02.10. | Schritt 4 |
@@ -496,3 +496,5 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 29 | Paket: automesh in `neanderfunk-domainhelper`, Beitritt als eigenes Binärpaket | neu | geplant | 21.11. | Integration entschieden (A); Binärpaket wegen #24 |
 | 30 | Alles in Shell, auch `locate` (bis 0.3 Lua) | 3.7 | umgesetzt | 21.11. | domainhelper 0.4, live auf Testknoten getestet, noch nicht im Testbau; gemeinsame Funktionen in `lib.sh` |
 | 31 | In `25_hvb` nicht trennen, sondern `locate` starten (schaltet selbst um) | neu | umgesetzt | 21.11. | 0.5 |
+| 32 | Fall A getrennt bis zum Neustart, keine Neuprüfung zwischendurch | 8 | umgesetzt | 21.11. | (A); fällt ein VPN weg, rettet der Wächter (linkcheck `no_gateway`) per Neustart |
+| 33 | Prüftakt 91 s als procd-Schleife statt jeder Minute aus micron.d | neu | umgesetzt | 21.11. | (A); nicht im Gleichschritt mit der vollen Minute |
