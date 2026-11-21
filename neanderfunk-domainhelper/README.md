@@ -19,6 +19,9 @@ anderen Domain, schaltet er selbst dorthin um. Konzept und Format:
 [docs/konzept-hvb-ortung.md](../docs/konzept-hvb-ortung.md), Abschnitte 4.2
 und 4.3.
 
+Wann welcher Teil Domain oder Kanal wechselt (Ausgang, Attraktor, mit VPN
+oder Insel): [docs/matrix-domainwechsel.md](../docs/matrix-domainwechsel.md).
+
 **Stand 0.9 (21.11.2026):** `bridge` trennt nicht gegen Nachbarn aus einer Domain mit Ortung (`25_hvb`), die schalten per `lan_switch` selbst um. 0.8: Fall b von `island` verwirft vor dem Domainwechsel alle Laufzeit-Deltas (sonst schriebe das pauschale `uci commit` in `001-reset-uci` etwa die Offline-SSID in den Flash). 0.7: neu `island`. 0.6: `bridge` trennt bis zum
 Neustart, Takt 91 s. 0.5: neu `bridge`. Seit 0.4 ganz in Shell:
 `/usr/sbin/neanderfunk-domainhelper` verteilt nur noch auf
@@ -357,6 +360,29 @@ in `21_dias` blieben auf 9 und 44.
   nur, wenn seit dem Boot Nachbarn oder ein Gateway gesehen wurden. Danach
   läuft die Wartezeit ab dem Boot ungestört.
 - Fall b nur als Trockenlauf.
+
+21.11.2026, 0.8/0.9 live, Fall b und die LAN-Fälle der Matrix:
+
+- **Fall b auf einem WS-AP3825i** (26111912bro, 0.8 eingespielt), in
+  `21_dias`, in Reichweite von `wlf-mesh` (10_wlf, Kanal 9, -17 dBm).
+  Wartezeiten nur auf dem Gerät auf 5/10 min gekürzt, VPN per `ifdown` aus,
+  linkcheck als uci-Delta aus. VPN um 19:14 aus, Neustart nach 11 min, um
+  19:29 in `10_wlf` mit je 2 Mesh-Nachbarn auf beiden Bändern und VPN.
+  Kanäle 9/44 sind dort Standard, also nicht festgeschrieben. Im Flash
+  keine Offline-SSID und kein abgeschaltetes linkcheck: Das Verwerfen der
+  Deltas vor dem Wechsel greift. Der Mitschnitt des Syslogs blieb leer
+  (busybox-`grep` ohne `--line-buffered`), belegt sind Zeiten und Endzustand.
+- **A1 ohne VPN auf einem NWA50AX Pro** (26112107bro, 0.9 eingespielt) am
+  LAN-Mesh von 18_nefuk: nach `gluon-switch-domain 25_hvb` über das
+  verschmolzene Mesh erreichbar, bei 90 s Laufzeit per `lan_switch` zurück
+  nach 18_nefuk.
+- **B1 ohne VPN, derselbe Knoten in `21_dias`** am Kabel von 18_nefuk:
+  `bridge` meldet die Brücke und lässt sie stehen; der Knoten nutzt das
+  Gateway und das öffentliche Präfix von 18_nefuk (Mischbetrieb).
+- Beim Domainwechsel nimmt der Knoten die Kanäle der neuen Domain, auch
+  mit `preserve_channels=1` (8/auto wurde 9/48).
+- Nicht getestet: B1h (Gegenseite ohne `bridge`), eine echte Brücke
+  zwischen zwei VPN-Knoten verschiedener Domains.
 
 Lizenz
 ------

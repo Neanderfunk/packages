@@ -544,7 +544,7 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 11 | Beitritt am LAN per VXLAN (zweite VNI) | 6.2 | aufgeschoben | 21.11. | VXLAN ausgeklammert (A) |
 | 12 | Sniffer `neanderfunk-automesh-sniff` (AF_PACKET, BPF) | 6.2 | aufgeschoben | 21.11. | hing an VXLAN; rohes batman zeigt schon `batctl n` |
 | 13 | BATMAN_V-Netze überspringen | 6.2 | aufgeschoben | 21.11. | nur mit Sniffer; unsere Domains fahren alle BATMAN_IV |
-| 14 | WLAN-Beitritt (802.11s) für Inseln ohne VPN | 6.3 | umgesetzt | 21.11. | 0.7 `island`: a) eigene Domain, anderer Kanal, nach 60 min; b) andere Domain dieser Firmware, nach 600 min; Trockenläufe geprüft; a live auf dem M60 bestanden (21.11., nach 63 min Kanal 1 → 9, Gateway nach 1 min zurück), b nur als Trockenlauf |
+| 14 | WLAN-Beitritt (802.11s) für Inseln ohne VPN | 6.3 | umgesetzt | 21.11. | 0.7 `island`: a) eigene Domain, anderer Kanal, nach 60 min; b) andere Domain dieser Firmware, nach 600 min; Trockenläufe geprüft; a live auf dem M60 bestanden (21.11., nach 63 min Kanal 1 → 9, Gateway nach 1 min zurück), b live auf einem WS-AP3825i bestanden (21.11., 21_dias nach 10_wlf, Wartezeiten auf dem Gerät gekürzt) |
 | 15 | Beitritt nur zu Meshes eigener Domains, Mesh-IDs aus `/lib/gluon/domains/*.json` | neu | umgesetzt | 21.11. | 0.7; Domains mit Ortung (25_hvb) nie Ziel von b |
 | 16 | Beitritt zu Nachbar-Communities | 6.3, 16.2 | aufgeschoben | 21.11. | (A); kommt mit #17 zurück |
 | 17 | Sperrliste `deny`, PPA-Begründung | 12, 13 | aufgeschoben | 21.11. | war für Nachbar-Communities gedacht (A) |
