@@ -1,5 +1,8 @@
 # Entwurf: neanderfunk-automesh
 
+Seit 21.11.2026 Teil von `neanderfunk-domainhelper` (Abschnitt 0), der
+Name des Entwurfs bleibt.
+
 Stand 21.11.2026, Fassung 3 (Zuschnitt in Abschnitt 0, sonst Fassung 2
 vom 02.10.2026). Noch kein Code, Testtermin offen. Die
 Entstehung mit beiden Reviews steht in der
@@ -48,11 +51,12 @@ gilt dieser Abschnitt.
   `neanderfunk-domainhelper` (`batctl n` und `gluon-neighbour-info` je
   Mesh-Interface, Stand 0.3). automesh baut darauf auf.
 
-Offen:
-
-- **Paket:** automesh als Teil von `neanderfunk-domainhelper` (ein
-  Quellpaket, gemeinsame Shell-Bibliothek), der Teil mit Beitritt und WLAN
-  als eigenes Binärpaket, das nicht auf 64-MB-Geräte kommt.
+- **Paket:** automesh wird Teil von `neanderfunk-domainhelper` (A, 21.11.),
+  kein eigenes Paket `neanderfunk-automesh`. Ein Quellpaket mit gemeinsamer
+  Shell-Bibliothek. Damit Entscheidung 4 (kein automesh auf 64-MB-Geräten)
+  greift, kommt der Teil mit Beitritt und WLAN als eigenes Binärpaket aus
+  demselben Quellpaket, das die lowmem-Gruppen nicht bekommen. Der Name
+  „automesh“ bleibt für den Funktionsteil.
 
 Reihenfolge:
 
@@ -482,5 +486,5 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 26 | Kein WLAN-Scan auf MT7915 | 6.3 | verworfen | 04.10. | Scan-Fehler nur unter 2023.2, nicht unter 2025.1 |
 | 27 | Mesh-IDs per Muster `.*-mesh` erkennen | 6.3 | verworfen | 02.10. | Domains 43 bis 47 heißen `mesh-<kurz>`; Liste statt Muster |
 | 28 | Erlaubnisliste statt Sperrliste | 13 | verworfen | 02.10. | PPA (A); für eigene Domains ist #15 faktisch eine Liste aus der Firmware |
-| 29 | Paket: automesh in `neanderfunk-domainhelper`, Beitritt als eigenes Binärpaket | neu | offen | 21.11. | Vorschlag, noch nicht entschieden |
+| 29 | Paket: automesh in `neanderfunk-domainhelper`, Beitritt als eigenes Binärpaket | neu | geplant | 21.11. | Integration entschieden (A); Binärpaket wegen #24 |
 
