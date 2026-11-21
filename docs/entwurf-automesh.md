@@ -465,7 +465,7 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 
 | # | Feature | Fassung 2 | Status | Seit | Grund, Anmerkung |
 |---|---|---|---|---|---|
-| 1 | LAN-Mesh-Nachbarn und ihre Domain erkennen (`batctl n`, respondd per Link-Local) | 4, 7 | umgesetzt | 21.11. | domainhelper 0.5 `bridge`, alle Domains, jede Minute; live getestet, noch nicht im Testbau |
+| 1 | LAN-Mesh-Nachbarn und ihre Domain erkennen (`batctl n`, respondd per Link-Local) | 4, 7 | umgesetzt | 21.11. | domainhelper 0.5/0.6 `bridge`, alle Domains, alle 91 s; live getestet, noch nicht im Testbau |
 | 2 | Signalisierung: Syslog, respondd, Statusseite, Banner | 11 | teilweise umgesetzt | 21.11. | Syslog und Banner (0.5); respondd-Feld und Statusseite offen (C-Modul braucht einen Build) |
 | 3 | Prüfkette „Wer ist dieses Gateway?“ | 4 | geplant | 21.11. | einfacher, weil Multi-Knoten `domain_code` melden |
 | 4 | MAC-Schema `02:ca:ff:ee:<NN>:<SS>` als Heimat-Hinweis | 4, 10 | geplant | 02.10. | nur Hinweis, nie Urteil |
