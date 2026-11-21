@@ -256,6 +256,10 @@ gescannt wird höchstens alle 5 min.
 - **Nach einem Wechsel** frühestens nach 6 h der nächste.
 - Ein aktives LAN-Mesh oder weitere Knoten in der Wolke verhindern den
   Wechsel nicht; maßgeblich ist nur: kein Gateway.
+- **Zusammen mit linkcheck:** Fällt der Uplink zur Laufzeit weg, startet
+  linkcheck den Knoten nach etwa 20 bis 30 min einmal neu. Danach hat er
+  seit dem Boot weder Nachbarn verloren noch ein Gateway gesehen, linkcheck
+  hält still, und die Wartezeit von `island` zählt ab dem Boot.
 
 Abschalten: `uci set neanderfunk-domainhelper.island.enabled=0 ; uci commit
 neanderfunk-domainhelper`. `neanderfunk-domainhelper island -n` übergeht
@@ -334,6 +338,23 @@ die Nachbarn standen wirklich in `21_dias`:
 (`strip-shell-comments`): Schleife als procd-Instanz, Brücke um 06:38:09
 erkannt, um 06:39:51 getrennt (ein Durchgang später, nicht auf der vollen
 Minute), keine Freigabe mehr.
+
+21.11.2026, 0.7 (`island`) live auf dem M60, Fall a. Als Insel hergerichtet:
+Mesh-VPN mit `ifdown`, LAN-Mesh per ebtables getrennt, Kanäle 1 und 36
+statt 9 und 44, alle linkcheck-Prüfungen als uci-Delta aus. Die Nachbarn
+in `21_dias` blieben auf 9 und 44.
+
+- Gateway ab 09:03 weg. Um 10:07:31, also nach 63 min (60 min plus 3 min
+  Versatz aus der MAC), meldete der Knoten: „Insel: Mesh der eigenen
+  Domain 21_dias auf 2g Kanal 9 (-14 dBm, …), stelle Kanal von 1 auf 9
+  (Standardkanal, ohne Festschreiben)“. Eine Minute später war das
+  Gateway wieder da. 5 GHz blieb auf 36: Ein Band reicht.
+- Ein erster Lauf ohne abgeschaltetes linkcheck endete nach 13 min mit
+  einem Neustart („lost neighbours 4th: batinterfaces.mesh-vpn“). Auf
+  einer echten Insel ist das der erwartete eine Neustart: linkcheck greift
+  nur, wenn seit dem Boot Nachbarn oder ein Gateway gesehen wurden. Danach
+  läuft die Wartezeit ab dem Boot ungestört.
+- Fall b nur als Trockenlauf.
 
 Lizenz
 ------
