@@ -514,6 +514,10 @@ Erlaubnisliste (A) und kein Ausblenden von Knotendaten.
 Stand 21.11.2026. Bezug ist der Funktionsumfang von Fassung 2. Pflegen bei
 jeder Entscheidung und jedem Bau: Status, Datum, Grund.
 
+Welche Wechsel in welcher Lage greifen (Ausgang 25_hvb oder andere Domain,
+Attraktor LAN- oder WLAN-Mesh, mit VPN oder Insel):
+[matrix-domainwechsel.md](matrix-domainwechsel.md).
+
 Status:
 - **umgesetzt**: im Paket und getestet;
 - **geplant**: im Zuschnitt von Fassung 3, noch nicht gebaut (Schritt 1 bis 4
