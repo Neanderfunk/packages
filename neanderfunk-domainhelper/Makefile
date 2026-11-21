@@ -2,7 +2,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-domainhelper
-PKG_VERSION:=0.4
+PKG_VERSION:=0.5
 PKG_RELEASE:=1
 PKG_LICENSE:=BSD-3-Clause
 
@@ -19,15 +19,22 @@ define Package/$(PKG_NAME)
   URL:=https://github.com/Neanderfunk/packages
 endef
 
+define Package/$(PKG_NAME)/conffiles
+/etc/config/neanderfunk-domainhelper
+endef
+
 define Package/$(PKG_NAME)/description
-	Hilfen rund um die Domain eines Knotens. Bisher ein Teil, locate:
-	Lokator und Abschleppdienst fuer die Halteverbots-Defaultdomain. Nur
-	aktiv in einer Domain, deren Domain-Datei
-	neanderfunk_domainhelper.locator.urls setzt: Der Knoten scannt die WLANs der Umgebung, fragt seine
-	LAN-Mesh-Nachbarn nach ihrer Domain und meldet beides per POST an den
-	Locator, einmal bald nach dem Start und danach taeglich. Haengen am
-	Kabel Nachbarn genau einer anderen Domain, die im Image steht, schaltet
-	er selbst dorthin um. Verschoben wird sonst nur ueber den nodeplacer.
+	Hilfen rund um die Domain eines Knotens, in Shell.
+	locate: Lokator und Abschleppdienst fuer die Halteverbots-Defaultdomain.
+	Nur aktiv in einer Domain, deren Domain-Datei
+	neanderfunk_domainhelper.locator.urls setzt: Der Knoten scannt die WLANs
+	der Umgebung, fragt seine LAN-Mesh-Nachbarn nach ihrer Domain und meldet
+	beides per POST an den Locator, einmal bald nach dem Start und danach
+	taeglich. Haengen am Kabel Nachbarn genau einer anderen Domain, die im
+	Image steht, schaltet er selbst dorthin um.
+	bridge: Domain-Bruecken am LAN-Mesh erkennen und, wenn beide Seiten
+	einen eigenen Uplink haben, zur Laufzeit trennen (ifdown, kein uci
+	commit), in allen Domains.
 endef
 
 define Build/Prepare

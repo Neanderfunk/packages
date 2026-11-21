@@ -3,3 +3,7 @@
 # aus /usr/lib/micron.d/hotfix frei. Die Verteilung ueber die Stunde macht
 # locate.sh selbst, erst wenn wirklich gemeldet wird.
 9 * * * * /lib/gluon/neanderfunk-domainhelper/locate.sh cron
+# Domain-Bruecken am LAN-Mesh: jede Minute. Ohne LAN-Mesh-Nachbarn endet es
+# nach batctl n; die Domains der Nachbarn fragt es nur bei neuen Nachbarn
+# und sonst alle 15 min per respondd ab.
+* * * * * /usr/sbin/neanderfunk-domainhelper bridge

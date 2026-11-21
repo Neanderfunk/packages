@@ -3,343 +3,37 @@
 #
 # neanderfunk-domainhelper: Hilfen rund um die Domain eines Knotens.
 #
-# Bisher ein Unterbefehl, "locate": Lokator und Abschleppdienst fuer die
-# Halteverbots-Defaultdomain. Scannt die WLANs in der Umgebung und meldet
-# sie per POST an den Locator. Der Knoten wertet die Antwort nicht aus.
+#   neanderfunk-domainhelper locate [-n] [-u url] [-a domain]
+#       Lokator und Abschleppdienst fuer die Halteverbots-Defaultdomain
+#       (nur aktiv, wenn die Domain neanderfunk_domainhelper.locator.urls
+#       setzt). Gestartet von locate.sh nach dem Start und taeglich.
+#           -n          nur scannen, JSON ausgeben, nichts senden
+#           -u <url>    an diese URL melden, auch ohne den Schluessel in der
+#                       Domain (schaltet dann nie)
+#           -n -a <d>   so tun, als stuende der Knoten in Domain <d> mit
+#                       eingeschalteter Ortung (schaltet nie)
 #
-# Eingeschaltet nur ueber die Domain-Datei: Steht in der aktiven Domain
-# neanderfunk_domainhelper.locator.urls, meldet der Knoten dorthin. Fehlt der
-# Schluessel (jede andere Domain), tut das Skript nichts. Im Code steht
-# keine Domain.
+#   neanderfunk-domainhelper bridge [-n]
+#       Domain-Bruecken am LAN-Mesh erkennen und trennen, jede Minute aus
+#       micron.d. -n: nur zeigen, was passieren wuerde.
 #
-# Einzige eigene Entscheidung: Ist die Ortung an und haengen am LAN-Mesh
-# Nachbarn genau einer anderen Domain, die im Image steht, schaltet der
-# Knoten nach der Meldung selbst in diese Domain um (gluon-switch-domain,
-# Neustart). Ohne VXLAN sind die batman-Wolken dann ohnehin schon verbunden.
-#
-# Konzept: docs/konzept-hvb-ortung.md, Format v1 (Abschnitt 4.3).
-# Bis 0.3 war das ein Lua-Skript; 0.4 ist eine Portierung nach Shell mit
-# demselben Meldeformat.
-#
-# Aufruf (gestartet wird es sonst von locate.sh, beim Start und taeglich):
-#   neanderfunk-domainhelper locate            scannen und melden
-#   neanderfunk-domainhelper locate -n         nur scannen, JSON ausgeben,
-#                                              nichts senden
-#   neanderfunk-domainhelper locate -u <url>   an diese URL melden, auch ohne
-#                                              den Schluessel in der Domain
-#                                              (schaltet dann nie)
-#   neanderfunk-domainhelper locate -n -a <d>  zum Testen: so tun, als stuende
-#                                              der Knoten in Domain <d> mit
-#                                              eingeschalteter Ortung (nur mit
-#                                              -n, schaltet nie)
+# Bis 0.3 war das ein Lua-Skript. Seit 0.4 Shell; die Unterbefehle liegen in
+# /lib/gluon/neanderfunk-domainhelper/cmd_<name>.sh, gemeinsame Funktionen
+# in lib.sh. So laedt der Minutenlauf von "bridge" weder jshn noch locate.
 
-VERSION=0.4
-MAX_NETS=50
+VERSION=0.5
 
 . /lib/gluon/neanderfunk/site.sh
-. /usr/share/libubox/jshn.sh
 . /lib/gluon/neanderfunk-domainhelper/lib.sh
 
-USAGE='usage: neanderfunk-domainhelper locate [-n] [-u url] [-a domain]'
-
-usage() {
-	echo "$USAGE" >&2
-	exit 2
-}
-
-[ "$1" = locate ] || usage
-shift
-dry=0
-url_override=
-as_domain=
-while [ $# -gt 0 ] ; do
-	case "$1" in
-		-n) dry=1 ;;
-		-u) [ $# -ge 2 ] || usage ; url_override="$2" ; shift ;;
-		-a) [ $# -ge 2 ] || usage ; as_domain="$2" ; shift ;;
-		*) usage ;;
-	esac
-	shift
-done
-if [ -n "$as_domain" ] && [ "$dry" = 0 ] ; then
-	echo 'neanderfunk-domainhelper: -a nur zusammen mit -n' >&2
-	exit 2
-fi
-
-# Ortung an? Nur, wenn die aktive Domain (oder die Site) die URLs mitbringt
-site_urls="$(nf_site_get '@.neanderfunk_domainhelper.locator.urls[*]')"
-active=0
-[ -n "$site_urls" ] && active=1
-if [ "$active" = 0 ] && [ "$dry" = 0 ] && [ -z "$url_override" ] ; then
-	exit 0
-fi
-
-W="/tmp/$DH_TAG.locate.$$"
-rm -rf "$W"
-mkdir -p "$W" || exit 1
-trap 'rm -rf "$W"' EXIT
-
-own_id="$(dh_own_id)"
-own_domain="$(uci -q get gluon.core.domain)"
-
-# --- WLAN-Scan ---------------------------------------------------------------
-
-# Eigene WLAN-Interfaces: Name, MAC, Typ, Frequenz (Zeilen "name mac freq typ")
-iw dev 2>/dev/null | awk '
-	function out() { if (n != "") print n, (m == "" ? "-" : m), (f == "" ? 0 : f), t }
-	/^[ \t]*Interface[ \t]/ { out(); n = $2; m = ""; t = ""; f = ""; next }
-	n == "" { next }
-	/^[ \t]*addr[ \t]/ { m = tolower($2) }
-	/^[ \t]*type[ \t]/ { t = $0; sub(/^[ \t]*type[ \t]+/, "", t); sub(/[ \t]+$/, "", t) }
-	f == "" && /\([0-9]+ MHz\)/ { s = $0; sub(/^.*\(/, "", s); sub(/ MHz\).*$/, "", s); f = s + 0 }
-	END { out() }' > "$W/ifaces"
-awk '$2 != "-" { print $2 }' "$W/ifaces" > "$W/own"
-
-# Je Band ein Interface zum Scannen: Mesh-Punkt zuerst, dann Station,
-# zuletzt AP (der braucht ap-force). Ausgabe "name typ", nach Name sortiert.
-awk '
-	{
-		t = $0; sub(/^[^ ]+ [^ ]+ [^ ]+ /, "", t)
-		r = (t == "mesh point") ? 1 : (t == "managed") ? 2 : (t == "AP") ? 3 : 0
-		if (!r) next
-		b = ($3 >= 4000) ? "5" : "2.4"
-		if (!(b in best) || r < rank[b]) { best[b] = $1; rank[b] = r; typ[b] = t }
-	}
-	END { for (b in best) print best[b] "|" typ[b] }' "$W/ifaces" | sort > "$W/targets"
-
-: > "$W/scan.all"
-: > "$W/scan.res"
-while IFS='|' read -r ifname typ ; do
-	iw dev "$ifname" scan > "$W/scan.one" 2>/dev/null
-	if ! head -n 1 "$W/scan.one" | grep -q '^BSS' && [ "$typ" = AP ] ; then
-		iw dev "$ifname" scan ap-force > "$W/scan.one" 2>/dev/null
-	fi
-	ok=0
-	head -n 1 "$W/scan.one" | grep -q '^BSS' && ok=1
-	count="$(grep -c '^BSS ' "$W/scan.one")"
-	echo "$ifname $ok $count" >> "$W/scan.res"
-	cat "$W/scan.one" >> "$W/scan.all"
-done < "$W/targets"
-
-# Filtern: eigene Interfaces, _nomap, Eintraege ohne Pegel; doppelte BSSIDs
-# (auf zwei Interfaces gesehen) nur einmal, mit dem staerkeren Pegel.
-# Ausgabe je Netz: bssid freq signal age_ms ssid mesh_id (DH_US-getrennt),
-# nach Pegel absteigend, hoechstens MAX_NETS. Sortiert wird ueber den Pegel
-# vorn in der Zeile: busybox sort auf den Knoten kennt kein -t/-k und
-# ignoriert beides ohne Fehlermeldung.
-awk -v US="$DH_US" -v ownl="$(tr '\n' ' ' < "$W/own")" '
-	BEGIN { n = split(ownl, o, " "); for (i = 1; i <= n; i++) own[o[i]] = 1 }
-	function rnd(x,   y, i) { y = x + 0.5; i = int(y); if (i > y) i--; return i }
-	function flush() {
-		if (b == "" || s == "" || (b in own) || ssid ~ /_nomap$/) return
-		if ((b in sig) && sig[b] >= s) return
-		sig[b] = s; frq[b] = f; age[b] = a; sid[b] = ssid; mid[b] = mesh
-	}
-	/^BSS[ \t]/ {
-		flush()
-		b = tolower($0); sub(/^bss[ \t]+/, "", b); b = substr(b, 1, 17)
-		if (b !~ /^[0-9a-f][0-9a-f](:[0-9a-f][0-9a-f])(:[0-9a-f][0-9a-f])(:[0-9a-f][0-9a-f])(:[0-9a-f][0-9a-f])(:[0-9a-f][0-9a-f])$/) b = ""
-		f = ""; s = ""; a = ""; ssid = ""; mesh = ""
-		next
-	}
-	b == "" { next }
-	/^\tfreq:/ { v = $0; sub(/^\tfreq:[ \t]*/, "", v); if (v ~ /^[0-9.]+/) f = rnd(v + 0) }
-	/^\tsignal:/ { v = $0; sub(/^\tsignal:[ \t]*/, "", v); if (v ~ /^-?[0-9.]+[ \t]*dBm/) s = rnd(v + 0) }
-	/^\tlast seen:[ \t]*[0-9]+[ \t]*ms ago/ { v = $0; sub(/^\tlast seen:[ \t]*/, "", v); a = v + 0 }
-	/^\tSSID:/ { v = $0; sub(/^\tSSID: ?/, "", v); ssid = v }
-	/^\tMESH ID:/ { v = $0; sub(/^\tMESH ID: ?/, "", v); mesh = v }
-	END {
-		flush()
-		for (x in sig) print sig[x] US x US frq[x] US sig[x] US age[x] US sid[x] US mid[x]
-	}' "$W/scan.all" | sort -rn | head -n "$MAX_NETS" | cut -d "$DH_US" -f 2- > "$W/wifi"
-nwifi="$(wc -l < "$W/wifi")"
-nwifi=$((nwifi + 0))
-
-# --- LAN-Mesh ----------------------------------------------------------------
-
-dh_lan_mesh "$own_id" "$W/lan"
-switch_to=
-if [ -n "$as_domain" ] ; then
-	switch_to="$(dh_lan_target "$as_domain" "$W/lan")"
-elif [ "$active" = 1 ] ; then
-	switch_to="$(dh_lan_target "$own_domain" "$W/lan")"
-fi
-
-# --- Exit-IPv4 ---------------------------------------------------------------
-
-# Exit-IPv4 ueber das WAN, so wie nodestatus sie ermittelt. Ohne IPv4-Uplink
-# (etwa ein reiner Mesh-Knoten) bleibt das Feld weg.
-public_v4() {
-	local u a
-	for u in http://ipv4.icanhazip.com http://checkip.amazonaws.com ; do
-		a="$(uclient-fetch -4 -q -T 5 -O - "$u" 2>/dev/null | tr -d ' \t\r\n')"
-		echo "$a" | awk -F. 'NF == 4 && $0 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ \
-			&& $1 <= 255 && $2 <= 255 && $3 <= 255 && $4 <= 255 { ok = 1 }
-			END { exit !ok }' && { echo "$a" ; return 0 ; }
-	done
-	return 1
-}
-
-# --- Meldung bauen -------------------------------------------------------------
-
-json_init
-json_add_int v 1
-json_add_string node_id "$own_id"
-json_add_string domain "$own_domain"
-json_add_string release "$(tr -d '\n' < /lib/gluon/release 2>/dev/null)"
-json_add_int uptime "$(dh_uptime)"
-
-json_add_array scan
-while read -r ifname ok count ; do
-	json_add_object
-	json_add_string iface "$ifname"
-	json_add_boolean ok "$ok"
-	json_add_int count "$count"
-	json_close_object
-done < "$W/scan.res"
-json_close_array
-
-json_add_array wifi
-while IFS="$DH_US" read -r bssid freq signal age ssid mesh ; do
-	json_add_object
-	json_add_string bssid "$bssid"
-	json_add_string ssid "$ssid"
-	json_add_string mesh_id "$mesh"
-	[ -n "$freq" ] && json_add_int freq "$freq"
-	json_add_int signal "$signal"
-	[ -n "$age" ] && json_add_int age_ms "$age"
-	json_close_object
-done < "$W/wifi"
-json_close_array
-
-# Uplink: Hat der Knoten selbst einen VPN-Uplink, und ueber welches
-# Interface laeuft sein Gateway? Ein Knoten ohne eigenen VPN-Uplink haengt
-# per WLAN- oder LAN-Mesh an anderen und darf nicht allein verschoben werden
-# (Konzept 4.4). Wer ueber ihn ins Netz geht, sieht der Locator aus den
-# Kartendaten; hier stehen nur die Zahlen der Nachbarn je Art.
-batctl n -H 2>/dev/null | awk '
-	$2 ~ /^[0-9a-fA-F][0-9a-fA-F]:/ {
-		if ($1 == "mesh-vpn") v++
-		else if ($1 ~ /^mesh[0-9]+$/) w++
-		else l++
-	}
-	END { print v + 0, w + 0, l + 0 }' > "$W/nb"
-read -r n_vpn n_wifi n_lan < "$W/nb"
-# "* <gateway> (tq) <next hop> [ <if>]: ..."
-gw="$(batctl gwl -H 2>/dev/null | awk '
-	/^\*/ {
-		s = $0; sub(/^[^)]*\)[ \t]+/, "", s)
-		if (match(s, /^[0-9a-fA-F:]+[ \t]+\[[ \t]*[^] \t]+\]/)) {
-			split(substr(s, 1, RLENGTH), x, /[] \t[]+/)
-			if (x[1] ~ /^[0-9a-fA-F][0-9a-fA-F](:[0-9a-fA-F][0-9a-fA-F])(:[0-9a-fA-F][0-9a-fA-F])(:[0-9a-fA-F][0-9a-fA-F])(:[0-9a-fA-F][0-9a-fA-F])(:[0-9a-fA-F][0-9a-fA-F])$/)
-				print tolower(x[1]), x[2]
-		}
-		exit
-	}')"
-gw_nexthop="${gw%% *}"
-gw_via="${gw#* }"
-
-json_add_object uplink
-json_add_boolean vpn "$([ "$n_vpn" -gt 0 ] && echo 1 || echo 0)"
-[ -n "$gw" ] && json_add_string gw_via "$gw_via"
-[ -n "$gw" ] && json_add_string gw_nexthop "$gw_nexthop"
-# MACs der eigenen batman-Interfaces: daran erkennt der Locator, wenn ein
-# anderer HVB-Knoten ohne VPN diesen Knoten als Next Hop meldet
-json_add_array mesh_macs
-for ifname in $(batctl if 2>/dev/null | sed -n 's/^\([^: ]*\):.*/\1/p') ; do
-	mac="$(tr 'A-F' 'a-f' < "/sys/class/net/$ifname/address" 2>/dev/null)"
-	case "$mac" in
-		[0-9a-f][0-9a-f]:*) json_add_string '' "$mac" ;;
-	esac
-done
-json_close_array
-json_add_object neighbours
-json_add_int vpn "$n_vpn"
-json_add_int wifi "$n_wifi"
-json_add_int lan "$n_lan"
-json_close_object
-json_close_object
-
-json_add_array lan_mesh
-while IFS="$DH_US" read -r ifname id dom mac ; do
-	json_add_object
-	json_add_string iface "$ifname"
-	[ -n "$id" ] && json_add_string node_id "$id"
-	[ -n "$dom" ] && json_add_string domain "$dom"
-	[ -n "$mac" ] && json_add_string mac "$mac"
-	json_close_object
-done < "$W/lan"
-json_close_array
-
-[ -n "$switch_to" ] && json_add_string lan_switch "$switch_to"
-
-if v4="$(public_v4)" ; then
-	json_add_object exit_ip
-	json_add_string ipv4 "$v4"
-	json_close_object
-fi
-
-is_number() {
-	echo "$1" | grep -qE '^-?[0-9]+(\.[0-9]+)?$'
-}
-lat="$(uci -q get gluon-node-info.@location[0].latitude | tr -d ' ')"
-lon="$(uci -q get gluon-node-info.@location[0].longitude | tr -d ' ')"
-if is_number "$lat" && is_number "$lon" ; then
-	json_add_object coordinates
-	json_add_double lat "$lat"
-	json_add_double lon "$lon"
-	json_close_object
-fi
-
-if [ "$dry" = 1 ] ; then
-	json_dump
-	exit 0
-fi
-
-# --- Senden ------------------------------------------------------------------
-
-# https nur mit TLS im Image
-have_tls=0
-[ -e /lib/libustream-ssl.so ] || [ -e /usr/lib/libustream-ssl.so ] && have_tls=1
-
-json_dump > "$W/body.json"
-if [ -n "$url_override" ] ; then
-	urls="$url_override"
-else
-	urls="$site_urls"
-fi
-
-sent=0
-for u in $urls ; do
-	case "$u" in
-		https:*) [ "$have_tls" = 1 ] || continue ;;
-	esac
-	# uclient-fetch nimmt nur 200 als Erfolg; einen 202 meldet es als
-	# "HTTP error 202" mit rc 8. Jede 2xx-Antwort gilt als angekommen.
-	out="$(uclient-fetch -T 20 -O /dev/null \
-		-U "neanderfunk-domainhelper/$VERSION" \
-		--header='Content-Type: application/json' \
-		--post-file="$W/body.json" "$u" 2>&1)"
-	rc=$?
-	if [ "$rc" = 0 ] || echo "$out" | grep -q 'HTTP error 2[0-9][0-9]' ; then
-		dh_log "gemeldet: $nwifi Netze an $u"
-		sent=1
-		break
-	fi
-done
-
-if [ "$sent" = 0 ] ; then
-	dh_log "Meldung fehlgeschlagen ($nwifi Netze)"
-fi
-
-# Umschalten auch, wenn die Meldung nicht ankam: Der Bericht des Mapservers
-# ist Beiwerk, das Kabel entscheidet.
-if [ -n "$switch_to" ] ; then
-	dh_log "LAN-Mesh-Nachbarn in $switch_to, schalte von $own_domain dorthin um"
-	rm -rf "$W"
-	gluon-switch-domain "$switch_to"
-	exit 0
-fi
-
-[ "$sent" = 1 ] || exit 1
-exit 0
+cmd="$1"
+[ $# -gt 0 ] && shift
+case "$cmd" in
+	locate) . /lib/gluon/neanderfunk-domainhelper/cmd_locate.sh ;;
+	bridge) . /lib/gluon/neanderfunk-domainhelper/cmd_bridge.sh ;;
+	*)
+		echo 'usage: neanderfunk-domainhelper locate [-n] [-u url] [-a domain]' >&2
+		echo '       neanderfunk-domainhelper bridge [-n]' >&2
+		exit 2
+		;;
+esac

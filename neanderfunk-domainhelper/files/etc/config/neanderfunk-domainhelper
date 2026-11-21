@@ -1,0 +1,7 @@
+# neanderfunk-domainhelper
+#
+# bridge: Domain-Bruecken am LAN-Mesh trennen (neanderfunk-domainhelper
+# bridge, jede Minute). cut '0' schaltet nur das Trennen ab; erkannt und
+# gemeldet (Syslog, Banner) wird trotzdem.
+config bridge 'bridge'
+	option cut '1'

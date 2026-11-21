@@ -2,7 +2,12 @@ neanderfunk-domainhelper
 ========================
 
 Hilfen rund um die Domain eines Knotens. Das Paket ist als Sammelstelle
-gedacht, weitere Teile können dazukommen. Bisher gibt es einen:
+gedacht, weitere Teile können dazukommen (automesh,
+[docs/entwurf-automesh.md](../docs/entwurf-automesh.md)). Bisher gibt es
+zwei:
+
+**bridge: Domain-Brücken am LAN-Mesh erkennen und trennen**, in allen
+Domains, siehe Abschnitt „bridge“ unten.
 
 **locate: Lokator und Abschleppdienst für die Halteverbots-Defaultdomain.**
 Scannt die WLANs in der Umgebung eines Knotens und meldet sie per POST an den
@@ -10,6 +15,11 @@ Locator (`locator.ffnef.de`). Hängt ein Knoten per LAN-Mesh an genau einer
 anderen Domain, schaltet er selbst dorthin um. Konzept und Format:
 [docs/konzept-hvb-ortung.md](../docs/konzept-hvb-ortung.md), Abschnitte 4.2
 und 4.3.
+
+**Stand 0.5 (21.11.2026):** neu `bridge`. Seit 0.4 ganz in Shell:
+`/usr/sbin/neanderfunk-domainhelper` verteilt nur noch auf
+`/lib/gluon/neanderfunk-domainhelper/cmd_<unterbefehl>.sh`, gemeinsame
+Funktionen stehen in `lib.sh`.
 
 **Stand 0.4 (21.11.2026):** ganz in Shell, kein Lua mehr. Meldeformat und
 Verhalten wie 0.3, das noch ein Lua-Skript war. Bis 0.2 hieß das Paket
@@ -129,6 +139,66 @@ Was locate tut
   nur 200 als Erfolg und meldet etwa 202 als „HTTP error 202“ mit rc 8. Den
   Inhalt der Antwort wertet das Skript nicht aus.
 
+bridge
+------
+
+Wir fahren `mesh.vxlan = false`. Steckt am LAN-Mesh ein Knoten einer
+anderen Domain, verschmelzen beide batman-Wolken sofort (Domain-Brücke).
+`neanderfunk-domainhelper bridge` läuft jede Minute aus micron.d und
+trennt solche Brücken, wo es niemanden abschneidet. Fall A aus dem
+automesh-Entwurf.
+
+- **Erkennen:** LAN-Mesh-Nachbarn (alle batman-Interfaces außer
+  `mesh-vpn` und `meshN`) per respondd nach ihrer Domain fragen, wie
+  `locate`. Neue Nachbarn sofort, bekannte alle 15 min. Ohne
+  LAN-Mesh-Nachbarn endet der Lauf nach `batctl n`.
+- **Fremd** nur auf positiven Beleg: Der Nachbar nennt eine Domain, die in
+  dieser Firmware steht und nicht die eigene ist (`_EOL` zählt nicht).
+  Unbekannte Codes, etwa von Nachbar-Communities, lösen nichts aus.
+- **Melden:** Syslog bei jedem Zustandswechsel, eine Zeile im Login-Banner
+  (`nodestatus` liest `/tmp/neanderfunk-domainhelper.banner`), Zustand in
+  `/tmp/neanderfunk-domainhelper.bridge/state`. Ein Feld in respondd fehlt
+  noch.
+- **Trennen** nach 120 s und frischer Nachfrage, nur wenn alles zutrifft:
+  - Trennen ist nicht abgeschaltet (`neanderfunk-domainhelper.bridge.cut`);
+  - der Knoten hat eigenes VPN, behält also seinen Uplink;
+  - die Gegenseite hat einen eigenen Uplink: Ein fremder Nachbar an dieser
+    Schnittstelle erreicht sein Gateway direkt (`gateway_nexthop` gleich
+    `gateway` in seiner statistics, das geht nur über einen eigenen
+    Tunnel), oder wir erreichen ein Gateway über genau diese
+    Schnittstelle.
+  Sonst bleibt die Brücke stehen und wird gemeldet. Ohne eigenes VPN
+  trennt ein Knoten nie.
+- **Wie getrennt wird:** nur zur Laufzeit, kein uci commit.
+  - Ist der Hardif eine Bridge (`br-mesh_other`, `br-wan` bei
+    Mesh-on-WAN): zwei ebtables-Regeln verwerfen batman-Frames (0x4305)
+    von und zu diesem Knoten (`--logical-in`/`--logical-out`). Die
+    Weiterleitung zwischen den Ports bleibt: Andere Knoten an unseren
+    LAN-Ports meshen weiter miteinander, nur wir sind draußen. Ein
+    `ifdown mesh_other` würde dagegen die ganze Bridge abbauen.
+  - Sonst (ein einzelnes Gerät, etwa `eth1.1`): `ifdown` auf dem
+    `gluon_wired`-Interface.
+  - Jeder Lauf prüft, ob die Trennung noch greift (ein Neuladen der
+    Firewall löscht die Regeln), und setzt sie neu.
+- **Neuprüfung** nach 10, 20, 40, 80, dann alle 120 min; 24 h ohne Trennen
+  setzen die Stufe zurück. Ein Neustart hebt jede Trennung auf, die
+  Prüfung beginnt dann von vorn.
+- **In einer Domain mit Ortung** (`25_hvb`) trennt `bridge` nicht, sondern
+  startet einmal `locate`, das meldet und selbst in die Domain des
+  Nachbarn umschaltet.
+
+Abschalten (nur das Trennen, gemeldet wird weiter):
+
+```sh
+uci set neanderfunk-domainhelper.bridge.cut=0 ; uci commit neanderfunk-domainhelper
+```
+
+Nur zum Testen: `uci set neanderfunk-domainhelper.bridge.test_domain=<d>`
+ohne commit lässt `bridge` so tun, als stünde der Knoten in `<d>`. Damit
+lässt sich das Trennen gegen Nachbarn der eigenen Domain prüfen, ohne eine
+fremde Domain anzuschließen. `neanderfunk-domainhelper bridge -n` zeigt,
+was passieren würde, und ändert nichts.
+
 Getestet
 --------
 
@@ -179,6 +249,23 @@ Key), zusammen mit nodeplacer 0.1-r2 (D-045):
 - **TL-WR1043ND v2 (ath79, 64 MB), 26111912bro:** Trockenlauf aus `/tmp`:
   rc 0 nach 9 s, 43 Netze nach Pegel, kein VPN, Gateway über `mesh0`,
   LAN-Nachbar mit Domain erkannt.
+
+21.11.2026, 0.5 (`bridge`) live auf dem M60 und dem TL-WR1043ND v2, ohne
+Build. Eine fremde Domain wurde mit `test_domain=13_dusfl` vorgetäuscht,
+die Nachbarn standen wirklich in `21_dias`:
+
+- **M60 (eigenes VPN, Bridge `br-mesh_other`, Nachbarn ERX mit VPN und
+  1043v2 ohne):** Brücke um 05:24:05 erkannt und gemeldet (Syslog, Banner),
+  um 05:26:11 getrennt (ebtables, zwei Regeln). Von Hand gelöschte Regeln
+  setzte der nächste Lauf neu. Nach 10 min frei, gleich wieder erkannt,
+  nach der Frist erneut getrennt, jetzt mit 20 min. Vorher von Hand
+  geprüft: Mit den Regeln fallen die LAN-Nachbarn nach gut 200 s aus
+  `batctl n`, ohne Regeln sind sie nach 20 s zurück.
+- **TL-WR1043ND v2 (kein eigenes VPN, `eth1.1` ohne Bridge):** Trockenlauf
+  meldet die Brücke und lässt sie stehen („kein eigenes VPN“); das Ziel
+  wäre `ifdown mesh_other`.
+- Nicht getestet: eine echte Brücke zwischen zwei Domains und der Fall
+  „Gegenseite ohne eigenen Uplink“ mit eigenem VPN.
 
 Lizenz
 ------
