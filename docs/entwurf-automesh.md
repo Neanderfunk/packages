@@ -63,7 +63,29 @@ gilt dieser Abschnitt.
     (ssid-changer aus, kein Client-AP auf dem Radio) gilt der Knoten als
     unbekannt, Wechsel erlaubt.
   Die Schonzeit zählt ab dem Zeitpunkt, seit dem kein Gateway in `gwl`
-  steht, nach einem Neustart ab dem Start. Weil in beiden Fällen kein
+  steht, nach einem Neustart ab dem Start. Dazu kommt je Knoten ein
+  fester Versatz von 0 bis 15 min aus der MAC (Vorschlag): Fallen mehrere
+  Knoten einer Wolke gleichzeitig aus, wechselt einer zuerst, die anderen
+  sehen danach über das LAN-Mesh wieder ein Gateway und bleiben.
+  Weder ein aktives LAN-Mesh noch weitere Knoten in der Wolke verhindern
+  den Wechsel (A, 21.11.); maßgeblich ist nur `gwl` leer.
+
+  **Abnahmefälle** (A, 21.11.):
+  - *Unterkunft, ein Internetzugang an der Pforte, Richtfunk zu vier
+    Häusern, je Haus drei Router per LAN-Mesh am Dach-Richtfunk.* Ein
+    Dach-Richtfunk fällt aus, das Haus ist ohne Gateway. Nach der
+    Schonzeit wechselt ein Knoten auf den Kanal eines Routers im
+    Nachbarhaus (dort keine Offline-SSID), das Haus ist wieder im Netz.
+    Den WLAN-Mesh-Link nach der Reparatur des Dachs räumt man von Hand
+    auf (Kanal bleibt gespeichert).
+  - *Internet an der Pforte fällt aus.* Alle Knoten gehen auf die
+    Offline-SSID, niemand wechselt.
+
+  **Vertagt** (A, 21.11.): eine zusätzliche Sperre „VPN an und WAN mit
+  Link und Adresse: nie wechseln“. Sie hielte bei einem Ortsausfall auch
+  Knoten ohne Offline-Signal fest, verhinderte aber den Fall
+  „Telekom-Anschluss gekündigt, Speedport läuft weiter“: WAN hat Link und
+  Adresse, aber kein Internet, und der Knoten käme nie ins Mesh. Weil in beiden Fällen kein
   fremdes Gateway nur geliehen ist, entfällt das Auflösen samt seiner
   Folgen (6.1 Bedingung 2, 7 Notbremse, 9 linkcheck, 10 Marker).
 - **bridge auch auf 64-MB-Geräten** (A, 21.11.).
@@ -542,3 +564,5 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 35 | Fall b: kein Zurückwechseln in die Domain, aus der der Knoten gerade kam | neu | verworfen | 21.11. | zwei Inseln ohne Uplink: ohnehin verloren, in der Praxis selten (A); ersetzt durch #37 |
 | 36 | Kanal dauerhaft wechseln, in a und b; nur festschreiben, wenn nicht der Domain-Standard (dann `preserve_channels_<band>`) | neu | geplant | 21.11. | (A); sonst nach jedem Neustart 60 min offline bzw. nach einem Update zurück auf den Standard |
 | 37 | Nicht zu Mesh-Punkten wechseln, deren Knoten eine Offline-SSID sendet (Zuordnung über Frequenz und BSSID-Muster) | neu | geplant | 21.11. | (A) |
+| 38 | Versatz 0 bis 15 min je Knoten (MAC) auf die Schonzeit | neu | geplant | 21.11. | Vorschlag; in einer Wolke wechselt einer, die anderen bekommen das Gateway übers LAN |
+| 39 | Sperre „VPN an und WAN mit Link und Adresse: nie wechseln“ | neu | offen | 21.11. | vertagt (A): Gegenfall gekündigter Anschluss mit laufendem Router |
