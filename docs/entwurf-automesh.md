@@ -34,9 +34,16 @@ gilt dieser Abschnitt.
     anderer Kanal: Dort ist das Mesh aus, weil mac80211 ohne feste
     Frequenz keinem Mesh beitritt.
   - **b) Mesh einer anderen Domain dieser Firmware**, Schonzeit 600 min.
-    Der Knoten wechselt die Domain (`gluon-switch-domain`, dauerhaft, wie
-    #9). Liegt das Mesh dann auf einem anderen Kanal als die neue Domain
-    vorgibt, greift danach Fall a.
+    Der Knoten wechselt dauerhaft **Domain und Kanal** (A, 21.11.): den
+    Kanal, auf dem er das Mesh gefunden hat, auch wenn das nicht der
+    Standardkanal der neuen Domain ist. Sonst stünde er nach jedem
+    Neustart (Weekly Reboot) wieder auf dem Standardkanal und 60 min ohne
+    Netz, bis Fall a greift. Reihenfolge wegen
+    neanderfunk-preserve-wifichannel, das nach einem Domainwechsel einmal
+    die Kanäle der neuen Domain einträgt: `gluon-switch-domain --no-reboot`,
+    danach Kanal per `channel` (setzt `preserve_channels_<band>`), commit,
+    Neustart. Beim Bau prüfen, dass das einmalige Eintragen schon im
+    Wechsel passiert und nicht erst beim nächsten Start.
   Die Schonzeit zählt ab dem Zeitpunkt, seit dem kein Gateway in `gwl`
   steht, nach einem Neustart ab dem Start. Weil in beiden Fällen kein
   fremdes Gateway nur geliehen ist, entfällt das Auflösen samt seiner
@@ -515,4 +522,4 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 33 | Prüftakt 91 s als procd-Schleife statt jeder Minute aus micron.d | neu | umgesetzt | 21.11. | (A); nicht im Gleichschritt mit der vollen Minute |
 | 34 | Fall a: Schonzeit 60 min, Fall b: Schonzeit 600 min ohne Gateway | neu | geplant | 21.11. | (A) |
 | 35 | Fall b: kein Zurückwechseln in die Domain, aus der der Knoten gerade kam | neu | offen | 21.11. | sonst Pendeln alle 10 h zwischen zwei Inseln; Merker müsste in den Flash (Vorschlag) |
-
+| 36 | Fall b: Domain und Kanal dauerhaft wechseln (gefundener Kanal, mit `preserve_channels_<band>`) | neu | geplant | 21.11. | (A); sonst nach jedem Neustart 60 min offline |
