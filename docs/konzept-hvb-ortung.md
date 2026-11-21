@@ -616,6 +616,19 @@ Danach, für den echten Betrieb:
    HVB-Manifest, Rückkehr der normalen Schwelle nach dem Neustart, Bericht.
    Dazu ein Knoten in `25_hvb` am Kabel an einem Knoten einer anderen
    Domain: Umschalten ohne Mapserver.
+   **Gluon-Seite erledigt 21.11.** mit der Testfirmware 26112017sta:
+   - Zwei Labor-VMs (mit und ohne Key) melden in `25_hvb` und ziehen per
+     Handeintrag nach `21_dias` um.
+   - Ein M60 im Testfeld schaltet am Kabel selbst zurück (`lan_switch`).
+   - Ohne LAN-Mesh nimmt ihn der Locator über E11 von selbst ins Manifest
+     auf, und der planmäßige nodeplacer-Lauf schleppt ihn ab.
+   - Nach dem Umzug hat nodeplacer überall wieder Schwelle 3 und die
+     Firmware-Mirrors.
+   - Vom Wechsel nach `25_hvb` bis zum Abschleppen vergingen etwa 50 min:
+     etwa 15 min bis zum Eintrag im Manifest (Karte, Manifest-Lauf alle
+     10 min), der Rest war Warten auf den stündlichen nodeplacer-Lauf.
+   Details im README von `neanderfunk-domainhelper`. Offen: Bericht per
+   Mail, Ortung über die Position (Teil 2) im Feld.
 
 Punkt 2 bis 4 lohnen sich auch ohne Ortung: Das Abschleppen aus `25_hvb` von
 Hand geht damit schon ohne drei Unterschriften.

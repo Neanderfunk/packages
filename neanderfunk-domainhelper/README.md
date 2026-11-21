@@ -119,6 +119,29 @@ ersten batman-Nachbarn (VPN) an `https://locator.ffnef.de/hvb/locate`, ein
 Testbau. 0.3 benennt nur um (Paket, Befehl `locate`, Schlüssel
 `neanderfunk_domainhelper.locator`), ohne neuen Lauf auf einem Knoten.
 
+21.11.2026 mit 0.3 in der Testfirmware 26112017sta (Multi, mit und ohne
+Key), zusammen mit nodeplacer 0.1-r2 (D-045):
+
+- **Zwei Gluon-x86-VMs in `25_hvb`** (Key-Image; Nonkey-Image mit dem
+  Wizard per uci nachgespielt), Mesh-VPN an, kein WLAN: Der Startlauf
+  meldete jeweils nach etwa 75 s Laufzeit (`gemeldet: 0 Netze an
+  https://locator.ffnef.de/hvb/locate`). Mit einem Handeintrag im
+  HVB-Manifest zogen beide per nodeplacer nach `21_dias` um. Dort läuft
+  `locate` nicht mehr (keine URLs in der Domain).
+- **D-Link M60 im Testfeld, am Kabel an zwei Knoten in `21_dias`:** nach
+  `gluon-switch-domain 25_hvb` meldete der Startlauf bei 85 s Laufzeit
+  50 Netze mit `lan_switch` und schaltete selbst nach `21_dias` zurück,
+  ohne Mapserver.
+- **Derselbe M60 ohne LAN-Mesh** (LAN-Ports zur Laufzeit abgeschaltet,
+  `batctl if del` allein reicht nicht, netifd hängt die Bridge wieder
+  an): Meldung mit 50 Netzen, ohne `lan_switch`. Der Locator ermittelte
+  `21_dias` aus den Mesh-Punkten der Nachbarn (E11) und nahm den Knoten
+  von selbst ins Manifest auf. Der planmäßige nodeplacer-Lauf (die Minute
+  ist je Knoten verschieden) schaltete ihn nach `21_dias`, etwa 50 min
+  nach dem Wechsel nach `25_hvb`: etwa 15 min, bis die Karte ihn in
+  `25_hvb` führte und der Manifest-Lauf ihn aufnahm, dann noch 37 min bis
+  zum stündlichen nodeplacer-Lauf.
+
 Lizenz
 ------
 
