@@ -24,9 +24,24 @@ gilt dieser Abschnitt.
   über eine zweite VNI. Der Sniffer aus 6.2 entfällt damit vorerst.
 - **Trennen von Domain-Brücken (Fall A, Abschnitt 7) ist das wichtige
   Feature** und der erste Eingriff.
-- **Beitritt nur per WLAN-Mesh (802.11s, Abschnitt 6.3), nur für Knoten
-  ohne VPN-Uplink**, also Inseln. Die Regeln aus 6.1, 6.4, 8, 9 und 10
-  gelten weiter.
+- **Beitritt nur per WLAN-Mesh (802.11s), nur für Knoten ohne
+  VPN-Uplink**, also Inseln. Fassung 3 ersetzt dafür den Laufzeit-Beitritt
+  zu einem fremden Netz aus 6.3 durch zwei Fälle (A, 21.11.), jeweils erst
+  nach einer Schonzeit ohne Gateway:
+  - **a) Mesh der eigenen Domain auf einem anderen Kanal**, Schonzeit
+    60 min. Der Knoten stellt das Radio zur Laufzeit auf diesen Kanal
+    (uci-Delta, `wifi reconf`, kein commit). `channel = auto` zählt als
+    anderer Kanal: Dort ist das Mesh aus, weil mac80211 ohne feste
+    Frequenz keinem Mesh beitritt.
+  - **b) Mesh einer anderen Domain dieser Firmware**, Schonzeit 600 min.
+    Der Knoten wechselt die Domain (`gluon-switch-domain`, dauerhaft, wie
+    #9). Liegt das Mesh dann auf einem anderen Kanal als die neue Domain
+    vorgibt, greift danach Fall a.
+  Die Schonzeit zählt ab dem Zeitpunkt, seit dem kein Gateway in `gwl`
+  steht, nach einem Neustart ab dem Start. Weil in beiden Fällen kein
+  fremdes Gateway nur geliehen ist, entfällt das Auflösen samt seiner
+  Folgen (6.1 Bedingung 2, 7 Notbremse, 9 linkcheck, 10 Marker).
+- **bridge auch auf 64-MB-Geräten** (A, 21.11.).
 - **Beitritt nur zu Meshes unserer eigenen Domains** (A, 21.11.): Die
   Mesh-IDs kommen aus `/lib/gluon/domains/*.json` der eigenen Firmware.
   Nachbar-Communities sind vorerst draußen, und mit ihnen die Sperrliste
@@ -470,7 +485,7 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 3 | Prüfkette „Wer ist dieses Gateway?“ | 4 | geplant | 21.11. | einfacher, weil Multi-Knoten `domain_code` melden |
 | 4 | MAC-Schema `02:ca:ff:ee:<NN>:<SS>` als Heimat-Hinweis | 4, 10 | geplant | 02.10. | nur Hinweis, nie Urteil |
 | 5 | Normalisierung von Altcodes, `home_extra` | 2, 12 | aufgeschoben | 21.11. | handeln dürfen nur Multi-Knoten (A); nötig höchstens für Nachbarn mit alter Firmware |
-| 6 | linkcheck: Gateway-Marker nur bei Heimat-Gateway, alle Geräte | 9, 10 | geplant | 21.11. | Schritt 2, Voraussetzung für Beitritt |
+| 6 | linkcheck: Gateway-Marker nur bei Heimat-Gateway, alle Geräte | 9, 10 | verworfen | 21.11. | nur nötig, solange ein Beitritt ein fremdes Gateway leiht und wieder auflöst (dann bootete die ganze Wolke). Mit Fall a/b (eigene Domain, Kanalwechsel bzw. Domainwechsel) gibt es kein Auflösen mehr |
 | 7 | Fall A: Domain-Brücke trennen, Knoten mit VPN, nur Laufzeit | 7 | umgesetzt | 21.11. | 0.5; an einer Bridge per ebtables (0x4305 von und zu uns), nicht `ifdown`: das baute die ganze Bridge ab und trennte auch die anderen Knoten an unseren Ports; nur bei Einzelgerät `ifdown`. Zusätzlich: Gegenseite muss eigenen Uplink haben |
 | 8 | Frist und Notbremse „eigener Randknoten meldet sich“ | 7 | teilweise umgesetzt | 21.11. | Frist ein Durchgang (91 s, nicht auf der vollen Minute, A); Notbremse erst mit dem Beitritt (#14) nötig |
 | 9 | Domainwechsel ohne eigenes VPN am Kabel, alle Domains | neu | geplant | 21.11. | Schritt 3 (A); Flash-Ausnahme, höchstens 1 je Tag (Vorschlag) |
@@ -478,7 +493,7 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 11 | Beitritt am LAN per VXLAN (zweite VNI) | 6.2 | aufgeschoben | 21.11. | VXLAN ausgeklammert (A) |
 | 12 | Sniffer `neanderfunk-automesh-sniff` (AF_PACKET, BPF) | 6.2 | aufgeschoben | 21.11. | hing an VXLAN; rohes batman zeigt schon `batctl n` |
 | 13 | BATMAN_V-Netze überspringen | 6.2 | aufgeschoben | 21.11. | nur mit Sniffer; unsere Domains fahren alle BATMAN_IV |
-| 14 | WLAN-Beitritt (802.11s) für Inseln ohne VPN | 6.3 | geplant | 21.11. | Schritt 4 (A) |
+| 14 | WLAN-Beitritt (802.11s) für Inseln ohne VPN | 6.3 | geplant | 21.11. | neu zugeschnitten (A): a) eigene Domain, anderer Kanal (auch `auto`): Kanalwechsel zur Laufzeit nach 60 min ohne Gateway; b) andere Domain dieser Firmware: Domainwechsel nach 600 min |
 | 15 | Beitritt nur zu Meshes eigener Domains, Mesh-IDs aus `/lib/gluon/domains/*.json` | neu | geplant | 21.11. | (A); ersetzt für jetzt Entscheidung 2 |
 | 16 | Beitritt zu Nachbar-Communities | 6.3, 16.2 | aufgeschoben | 21.11. | (A); kommt mit #17 zurück |
 | 17 | Sperrliste `deny`, PPA-Begründung | 12, 13 | aufgeschoben | 21.11. | war für Nachbar-Communities gedacht (A) |
@@ -487,8 +502,8 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 20 | Sperren gegen Pendeln, exponentiell, global und je Netz | 8 | aufgeschoben | 21.11. | für Fall A entfällt die Freigabe: getrennt bis zum Neustart (A, 0.6); global und je Netz erst mit dem Beitritt |
 | 21 | Gemeinsames WLAN-Lock `/var/lock/neanderfunk-wifi.lock` | 3, 9 | geplant | 02.10. | Schritt 4 |
 | 22 | Rücksicht auf autoupdater-wifi-fallback | 9 | geplant | 02.10. | ob ohne Gluon-Patch möglich, offen |
-| 23 | Doppel-Randknoten: höhere MAC löst auf | 5 | geplant | 02.10. | Schritt 4 |
-| 24 | Kein automesh auf 64-MB-Geräten | 3, 16.4 | geplant | 21.11. | gilt für Beitritt und WLAN; `bridge` (#1, #7) ist leicht und läuft auf allen Geräten (Vorschlag, noch nicht entschieden) |
+| 23 | Doppel-Randknoten: höhere MAC löst auf | 5 | verworfen | 21.11. | gibt es mit Fall a/b nicht: jeder Knoten wechselt Kanal bzw. Domain für sich |
+| 24 | Kein automesh auf 64-MB-Geräten | 3, 16.4 | geplant | 21.11. | `bridge` läuft auch auf 64-MB-Geräten (A, 21.11.); für Fall a/b noch offen |
 | 25 | Scan nur über scan-guard | 6.3 | verworfen | 04.10. | scan-guard in v2025.1.x entfallen |
 | 26 | Kein WLAN-Scan auf MT7915 | 6.3 | verworfen | 04.10. | Scan-Fehler nur unter 2023.2, nicht unter 2025.1 |
 | 27 | Mesh-IDs per Muster `.*-mesh` erkennen | 6.3 | verworfen | 02.10. | Domains 43 bis 47 heißen `mesh-<kurz>`; Liste statt Muster |
@@ -498,3 +513,6 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 31 | In `25_hvb` nicht trennen, sondern `locate` starten (schaltet selbst um) | neu | umgesetzt | 21.11. | 0.5 |
 | 32 | Fall A getrennt bis zum Neustart, keine Neuprüfung zwischendurch | 8 | umgesetzt | 21.11. | (A); fällt ein VPN weg, rettet der Wächter (linkcheck `no_gateway`) per Neustart |
 | 33 | Prüftakt 91 s als procd-Schleife statt jeder Minute aus micron.d | neu | umgesetzt | 21.11. | (A); nicht im Gleichschritt mit der vollen Minute |
+| 34 | Fall a: Schonzeit 60 min, Fall b: Schonzeit 600 min ohne Gateway | neu | geplant | 21.11. | (A) |
+| 35 | Fall b: kein Zurückwechseln in die Domain, aus der der Knoten gerade kam | neu | offen | 21.11. | sonst Pendeln alle 10 h zwischen zwei Inseln; Merker müsste in den Flash (Vorschlag) |
+
