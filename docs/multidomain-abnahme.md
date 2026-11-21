@@ -59,6 +59,11 @@ Paket `neanderfunk-domain-from-legacy` (`004`, vor Gluons `005-set-domain`).
       Domain `21_dias`, Logzeile vorhanden; danach next_node 10.21.0.1/16,
       hostname und mesh_vpn übernommen, LAN-Rolle client, nodeinfo
       `site_code` ffnef, `domain_code` 21_dias.
+- [x] Auf echter Hardware: ZyXEL NWA50AX Pro (mediatek-filogic, ohne
+      eigenes VPN, am LAN-Mesh) per sysupgrade von `26101610sta` (Single,
+      18_nefuk) auf `26112107bro` (Multi), 21.11.2026: `18_nefuk` erkannt
+      über die Mesh-ID `nefuk-mesh`, hostname und Mesh-VPN (aus)
+      übernommen, Position vorhanden, danach mit Gateway online.
 - [x] Je ein Knoten mit WLAN-Mesh und einer ohne WLAN (x86/ERX). Testknoten
       von `26101610sta` auf `26111822bro`, 19.11.2026: M60 b483, Xiaomi 4A
       33f1, 1043v2 4402 und MR90X e2a9 über `mesh_id:dias-mesh`, ERX über
