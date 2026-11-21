@@ -24,6 +24,20 @@ gilt dieser Abschnitt.
 - **Beitritt nur per WLAN-Mesh (802.11s, Abschnitt 6.3), nur für Knoten
   ohne VPN-Uplink**, also Inseln. Die Regeln aus 6.1, 6.4, 8, 9 und 10
   gelten weiter.
+- **Knoten ohne eigenes VPN wechseln die Domain selbst, auch außerhalb von
+  `25_hvb`** (A, 21.11.), wie `lan_switch` im domainhelper. Das ist ein
+  dauerhafter Wechsel (`gluon-switch-domain`, schreibt in den Flash) und
+  damit eine bewusste Ausnahme von „kein uci commit im Betrieb“, ebenso wie
+  nodeplacer. Bedingungen (Vorschlag):
+  - kein eigenes VPN (kein Nachbar auf `mesh-vpn`);
+  - die LAN-Mesh-Nachbarn aus fremder Domain gehören alle zu genau einer
+    Domain unserer Firmware;
+  - das Gateway in `gwl` kommt über diese Nachbarn;
+  - keine WLAN-Mesh-Nachbarn der eigenen Domain, damit kein Knoten hinter
+    ihm das Netz verliert;
+  - gegen Pendeln und Flash-Verschleiß höchstens ein automatischer Wechsel
+    je Tag, Zeitpunkt im Flash vermerkt, sonst nur melden.
+  Ein Knoten mit eigenem VPN wechselt nie selbst, er trennt (Fall A).
 - **Erkennen** der LAN-Nachbarn und ihrer Domain gibt es schon in
   `neanderfunk-domainhelper` (`batctl n` und `gluon-neighbour-info` je
   Mesh-Interface, Stand 0.3). automesh baut darauf auf.
@@ -44,7 +58,7 @@ Reihenfolge:
    Eingriff.
 2. linkcheck-Marker nur bei Heimat-Gateway (Abschnitt 9), auf allen
    Geräten. Muss vor dem Beitritt im Feld sein.
-3. Trennen (Fall A).
+3. Trennen (Fall A) und Domainwechsel ohne VPN am Kabel.
 4. WLAN-Beitritt für Inseln.
 
 ## 1. Worum es geht
