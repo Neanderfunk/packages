@@ -540,14 +540,14 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 11 | Beitritt am LAN per VXLAN (zweite VNI) | 6.2 | aufgeschoben | 21.11. | VXLAN ausgeklammert (A) |
 | 12 | Sniffer `neanderfunk-automesh-sniff` (AF_PACKET, BPF) | 6.2 | aufgeschoben | 21.11. | hing an VXLAN; rohes batman zeigt schon `batctl n` |
 | 13 | BATMAN_V-Netze überspringen | 6.2 | aufgeschoben | 21.11. | nur mit Sniffer; unsere Domains fahren alle BATMAN_IV |
-| 14 | WLAN-Beitritt (802.11s) für Inseln ohne VPN | 6.3 | geplant | 21.11. | neu zugeschnitten (A): a) eigene Domain, anderer Kanal (auch `auto`): Kanalwechsel zur Laufzeit nach 60 min ohne Gateway; b) andere Domain dieser Firmware: Domainwechsel nach 600 min |
-| 15 | Beitritt nur zu Meshes eigener Domains, Mesh-IDs aus `/lib/gluon/domains/*.json` | neu | geplant | 21.11. | (A); ersetzt für jetzt Entscheidung 2 |
+| 14 | WLAN-Beitritt (802.11s) für Inseln ohne VPN | 6.3 | umgesetzt | 21.11. | 0.7 `island`: a) eigene Domain, anderer Kanal, nach 60 min; b) andere Domain dieser Firmware, nach 600 min; Trockenläufe geprüft, Live-Test von a läuft (21.11.), b nur als Trockenlauf |
+| 15 | Beitritt nur zu Meshes eigener Domains, Mesh-IDs aus `/lib/gluon/domains/*.json` | neu | umgesetzt | 21.11. | 0.7; Domains mit Ortung (25_hvb) nie Ziel von b |
 | 16 | Beitritt zu Nachbar-Communities | 6.3, 16.2 | aufgeschoben | 21.11. | (A); kommt mit #17 zurück |
 | 17 | Sperrliste `deny`, PPA-Begründung | 12, 13 | aufgeschoben | 21.11. | war für Nachbar-Communities gedacht (A) |
-| 18 | Kanalwechsel für den Beitritt, AP wechselt mit | 6.3, 16.5 | geplant | 02.10. | gilt weiter, nur Laufzeit-Delta |
+| 18 | Kanalwechsel für den Beitritt, AP wechselt mit | 6.3, 16.5 | umgesetzt | 21.11. | 0.7 über `channel` (speichert ohne uci-Delta, `wifi up <radio>`) |
 | 19 | Zustände in `/tmp/automesh.state` | 5 | geplant | 21.11. | ohne `merged` und VXLAN-Zustände kleiner |
 | 20 | Sperren gegen Pendeln, exponentiell, global und je Netz | 8 | aufgeschoben | 21.11. | für Fall A entfällt die Freigabe: getrennt bis zum Neustart (A, 0.6); global und je Netz erst mit dem Beitritt |
-| 21 | Gemeinsames WLAN-Lock `/var/lock/neanderfunk-wifi.lock` | 3, 9 | geplant | 02.10. | Schritt 4 |
+| 21 | Gemeinsames WLAN-Lock `/var/lock/neanderfunk-wifi.lock` | 3, 9 | umgesetzt | 21.11. | `channel` nimmt das Lock |
 | 22 | Rücksicht auf autoupdater-wifi-fallback | 9 | geplant | 02.10. | ob ohne Gluon-Patch möglich, offen |
 | 23 | Doppel-Randknoten: höhere MAC löst auf | 5 | verworfen | 21.11. | gibt es mit Fall a/b nicht: jeder Knoten wechselt Kanal bzw. Domain für sich |
 | 24 | Kein automesh auf 64-MB-Geräten | 3, 16.4 | geplant | 21.11. | `bridge` läuft auch auf 64-MB-Geräten (A, 21.11.); für Fall a/b noch offen |
@@ -560,9 +560,11 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 31 | In `25_hvb` nicht trennen, sondern `locate` starten (schaltet selbst um) | neu | umgesetzt | 21.11. | 0.5 |
 | 32 | Fall A getrennt bis zum Neustart, keine Neuprüfung zwischendurch | 8 | umgesetzt | 21.11. | (A); fällt ein VPN weg, rettet der Wächter (linkcheck `no_gateway`) per Neustart |
 | 33 | Prüftakt 91 s als procd-Schleife statt jeder Minute aus micron.d | neu | umgesetzt | 21.11. | (A); nicht im Gleichschritt mit der vollen Minute |
-| 34 | Fall a: Schonzeit 60 min, Fall b: Schonzeit 600 min ohne Gateway | neu | geplant | 21.11. | (A) |
+| 34 | Fall a: Schonzeit 60 min, Fall b: Schonzeit 600 min ohne Gateway | neu | umgesetzt | 21.11. | 0.7 |
 | 35 | Fall b: kein Zurückwechseln in die Domain, aus der der Knoten gerade kam | neu | verworfen | 21.11. | zwei Inseln ohne Uplink: ohnehin verloren, in der Praxis selten (A); ersetzt durch #37 |
-| 36 | Kanal dauerhaft wechseln, in a und b; nur festschreiben, wenn nicht der Domain-Standard (dann `preserve_channels_<band>`) | neu | geplant | 21.11. | (A); sonst nach jedem Neustart 60 min offline bzw. nach einem Update zurück auf den Standard |
-| 37 | Nicht zu Mesh-Punkten wechseln, deren Knoten eine Offline-SSID sendet (Zuordnung über Frequenz und BSSID-Muster) | neu | geplant | 21.11. | (A) |
-| 38 | Versatz 0 bis 15 min je Knoten (MAC) auf die Schonzeit | neu | geplant | 21.11. | Vorschlag; in einer Wolke wechselt einer, die anderen bekommen das Gateway übers LAN |
+| 36 | Kanal dauerhaft wechseln, in a und b; nur festschreiben, wenn nicht der Domain-Standard (dann `preserve_channels_<band>`) | neu | umgesetzt | 21.11. | 0.7: `channel`, bei Standardkanal `--no-keep` |
+| 37 | Nicht zu Mesh-Punkten wechseln, deren Knoten eine Offline-SSID sendet (Zuordnung über Frequenz und BSSID-Muster) | neu | umgesetzt | 21.11. | 0.7; beide Muster mit gebastelter Scan-Liste geprüft |
+| 38 | Versatz 0 bis 15 min je Knoten (MAC) auf die Schonzeit | neu | umgesetzt | 21.11. | 0.7 |
 | 39 | Sperre „VPN an und WAN mit Link und Adresse: nie wechseln“ | neu | offen | 21.11. | vertagt (A): Gegenfall gekündigter Anschluss mit laufendem Router |
+| 40 | Nach einem Wechsel frühestens nach 6 h der nächste; Scan höchstens alle 5 min; Mesh-Punkte unter -80 dBm zählen nicht | neu | umgesetzt | 21.11. | 0.7, Vorschlag |
+| 41 | Band ohne Mesh-Rolle: Mesh nicht einschalten | neu | umgesetzt | 21.11. | 0.7; dort ist das Mesh bewusst aus |

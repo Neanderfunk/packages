@@ -13,6 +13,11 @@
 #           -n -a <d>   so tun, als stuende der Knoten in Domain <d> mit
 #                       eingeschalteter Ortung (schaltet nie)
 #
+#   neanderfunk-domainhelper island [-n]
+#       Insel ohne Gateway: nach 60 min Kanal auf ein Mesh der eigenen
+#       Domain stellen, nach 600 min Domain und Kanal wechseln. Alle 91 s
+#       aus bridge-loop.sh. -n: Wartezeiten uebergehen, nur zeigen.
+#
 #   neanderfunk-domainhelper bridge [-n]
 #       Domain-Bruecken am LAN-Mesh erkennen und bis zum Neustart trennen,
 #       alle 91 s aus bridge-loop.sh (procd). -n: nur zeigen, was passieren
@@ -22,7 +27,7 @@
 # /lib/gluon/neanderfunk-domainhelper/cmd_<name>.sh, gemeinsame Funktionen
 # in lib.sh. So laedt der Minutenlauf von "bridge" weder jshn noch locate.
 
-VERSION=0.6
+VERSION=0.7
 
 . /lib/gluon/neanderfunk/site.sh
 . /lib/gluon/neanderfunk-domainhelper/lib.sh
@@ -32,9 +37,11 @@ cmd="$1"
 case "$cmd" in
 	locate) . /lib/gluon/neanderfunk-domainhelper/cmd_locate.sh ;;
 	bridge) . /lib/gluon/neanderfunk-domainhelper/cmd_bridge.sh ;;
+	island) . /lib/gluon/neanderfunk-domainhelper/cmd_island.sh ;;
 	*)
 		echo 'usage: neanderfunk-domainhelper locate [-n] [-u url] [-a domain]' >&2
 		echo '       neanderfunk-domainhelper bridge [-n]' >&2
+		echo '       neanderfunk-domainhelper island [-n]' >&2
 		exit 2
 		;;
 esac

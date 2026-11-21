@@ -143,3 +143,75 @@ dh_lan_target() {
 	[ -f "/lib/gluon/domains/$doms.json" ] || return 0
 	echo "$doms"
 }
+
+# dh_scan <verzeichnis>
+#
+# WLAN-Scan je Band ueber ein eigenes Interface. Legt in <verzeichnis> ab:
+#   ifaces    eigene WLAN-Interfaces "name mac freq typ"
+#   own       eigene MACs
+#   targets   gescannte Interfaces "name|typ"
+#   scan.res  je Scan "iface ok anzahl"
+#   scan.all  rohe Ausgabe aller Scans (iw dev <if> scan)
+dh_scan() {
+	local W="$1" ifname typ ok count
+	# Eigene WLAN-Interfaces: Name, MAC, Typ, Frequenz (Zeilen "name mac freq typ")
+	iw dev 2>/dev/null | awk '
+		function out() { if (n != "") print n, (m == "" ? "-" : m), (f == "" ? 0 : f), t }
+		/^[ \t]*Interface[ \t]/ { out(); n = $2; m = ""; t = ""; f = ""; next }
+		n == "" { next }
+		/^[ \t]*addr[ \t]/ { m = tolower($2) }
+		/^[ \t]*type[ \t]/ { t = $0; sub(/^[ \t]*type[ \t]+/, "", t); sub(/[ \t]+$/, "", t) }
+		f == "" && /\([0-9]+ MHz\)/ { s = $0; sub(/^.*\(/, "", s); sub(/ MHz\).*$/, "", s); f = s + 0 }
+		END { out() }' > "$W/ifaces"
+	awk '$2 != "-" { print $2 }' "$W/ifaces" > "$W/own"
+
+	# Je Band ein Interface zum Scannen: Mesh-Punkt zuerst, dann Station,
+	# zuletzt AP (der braucht ap-force). Ausgabe "name typ", nach Name sortiert.
+	awk '
+		{
+			t = $0; sub(/^[^ ]+ [^ ]+ [^ ]+ /, "", t)
+			r = (t == "mesh point") ? 1 : (t == "managed") ? 2 : (t == "AP") ? 3 : 0
+			if (!r) next
+			b = ($3 >= 4000) ? "5" : "2.4"
+			if (!(b in best) || r < rank[b]) { best[b] = $1; rank[b] = r; typ[b] = t }
+		}
+		END { for (b in best) print best[b] "|" typ[b] }' "$W/ifaces" | sort > "$W/targets"
+
+	: > "$W/scan.all"
+	: > "$W/scan.res"
+	while IFS='|' read -r ifname typ ; do
+		iw dev "$ifname" scan > "$W/scan.one" 2>/dev/null
+		if ! head -n 1 "$W/scan.one" | grep -q '^BSS' && [ "$typ" = AP ] ; then
+			iw dev "$ifname" scan ap-force > "$W/scan.one" 2>/dev/null
+		fi
+		ok=0
+		head -n 1 "$W/scan.one" | grep -q '^BSS' && ok=1
+		count="$(grep -c '^BSS ' "$W/scan.one")"
+		echo "$ifname $ok $count" >> "$W/scan.res"
+		cat "$W/scan.one" >> "$W/scan.all"
+	done < "$W/targets"
+}
+
+# dh_scan_list <verzeichnis>: aus scan.all je BSS eine Zeile, DH_US-getrennt:
+#     bssid freq signal ssid mesh_id
+# ohne eigene Interfaces, ohne Eintraege ohne Pegel; doppelte BSSIDs bleiben
+# (Nachbearbeitung je Aufrufer). Ausgabe nach <verzeichnis>/scan.list
+dh_scan_list() {
+	awk -v US="$DH_US" -v ownl="$(tr '\n' ' ' < "$1/own")" '
+		BEGIN { n = split(ownl, o, " "); for (i = 1; i <= n; i++) own[o[i]] = 1 }
+		function rnd(x,   y, i) { y = x + 0.5; i = int(y); if (i > y) i--; return i }
+		function flush() { if (b != "" && s != "" && !(b in own)) print b US f US s US ssid US mesh }
+		/^BSS[ \t]/ {
+			flush()
+			b = tolower($0); sub(/^bss[ \t]+/, "", b); b = substr(b, 1, 17)
+			if (b !~ /^[0-9a-f][0-9a-f](:[0-9a-f][0-9a-f])(:[0-9a-f][0-9a-f])(:[0-9a-f][0-9a-f])(:[0-9a-f][0-9a-f])(:[0-9a-f][0-9a-f])$/) b = ""
+			f = ""; s = ""; ssid = ""; mesh = ""
+			next
+		}
+		b == "" { next }
+		/^\tfreq:/ { v = $0; sub(/^\tfreq:[ \t]*/, "", v); if (v ~ /^[0-9.]+/) f = rnd(v + 0) }
+		/^\tsignal:/ { v = $0; sub(/^\tsignal:[ \t]*/, "", v); if (v ~ /^-?[0-9.]+[ \t]*dBm/) s = rnd(v + 0) }
+		/^\tSSID:/ { v = $0; sub(/^\tSSID: ?/, "", v); ssid = v }
+		/^\tMESH ID:/ { v = $0; sub(/^\tMESH ID: ?/, "", v); mesh = v }
+		END { flush() }' "$1/scan.all" > "$1/scan.list"
+}

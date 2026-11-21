@@ -9,6 +9,9 @@ zwei:
 **bridge: Domain-Brücken am LAN-Mesh erkennen und trennen**, in allen
 Domains, siehe Abschnitt „bridge“ unten.
 
+**island: Insel ohne Gateway wieder ans Netz bringen**, über einen
+Kanal- oder Domainwechsel, siehe Abschnitt „island“ unten.
+
 **locate: Lokator und Abschleppdienst für die Halteverbots-Defaultdomain.**
 Scannt die WLANs in der Umgebung eines Knotens und meldet sie per POST an den
 Locator (`locator.ffnef.de`). Hängt ein Knoten per LAN-Mesh an genau einer
@@ -16,7 +19,8 @@ anderen Domain, schaltet er selbst dorthin um. Konzept und Format:
 [docs/konzept-hvb-ortung.md](../docs/konzept-hvb-ortung.md), Abschnitte 4.2
 und 4.3.
 
-**Stand 0.5 (21.11.2026):** neu `bridge`. Seit 0.4 ganz in Shell:
+**Stand 0.7 (21.11.2026):** neu `island`. 0.6: `bridge` trennt bis zum
+Neustart, Takt 91 s. 0.5: neu `bridge`. Seit 0.4 ganz in Shell:
 `/usr/sbin/neanderfunk-domainhelper` verteilt nur noch auf
 `/lib/gluon/neanderfunk-domainhelper/cmd_<unterbefehl>.sh`, gemeinsame
 Funktionen stehen in `lib.sh`.
@@ -211,6 +215,52 @@ ohne commit lässt `bridge` so tun, als stünde der Knoten in `<d>`. Damit
 lässt sich das Trennen gegen Nachbarn der eigenen Domain prüfen, ohne eine
 fremde Domain anzuschließen. `neanderfunk-domainhelper bridge -n` zeigt,
 was passieren würde, und ändert nichts.
+
+island
+------
+
+Steht längere Zeit kein Gateway in `batctl gwl`, sucht der Knoten per
+Scan ein WLAN-Mesh einer Domain dieser Firmware (Mesh-IDs aus
+`/lib/gluon/domains/*.json`). Läuft im selben 91-s-Takt wie `bridge`,
+gescannt wird höchstens alle 5 min.
+
+- **a) Mesh der eigenen Domain auf einem anderen Kanal**, ab 60 min ohne
+  Gateway: Das Radio dieses Bands geht auf diesen Kanal. `channel = auto`
+  zählt als anderer Kanal (auf auto kommt das Mesh nicht hoch).
+- **b) Mesh einer anderen Domain**, ab 600 min: `gluon-switch-domain
+  --no-reboot`, dann der Kanal, dann Neustart. Der Kanal kommt nach dem
+  Domainwechsel, weil neanderfunk-preserve-wifichannel im
+  `gluon-reconfigure` des Wechsels einmal die Kanäle der neuen Domain
+  einträgt.
+- **Versatz:** zu beiden Zeiten kommen je Knoten 0 bis 15 min aus der MAC.
+  Fällt eine Wolke gemeinsam aus, wechselt einer zuerst; die anderen sehen
+  danach über das LAN-Mesh wieder ein Gateway.
+- **Kanal dauerhaft:** über den Befehl `channel` (neanderfunk-banner), der
+  ohne das uci-Delta speichert und nur das Radio neu startet
+  (`wifi up <radio>`). Ist der neue Kanal der Standardkanal der (neuen)
+  Domain, mit `--no-keep`, sonst mit `preserve_channels_<band>`, damit ein
+  Update ihn nicht zurücksetzt. Ein Wechsel hält auch über den Weekly
+  Reboot; aufräumen, wenn der eigentliche Uplink wieder steht, muss man
+  von Hand.
+- **Nicht gewechselt wird**
+  - zu einem Mesh-Punkt, dessen Knoten selbst offline ist: Ein AP auf
+    derselben Frequenz mit verwandter BSSID sendet die Offline-SSID
+    (`ssid_changer.prefix`, bei uns `FF_Offline_`). Verwandt: bis auf die
+    unteren 3 Bit des letzten Bytes oder die Bits 0x0e des ersten Bytes
+    gleich (beides kommt vor, je nach Treiber). Fällt das Internet für
+    alle aus, bleibt so jeder, wo er ist;
+  - auf einem Band ohne Mesh-Rolle (`gluon.band_<band>.role`), auf 5 GHz
+    im Outdoor-Modus, in eine Domain mit Ortung (`25_hvb`), zu
+    Mesh-Punkten unter -80 dBm.
+  Eigene Domain geht vor fremder, dann das stärkste Signal.
+- **Nach einem Wechsel** frühestens nach 6 h der nächste.
+- Ein aktives LAN-Mesh oder weitere Knoten in der Wolke verhindern den
+  Wechsel nicht; maßgeblich ist nur: kein Gateway.
+
+Abschalten: `uci set neanderfunk-domainhelper.island.enabled=0 ; uci commit
+neanderfunk-domainhelper`. `neanderfunk-domainhelper island -n` übergeht
+die Wartezeiten, scannt und zeigt je Mesh-Punkt, warum er Kandidat ist
+oder nicht.
 
 Getestet
 --------

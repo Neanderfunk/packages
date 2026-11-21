@@ -1265,11 +1265,13 @@ else
 	warn('red', 'kein Gateway gewaehlt')
 end
 
--- Domain-Bruecke am LAN-Mesh (neanderfunk-domainhelper bridge): je Zeile
--- "<yellow|red>|<text>" in /tmp/neanderfunk-domainhelper.banner
-for line in (readfile('/tmp/neanderfunk-domainhelper.banner') or ''):gmatch('[^\n]+') do
-	local lvl, text = line:match('^(%a+)|(.+)$')
-	if lvl == 'yellow' or lvl == 'red' then warn(lvl, text) end
+-- neanderfunk-domainhelper (bridge: Domain-Bruecke, island: Insel ohne
+-- Gateway): je Zeile "<yellow|red>|<text>"
+for _, f in ipairs({ '/tmp/neanderfunk-domainhelper.banner', '/tmp/neanderfunk-domainhelper.banner.island' }) do
+	for line in (readfile(f) or ''):gmatch('[^\n]+') do
+		local lvl, text = line:match('^(%a+)|(.+)$')
+		if lvl == 'yellow' or lvl == 'red' then warn(lvl, text) end
+	end
 end
 
 -- Hop-Penalty je Interface (Gluon 2025.1, #3454): gluon.iface_<name>.

@@ -65,42 +65,7 @@ own_domain="$(uci -q get gluon.core.domain)"
 
 # --- WLAN-Scan ---------------------------------------------------------------
 
-# Eigene WLAN-Interfaces: Name, MAC, Typ, Frequenz (Zeilen "name mac freq typ")
-iw dev 2>/dev/null | awk '
-	function out() { if (n != "") print n, (m == "" ? "-" : m), (f == "" ? 0 : f), t }
-	/^[ \t]*Interface[ \t]/ { out(); n = $2; m = ""; t = ""; f = ""; next }
-	n == "" { next }
-	/^[ \t]*addr[ \t]/ { m = tolower($2) }
-	/^[ \t]*type[ \t]/ { t = $0; sub(/^[ \t]*type[ \t]+/, "", t); sub(/[ \t]+$/, "", t) }
-	f == "" && /\([0-9]+ MHz\)/ { s = $0; sub(/^.*\(/, "", s); sub(/ MHz\).*$/, "", s); f = s + 0 }
-	END { out() }' > "$W/ifaces"
-awk '$2 != "-" { print $2 }' "$W/ifaces" > "$W/own"
-
-# Je Band ein Interface zum Scannen: Mesh-Punkt zuerst, dann Station,
-# zuletzt AP (der braucht ap-force). Ausgabe "name typ", nach Name sortiert.
-awk '
-	{
-		t = $0; sub(/^[^ ]+ [^ ]+ [^ ]+ /, "", t)
-		r = (t == "mesh point") ? 1 : (t == "managed") ? 2 : (t == "AP") ? 3 : 0
-		if (!r) next
-		b = ($3 >= 4000) ? "5" : "2.4"
-		if (!(b in best) || r < rank[b]) { best[b] = $1; rank[b] = r; typ[b] = t }
-	}
-	END { for (b in best) print best[b] "|" typ[b] }' "$W/ifaces" | sort > "$W/targets"
-
-: > "$W/scan.all"
-: > "$W/scan.res"
-while IFS='|' read -r ifname typ ; do
-	iw dev "$ifname" scan > "$W/scan.one" 2>/dev/null
-	if ! head -n 1 "$W/scan.one" | grep -q '^BSS' && [ "$typ" = AP ] ; then
-		iw dev "$ifname" scan ap-force > "$W/scan.one" 2>/dev/null
-	fi
-	ok=0
-	head -n 1 "$W/scan.one" | grep -q '^BSS' && ok=1
-	count="$(grep -c '^BSS ' "$W/scan.one")"
-	echo "$ifname $ok $count" >> "$W/scan.res"
-	cat "$W/scan.one" >> "$W/scan.all"
-done < "$W/targets"
+dh_scan "$W"
 
 # Filtern: eigene Interfaces, _nomap, Eintraege ohne Pegel; doppelte BSSIDs
 # (auf zwei Interfaces gesehen) nur einmal, mit dem staerkeren Pegel.
