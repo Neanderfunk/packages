@@ -19,7 +19,7 @@ anderen Domain, schaltet er selbst dorthin um. Konzept und Format:
 [docs/konzept-hvb-ortung.md](../docs/konzept-hvb-ortung.md), Abschnitte 4.2
 und 4.3.
 
-**Stand 0.8 (21.11.2026):** Fall b von `island` verwirft vor dem Domainwechsel alle Laufzeit-Deltas (sonst schriebe das pauschale `uci commit` in `001-reset-uci` etwa die Offline-SSID in den Flash). 0.7: neu `island`. 0.6: `bridge` trennt bis zum
+**Stand 0.9 (21.11.2026):** `bridge` trennt nicht gegen Nachbarn aus einer Domain mit Ortung (`25_hvb`), die schalten per `lan_switch` selbst um. 0.8: Fall b von `island` verwirft vor dem Domainwechsel alle Laufzeit-Deltas (sonst schriebe das pauschale `uci commit` in `001-reset-uci` etwa die Offline-SSID in den Flash). 0.7: neu `island`. 0.6: `bridge` trennt bis zum
 Neustart, Takt 91 s. 0.5: neu `bridge`. Seit 0.4 ganz in Shell:
 `/usr/sbin/neanderfunk-domainhelper` verteilt nur noch auf
 `/lib/gluon/neanderfunk-domainhelper/cmd_<unterbefehl>.sh`, gemeinsame
@@ -202,7 +202,9 @@ eigenen Speicher.
   der Gegenseite eine Firmware ohne `bridge`, trennt eben nur unsere.
 - **In einer Domain mit Ortung** (`25_hvb`) trennt `bridge` nicht, sondern
   startet einmal `locate`, das meldet und selbst in die Domain des
-  Nachbarn umschaltet.
+  Nachbarn umschaltet. Umgekehrt zählt ein Nachbar aus einer Domain mit
+  Ortung nicht als fremd: Er kommt per `lan_switch` von selbst herüber,
+  eine Trennung hielte ihn danach bis zum Neustart ab.
 
 Abschalten (nur das Trennen, gemeldet wird weiter):
 

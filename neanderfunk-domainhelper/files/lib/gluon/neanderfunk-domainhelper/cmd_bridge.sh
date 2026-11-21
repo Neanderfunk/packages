@@ -141,6 +141,10 @@ br_foreign() {
 			*[!A-Za-z0-9_-]*) continue ;;
 		esac
 		[ -f "/lib/gluon/domains/$d.json" ] || continue
+		# Nachbar in einer Domain mit Ortung (25_hvb): Der schaltet per
+		# lan_switch selbst zu uns um; Trennen hielte ihn danach bis zum
+		# Neustart ab.
+		[ -n "$(jsonfilter -i "/lib/gluon/domains/$d.json" -e '@.neanderfunk_domainhelper.locator.urls[0]' 2>/dev/null)" ] && continue
 		echo "$i $id $d"
 		break
 	done
