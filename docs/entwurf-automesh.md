@@ -63,6 +63,10 @@ Reihenfolge:
 3. Trennen (Fall A) und Domainwechsel ohne VPN am Kabel.
 4. WLAN-Beitritt für Inseln.
 
+Was aus Fassung 2 umgesetzt, geplant, aufgeschoben oder verworfen ist,
+führt Abschnitt 17. Dort steht auch, auf welche Entscheidung sich der Stand
+stützt, damit wir sie später gezielt wieder aufgreifen können.
+
 ## 1. Worum es geht
 
 **Hauptfall: falsche Firmware oder falsche Domain am LAN-Mesh.** Wir fahren
@@ -431,3 +435,52 @@ Erlaubnisliste (A) und kein Ausblenden von Knotendaten.
 6. Signalisierung sofort an vier Stellen (Abschnitt 11).
 7. Eigener Heimat-Marker, getrennt von linkcheck (Abschnitt 10).
 8. ssid-changer mit gleichen TQ-Kriterien wie daheim.
+
+## 17. Feature-Stand
+
+Stand 21.11.2026. Bezug ist der Funktionsumfang von Fassung 2. Pflegen bei
+jeder Entscheidung und jedem Bau: Status, Datum, Grund.
+
+Status:
+- **umgesetzt**: im Paket und getestet;
+- **geplant**: im Zuschnitt von Fassung 3, noch nicht gebaut (Schritt 1 bis 4
+  aus Abschnitt 0);
+- **aufgeschoben**: bewusst später, Entscheidung kann wieder aufgegriffen
+  werden;
+- **verworfen**: entfällt, mit Grund.
+
+Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
+`neanderfunk-domainhelper` 0.3 (Test 21.11.2026 mit 26112017sta).
+
+| # | Feature | Fassung 2 | Status | Seit | Grund, Anmerkung |
+|---|---|---|---|---|---|
+| 1 | LAN-Mesh-Nachbarn und ihre Domain erkennen (`batctl n`, respondd per Link-Local) | 4, 7 | teilweise umgesetzt | 21.11. | im domainhelper, aber nur in `25_hvb` aktiv; für alle Domains Schritt 1 |
+| 2 | Signalisierung: Syslog, respondd, Statusseite, Banner | 11 | geplant | 21.11. | Schritt 1; Syslog-Zeilen gibt es im domainhelper schon |
+| 3 | Prüfkette „Wer ist dieses Gateway?“ | 4 | geplant | 21.11. | einfacher, weil Multi-Knoten `domain_code` melden |
+| 4 | MAC-Schema `02:ca:ff:ee:<NN>:<SS>` als Heimat-Hinweis | 4, 10 | geplant | 02.10. | nur Hinweis, nie Urteil |
+| 5 | Normalisierung von Altcodes, `home_extra` | 2, 12 | aufgeschoben | 21.11. | handeln dürfen nur Multi-Knoten (A); nötig höchstens für Nachbarn mit alter Firmware |
+| 6 | linkcheck: Gateway-Marker nur bei Heimat-Gateway, alle Geräte | 9, 10 | geplant | 21.11. | Schritt 2, Voraussetzung für Beitritt |
+| 7 | Fall A: `mesh_other` trennen bei fremdem Nachbarn, Knoten mit VPN, nur Laufzeit | 7 | geplant | 21.11. | Schritt 3; „das wichtige Feature“ (A) |
+| 8 | Frist 120 s und Notbremse „eigener Randknoten meldet sich“ | 7 | geplant | 02.10. | Weg über Translation-Table-MAC noch zu prüfen |
+| 9 | Domainwechsel ohne eigenes VPN am Kabel, alle Domains | neu | geplant | 21.11. | Schritt 3 (A); Flash-Ausnahme, höchstens 1 je Tag (Vorschlag) |
+| 10 | Fall B `merged`: ohne VPN im fremden Mesh bleiben, Filter für fremde Präfixe | 6.4, 6.5 | aufgeschoben | 21.11. | für eigene Domains ersetzt durch #9; bleibt Thema für Nachbar-Communities |
+| 11 | Beitritt am LAN per VXLAN (zweite VNI) | 6.2 | aufgeschoben | 21.11. | VXLAN ausgeklammert (A) |
+| 12 | Sniffer `neanderfunk-automesh-sniff` (AF_PACKET, BPF) | 6.2 | aufgeschoben | 21.11. | hing an VXLAN; rohes batman zeigt schon `batctl n` |
+| 13 | BATMAN_V-Netze überspringen | 6.2 | aufgeschoben | 21.11. | nur mit Sniffer; unsere Domains fahren alle BATMAN_IV |
+| 14 | WLAN-Beitritt (802.11s) für Inseln ohne VPN | 6.3 | geplant | 21.11. | Schritt 4 (A) |
+| 15 | Beitritt nur zu Meshes eigener Domains, Mesh-IDs aus `/lib/gluon/domains/*.json` | neu | geplant | 21.11. | (A); ersetzt für jetzt Entscheidung 2 |
+| 16 | Beitritt zu Nachbar-Communities | 6.3, 16.2 | aufgeschoben | 21.11. | (A); kommt mit #17 zurück |
+| 17 | Sperrliste `deny`, PPA-Begründung | 12, 13 | aufgeschoben | 21.11. | war für Nachbar-Communities gedacht (A) |
+| 18 | Kanalwechsel für den Beitritt, AP wechselt mit | 6.3, 16.5 | geplant | 02.10. | gilt weiter, nur Laufzeit-Delta |
+| 19 | Zustände in `/tmp/automesh.state` | 5 | geplant | 21.11. | ohne `merged` und VXLAN-Zustände kleiner |
+| 20 | Sperren gegen Pendeln, exponentiell, global und je Netz | 8 | geplant | 02.10. | |
+| 21 | Gemeinsames WLAN-Lock `/var/lock/neanderfunk-wifi.lock` | 3, 9 | geplant | 02.10. | Schritt 4 |
+| 22 | Rücksicht auf autoupdater-wifi-fallback | 9 | geplant | 02.10. | ob ohne Gluon-Patch möglich, offen |
+| 23 | Doppel-Randknoten: höhere MAC löst auf | 5 | geplant | 02.10. | Schritt 4 |
+| 24 | Kein automesh auf 64-MB-Geräten | 3, 16.4 | geplant | 02.10. | linkcheck-Änderung (#6) trotzdem dort |
+| 25 | Scan nur über scan-guard | 6.3 | verworfen | 04.10. | scan-guard in v2025.1.x entfallen |
+| 26 | Kein WLAN-Scan auf MT7915 | 6.3 | verworfen | 04.10. | Scan-Fehler nur unter 2023.2, nicht unter 2025.1 |
+| 27 | Mesh-IDs per Muster `.*-mesh` erkennen | 6.3 | verworfen | 02.10. | Domains 43 bis 47 heißen `mesh-<kurz>`; Liste statt Muster |
+| 28 | Erlaubnisliste statt Sperrliste | 13 | verworfen | 02.10. | PPA (A); für eigene Domains ist #15 faktisch eine Liste aus der Firmware |
+| 29 | Paket: automesh in `neanderfunk-domainhelper`, Beitritt als eigenes Binärpaket | neu | offen | 21.11. | Vorschlag, noch nicht entschieden |
+
