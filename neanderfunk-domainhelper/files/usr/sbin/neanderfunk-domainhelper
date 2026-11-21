@@ -27,7 +27,7 @@
 # /lib/gluon/neanderfunk-domainhelper/cmd_<name>.sh, gemeinsame Funktionen
 # in lib.sh. So laedt der Minutenlauf von "bridge" weder jshn noch locate.
 
-VERSION=0.7
+VERSION=0.8
 
 . /lib/gluon/neanderfunk/site.sh
 . /lib/gluon/neanderfunk-domainhelper/lib.sh

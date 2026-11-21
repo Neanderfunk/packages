@@ -243,7 +243,9 @@ fi
 
 if [ "$dry" = 1 ] ; then
 	echo "wuerde: $what"
+	[ "$kind" = b ] && echo "  uci revert (alle Laufzeit-Deltas); gluon-switch-domain --no-reboot $tdom"
 	echo "  channel $args $keep -f"
+	[ "$kind" = b ] && echo "  reboot"
 	exit 0
 fi
 
@@ -262,6 +264,12 @@ fi
 # Fall b: Domain, dann Kanal, dann Neustart. neanderfunk-preserve-wifichannel
 # traegt im gluon-reconfigure des Domainwechsels einmal die Kanaele der neuen
 # Domain ein; der Kanal kommt deshalb danach.
+# Vorher alle Laufzeit-Deltas verwerfen (Offline-SSID, ap-timer, Blackout):
+# 001-reset-uci im gluon-reconfigure macht ein pauschales "uci commit" und
+# schriebe sie sonst in den Flash. Der Neustart verwirft sie ohnehin.
+for p in $(uci changes 2>/dev/null | sed -n 's/^-\{0,1\}\([^.]*\)\..*/\1/p' | sort -u) ; do
+	uci revert "$p"
+done
 if ! gluon-switch-domain --no-reboot "$tdom" > "$ISL_DIR/switch.out" 2>&1 ; then
 	dh_log "Insel: gluon-switch-domain fehlgeschlagen: $(tail -n 1 "$ISL_DIR/switch.out")"
 	exit 0
