@@ -11,8 +11,30 @@ anderen Domain, schaltet er selbst dorthin um. Konzept und Format:
 [docs/konzept-hvb-ortung.md](../docs/konzept-hvb-ortung.md), Abschnitte 4.2
 und 4.3.
 
-**Stand 0.3 (20.11.2026):** erstes Paket für eine Testfirmware. Bis 0.2
-hieß es `neanderfunk-hvblocator`, davor als Prototyp `neanderfunk-locate`.
+**Stand 0.4 (21.11.2026):** ganz in Shell, kein Lua mehr. Meldeformat und
+Verhalten wie 0.3, das noch ein Lua-Skript war. Bis 0.2 hieß das Paket
+`neanderfunk-hvblocator`, davor als Prototyp `neanderfunk-locate`.
+
+Warum Shell: Teile des Pakets sollen später im Minutentakt laufen
+(automesh, [docs/entwurf-automesh.md](../docs/entwurf-automesh.md)). Ein
+Lua-Lauf zieht `liblua`, `jsonc`, `uci` und die gluon-Module vom Flash in
+den Speicher; auf 64-MB-Geräten werden solche selten genutzten Seiten
+unter Speicherdruck verdrängt und immer wieder neu gelesen. Die
+Shell-Fassung nutzt busybox, `jsonfilter` und `jshn`, die ohnehin ständig
+gebraucht werden. Gemessen an einem M60 (je Lauf, Summe aller Prozesse):
+eigener Speicher (`RssAnon`) etwa gleich, 0.8 bis 1.3 MB mit Lua, 0.75 bis
+0.9 MB mit Shell; der Unterschied liegt in den Datei-Seiten. Flash:
+Programm und Bibliothek sind xz-komprimiert 6.6 KB groß, das Lua-Skript
+von 0.3 war es 5.2 KB.
+
+Die gemeinsamen Funktionen (LAN-Mesh-Nachbarn und ihre Domain,
+Umschaltziel) stehen in `/lib/gluon/neanderfunk-domainhelper/lib.sh`, zum
+Sourcen für weitere Teile.
+
+**Falle busybox `sort`:** Die busybox der Knoten kennt bei `sort` nur
+`-n -r -u -s -z`. `-t` und `-k` werden ohne Fehlermeldung ignoriert, die
+Ausgabe ist dann nicht nach dem gewünschten Feld sortiert. Deshalb steht
+der Sortierschlüssel vorn in der Zeile.
 
 Einschalten (locate)
 --------------------
@@ -48,7 +70,7 @@ Wann locate läuft
   Fehlschlag 6 h). Gemessen wird in Uptime, Stand in
   `/tmp/neanderfunk-domainhelper-locate.stamp`. Gemeldet wird je Knoten
   fest 0 bis 49 min später (letztes Byte der primären MAC). Ohne Schlüssel
-  endet `locate.sh` nach einem `jsonfilter`, ohne Lua zu starten.
+  endet `locate.sh` nach einem `jsonfilter`.
 - Nicht im Setup-Mode, nie zwei Läufe gleichzeitig (Sperre in `/tmp`).
 
 Aufruf
@@ -141,6 +163,22 @@ Key), zusammen mit nodeplacer 0.1-r2 (D-045):
   nach dem Wechsel nach `25_hvb`: etwa 15 min, bis die Karte ihn in
   `25_hvb` führte und der Manifest-Lauf ihn aufnahm, dann noch 37 min bis
   zum stündlichen nodeplacer-Lauf.
+
+21.11.2026, 0.4 (Shell) live eingespielt, ohne Build:
+
+- **M60 (mediatek-filogic), 26112017sta:** Trockenlauf `-n -a 25_hvb`
+  neben 0.3: gleiche Felder und Werte (Uplink, Mesh-MACs, Nachbarzahlen,
+  LAN-Nachbarn mit Domain, `lan_switch`, Exit-IP), je 50 Netze, davon
+  13 Mesh-Punkte `dias-mesh` und 2 `hvb-mesh` in beiden, 47 von 50 BSSIDs
+  gleich (Rest Schwankung zwischen zwei Scans). Dann mit 0.4 an
+  `/usr/sbin` nach `25_hvb` gesetzt: Startlauf meldete 50 Netze an
+  `https://locator.ffnef.de/hvb/locate`, erkannte die LAN-Nachbarn und
+  schaltete nach `21_dias` zurück, wie 0.3. Der Locator nahm die Meldung
+  an (User-Agent `neanderfunk-domainhelper/0.4`); Schlüssel und Typen
+  aller Felder gleich wie bei 0.3, E11 ergab wie vorher `21_dias`.
+- **TL-WR1043ND v2 (ath79, 64 MB), 26111912bro:** Trockenlauf aus `/tmp`:
+  rc 0 nach 9 s, 43 Netze nach Pegel, kein VPN, Gateway über `mesh0`,
+  LAN-Nachbar mit Domain erkannt.
 
 Lizenz
 ------

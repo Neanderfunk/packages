@@ -2,7 +2,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-domainhelper
-PKG_VERSION:=0.3
+PKG_VERSION:=0.4
 PKG_RELEASE:=1
 PKG_LICENSE:=BSD-3-Clause
 
@@ -13,7 +13,8 @@ include $(TOPDIR)/../package/gluon.mk
 define Package/$(PKG_NAME)
   TITLE:=Hilfen rund um die Domain eines Knotens
   DEPENDS:=+gluon-core +neanderfunk-common +gluon-mesh-batman-adv \
-	+gluon-neighbour-info +micrond +iw +uclient-fetch
+	+gluon-neighbour-info +micrond +iw +uclient-fetch \
+	+jsonfilter +jshn
   MAINTAINER:=Neanderfunk <technik@neanderfunk.de>
   URL:=https://github.com/Neanderfunk/packages
 endef

@@ -494,5 +494,5 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 27 | Mesh-IDs per Muster `.*-mesh` erkennen | 6.3 | verworfen | 02.10. | Domains 43 bis 47 heißen `mesh-<kurz>`; Liste statt Muster |
 | 28 | Erlaubnisliste statt Sperrliste | 13 | verworfen | 02.10. | PPA (A); für eigene Domains ist #15 faktisch eine Liste aus der Firmware |
 | 29 | Paket: automesh in `neanderfunk-domainhelper`, Beitritt als eigenes Binärpaket | neu | geplant | 21.11. | Integration entschieden (A); Binärpaket wegen #24 |
-| 30 | Alles in Shell, auch `locate` (heute Lua) | 3.7 | geplant | 21.11. | (A); Fassung 2 sah schon „Shell, kein Lua-Daemon“ vor |
+| 30 | Alles in Shell, auch `locate` (bis 0.3 Lua) | 3.7 | umgesetzt | 21.11. | domainhelper 0.4, live auf Testknoten getestet, noch nicht im Testbau; gemeinsame Funktionen in `lib.sh` |
 
