@@ -7,6 +7,7 @@ PKG_VERSION:=3
 PKG_LICENSE:=BSD-3-Clause
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/neanderfunk-domain-from-legacy
   TITLE:=Pick the mesh domain of a node coming from a single-domain firmware

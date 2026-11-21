@@ -9,6 +9,7 @@ PKG_RELEASE:=2
 PKG_LICENSE:=BSD-2-Clause
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/$(PKG_NAME)
   TITLE:=changes the SSID to an Offline-SSID so clients don't connect to an offline WiFi

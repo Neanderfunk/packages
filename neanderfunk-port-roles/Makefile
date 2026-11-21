@@ -7,6 +7,7 @@ PKG_VERSION:=2
 PKG_LICENSE:=BSD-3-Clause
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/neanderfunk-port-roles
   TITLE:=One role per network port, and how wired mesh ports are joined

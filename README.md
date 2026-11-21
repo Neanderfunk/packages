@@ -80,6 +80,18 @@ What changes for these packages with a multi-domain image (one firmware for
 all domains), as a checklist for the acceptance test:
 [docs/multidomain-abnahme.md](docs/multidomain-abnahme.md).
 
+Comments in shell scripts: Gluon minifies only Lua below `luasrc/`
+(luasrcdiet). Everything below `files/` would otherwise go into the image
+with its comments. Every package Makefile includes
+[neanderfunk.mk](neanderfunk.mk) right after `gluon.mk`; after installation
+it runs [scripts/strip-shell-comments](scripts/strip-shell-comments), which
+drops whole comment lines and blank lines from all shell files of the
+package. It tracks quotes, `$( ... )` and heredocs, keeps the shebang and
+SPDX lines, leaves `etc/config/` alone and falls back to the original if
+`sh -n` fails afterwards. A package with its own
+`define Package/<name>/install` ends it with `$(call NfStripShell,$(1))`.
+This replaces the former per-package `gluonShellDiet.sh`.
+
 ### neanderfunk-config-mode-theme ###
 
 replaces gluon-config-mode-theme: config mode layout and stylesheet,
@@ -216,6 +228,15 @@ des TQ eines mesh-vpn-Nachbarn - ein Knoten, der ueber WLAN oder LAN mesht,
 galt sonst als "Gateway nicht erreichbar". Drahtformat und App bleiben
 unveraendert. Upstream ist gepinnt, unsere Aenderungen liegen als Patches
 daneben; siehe [](neanderfunk-node-whisperer/README.md) samt Backport-Anleitung.
+
+### neanderfunk-domainhelper ###
+
+helpers around a node's domain, all in shell. `bridge` detects domain
+bridges on the LAN mesh (with `mesh.vxlan = false` two domains merge as soon
+as a cable connects them) and cuts them at runtime when both sides keep an
+uplink of their own. `locate` reports the surrounding wifi networks to the
+locator in the no-parking default domain and switches over a LAN cable to
+the neighbour's domain. See [](neanderfunk-domainhelper/README.md).
 
 ### neanderfunk-nodeplacer ###
 

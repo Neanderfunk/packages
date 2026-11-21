@@ -15,6 +15,7 @@ PKG_MAINTAINER:=Freifunk im Neanderland <projekt@neanderfunk.de>
 PKG_LICENSE:=GPL-2.0-or-later
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 MAKE_PATH:=src
 MAKE_VARS += \
@@ -58,6 +59,7 @@ define Package/$(PKG_NAME)/install
 	# und die entstehen erst in 320-gluon-client-bridge-wireless. Als 150- lief
 	# es davor und haette nie etwas gefunden.
 	$(INSTALL_BIN) ./files/node-whisperer.upgrade.lua $(1)/lib/gluon/upgrade/330-neanderfunk-node-whisperer
+	$(call NfStripShell,$(1))
 endef
 
 $(eval $(call BuildPackageGluon,$(PKG_NAME)))

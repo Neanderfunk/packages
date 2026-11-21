@@ -5,6 +5,7 @@ PKG_VERSION:=v2018.1
 PKG_RELEASE:=5
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/$(PKG_NAME)
   TITLE:=Migrate autoupdater branches and settings
@@ -17,7 +18,7 @@ endef
 
 define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
-	./gluonShellDiet.sh $(1)/lib/gluon/upgrade/910-neanderfunk-migrate-updatebranch
+	$(call NfStripShell,$(1))
 endef
 
 $(eval $(call BuildPackageGluon,$(PKG_NAME)))

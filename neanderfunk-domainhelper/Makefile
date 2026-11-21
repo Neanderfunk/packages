@@ -9,6 +9,7 @@ PKG_LICENSE:=BSD-3-Clause
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/$(PKG_NAME)
   TITLE:=Hilfen rund um die Domain eines Knotens

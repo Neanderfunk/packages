@@ -6,6 +6,7 @@ PKG_VERSION:=1
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/$(PKG_NAME)
   SECTION:=gluon
@@ -50,9 +51,7 @@ endef
 # Anlegen einer Datei von Hand nachziehen muss, wird wieder unvollstaendig.
 define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
-	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-hotfix/*.sh \
-	                    $(1)/lib/gluon/upgrade/500-neanderfunk-hotfix \
-	                    $(1)/usr/lib/autoupdater/*/20neanderfunk-hotfix
+	$(call NfStripShell,$(1))
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))

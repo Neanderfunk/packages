@@ -7,6 +7,7 @@ PKG_VERSION:=1
 PKG_LICENSE:=BSD-3-Clause
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/neanderfunk-default-hostname
   TITLE:=Default hostname from the model short name and the last four digits of the node ID

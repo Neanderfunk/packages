@@ -7,6 +7,7 @@ PKG_VERSION:=1
 PKG_LICENSE:=BSD-2-Clause
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/$(PKG_NAME)
   TITLE:=Timer for the client wifi, with its config-mode page

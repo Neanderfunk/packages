@@ -22,6 +22,7 @@ TARGET_CFLAGS += -DLOG_LEVEL_LIMIT=5
 TARGET_CFLAGS += -DDDHCPD_STATISTICS
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/$(PKG_NAME)
   TITLE:=ddhcpd, verteilter DHCP-Server auf den Knoten (Fork von ffgraz-ddhcpd)
@@ -53,6 +54,7 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_DIR) $(1)/usr/sbin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/ddhcpd $(1)/usr/sbin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/ddhcpdctl $(1)/usr/sbin/
+	$(call NfStripShell,$(1))
 endef
 
 # BuildPackageGluon, damit check_site.lua beim Bau laeuft (ffgraz-ddhcpd nahm

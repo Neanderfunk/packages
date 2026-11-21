@@ -6,6 +6,7 @@ PKG_VERSION:=2
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/$(PKG_NAME)
   SECTION:=gluon
@@ -45,8 +46,7 @@ endef
 # reinem Kommentar ungestrippt ins Image.
 define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
-	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk-linkcheck/*.sh \
-	                    $(1)/lib/gluon/upgrade/500-neanderfunk-linkcheck
+	$(call NfStripShell,$(1))
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))

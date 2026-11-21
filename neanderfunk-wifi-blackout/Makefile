@@ -6,6 +6,7 @@ PKG_VERSION:=2
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/$(PKG_NAME)
   SECTION:=neanderfunk
@@ -41,6 +42,7 @@ endef
 define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
 	$(CP) $(PKG_BUILD_DIR)/luadest/* $(1)/
+	$(call NfStripShell,$(1))
 endef
 
 define Package/$(PKG_NAME)/postinst

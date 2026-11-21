@@ -7,6 +7,7 @@ PKG_VERSION:=3
 PKG_LICENSE:=BSD-3-Clause
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/$(PKG_NAME)
   TITLE:=Migrate configs of old Gluon versions (2015.1 to 2021.1) on the jump to 2025.1
