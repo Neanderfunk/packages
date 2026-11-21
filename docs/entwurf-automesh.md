@@ -29,10 +29,10 @@ gilt dieser Abschnitt.
   zu einem fremden Netz aus 6.3 durch zwei Fälle (A, 21.11.), jeweils erst
   nach einer Schonzeit ohne Gateway:
   - **a) Mesh der eigenen Domain auf einem anderen Kanal**, Schonzeit
-    60 min. Der Knoten stellt das Radio zur Laufzeit auf diesen Kanal
-    (uci-Delta, `wifi reconf`, kein commit). `channel = auto` zählt als
-    anderer Kanal: Dort ist das Mesh aus, weil mac80211 ohne feste
-    Frequenz keinem Mesh beitritt.
+    60 min. Der Knoten stellt das Radio dauerhaft auf diesen Kanal (A,
+    21.11.), sonst stünde er nach jedem Neustart wieder 60 min ohne Netz.
+    `channel = auto` zählt als anderer Kanal: Dort ist das Mesh aus, weil
+    mac80211 ohne feste Frequenz keinem Mesh beitritt.
   - **b) Mesh einer anderen Domain dieser Firmware**, Schonzeit 600 min.
     Der Knoten wechselt dauerhaft **Domain und Kanal** (A, 21.11.): den
     Kanal, auf dem er das Mesh gefunden hat, auch wenn das nicht der
@@ -44,6 +44,24 @@ gilt dieser Abschnitt.
     danach Kanal per `channel` (setzt `preserve_channels_<band>`), commit,
     Neustart. Beim Bau prüfen, dass das einmalige Eintragen schon im
     Wechsel passiert und nicht erst beim nächsten Start.
+  - **Kanal speichern, in a und b** (A, 21.11.): Ist der gefundene Kanal
+    der Standardkanal der (neuen) Domain, wird nichts festgeschrieben, der
+    Knoten folgt weiter der Domain. Ist er es nicht, wird er gespeichert
+    und per `preserve_channels_<band>` geschützt (Befehl `channel`), damit
+    ein Firmware-Update ihn nicht auf den Domain-Standard zurücksetzt.
+  - **Nicht zu Knoten, die selbst offline sind** (A, 21.11.): Sendet der
+    Knoten hinter einem gefundenen Mesh-Punkt eine Offline-SSID
+    (ssid-changer, `ssid_changer.prefix` aus Site oder Domain, bei uns
+    `FF_Offline_`), ist er selbst ohne Gateway; dorthin wird weder Kanal
+    noch Domain gewechselt. Zuordnung über den Scan: Mesh-Punkt und AP
+    desselben Radios funken auf derselben Frequenz, ihre BSSIDs
+    unterscheiden sich nur in wenigen Bits, entweder im letzten Byte
+    (M60 `a6:f7:ba:13:fd:08/09/0a`, 1043v2 `42:6b:a7:96:22:f0/f1`) oder im
+    ersten (Xiaomi 4A Gigabit `28/2a/2e:d1:27:db:33:f3`). Das hält zwei
+    Inseln ohne Uplink davon ab, gegenseitig zu wechseln; eine
+    Zurückwechsel-Sperre braucht es dann nicht. Ohne Offline-Signal
+    (ssid-changer aus, kein Client-AP auf dem Radio) gilt der Knoten als
+    unbekannt, Wechsel erlaubt.
   Die Schonzeit zählt ab dem Zeitpunkt, seit dem kein Gateway in `gwl`
   steht, nach einem Neustart ab dem Start. Weil in beiden Fällen kein
   fremdes Gateway nur geliehen ist, entfällt das Auflösen samt seiner
@@ -521,5 +539,6 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 32 | Fall A getrennt bis zum Neustart, keine Neuprüfung zwischendurch | 8 | umgesetzt | 21.11. | (A); fällt ein VPN weg, rettet der Wächter (linkcheck `no_gateway`) per Neustart |
 | 33 | Prüftakt 91 s als procd-Schleife statt jeder Minute aus micron.d | neu | umgesetzt | 21.11. | (A); nicht im Gleichschritt mit der vollen Minute |
 | 34 | Fall a: Schonzeit 60 min, Fall b: Schonzeit 600 min ohne Gateway | neu | geplant | 21.11. | (A) |
-| 35 | Fall b: kein Zurückwechseln in die Domain, aus der der Knoten gerade kam | neu | offen | 21.11. | sonst Pendeln alle 10 h zwischen zwei Inseln; Merker müsste in den Flash (Vorschlag) |
-| 36 | Fall b: Domain und Kanal dauerhaft wechseln (gefundener Kanal, mit `preserve_channels_<band>`) | neu | geplant | 21.11. | (A); sonst nach jedem Neustart 60 min offline |
+| 35 | Fall b: kein Zurückwechseln in die Domain, aus der der Knoten gerade kam | neu | verworfen | 21.11. | zwei Inseln ohne Uplink: ohnehin verloren, in der Praxis selten (A); ersetzt durch #37 |
+| 36 | Kanal dauerhaft wechseln, in a und b; nur festschreiben, wenn nicht der Domain-Standard (dann `preserve_channels_<band>`) | neu | geplant | 21.11. | (A); sonst nach jedem Neustart 60 min offline bzw. nach einem Update zurück auf den Standard |
+| 37 | Nicht zu Mesh-Punkten wechseln, deren Knoten eine Offline-SSID sendet (Zuordnung über Frequenz und BSSID-Muster) | neu | geplant | 21.11. | (A) |
