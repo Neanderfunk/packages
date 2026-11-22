@@ -44,7 +44,10 @@ Regeln, die für alle Fälle gelten
   eine Domain mit Ortung.
 - **Vorrang bei `island`:** eigene Domain vor fremder, dann das stärkste
   Signal; unter -80 dBm nie. Nur Bänder mit Mesh-Rolle, 5 GHz nicht im
-  Outdoor-Modus.
+  Outdoor-Modus. Die Zahl der Knoten einer Domain zählt bewusst nicht:
+  Eine Insel braucht eine gute Verbindung, viele schwache helfen ihr
+  nicht (B2-Test: 10_wlf mit -17 dBm vor 18_nefuk mit zwölf Mesh-Punkten,
+  der beste bei -43 dBm).
 - **Takt und Versatz:** `bridge` und `island` laufen alle 91 s; `island`
   scannt höchstens alle 5 min; 0 bis 15 min Versatz je Knoten aus der MAC.
   Nach einem Wechsel frühestens 6 h später der nächste.
