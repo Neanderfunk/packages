@@ -32,6 +32,24 @@ dh_own_id() {
 	tr -d ':\n' < /lib/gluon/core/sysconfig/primary_mac | tr 'A-F' 'a-f'
 }
 
+# dh_domain_of <domain_code> <site_code>: Domain eines Nachbarn aus seiner
+# respondd-Antwort. Multi-Domain-Firmware meldet domain_code. Single-Domain-
+# Images melden nur site_code "<praefix>-<domain>", die Sackgasse 2021.1
+# dazu mit Suffix _EOL (nef-21_dias_EOL, dus-13_dusfl_EOL, bgl-43_bggl_EOL):
+# Praefix und Suffix fallen weg, es bleibt die Domain dieser Firmware. Aeltere
+# Codes (ffnef, ffnefd<NN>) bewusst nicht (adorfer 22.11.).
+dh_domain_of() {
+	local d="$1"
+	if [ -z "$d" ] ; then
+		case "$2" in
+			?*-?*) d="${2#*-}" ;;
+		esac
+	fi
+	d="${d%_EOL}"
+	d="${d%_eol}"
+	echo "$d"
+}
+
 # MAC-Adresse? (klein geschrieben erwartet)
 dh_is_mac() {
 	case "$1" in
@@ -44,9 +62,9 @@ dh_is_mac() {
 #
 # LAN-Mesh: alle batman-Interfaces ausser mesh-vpn und den WLAN-Meshes
 # (meshN). Je Interface die direkten Nachbarn per respondd fragen (wie die
-# Statusseite). Die Domain steht in system.domain_code; aeltere
-# Single-Domain-Images haben das Feld nicht, dann der Teil des site_code
-# hinter dem Bindestrich (nef-21_dias, bgl-43_bggl).
+# Statusseite). Die Domain steht in system.domain_code; Single-Domain-
+# Images haben das Feld nicht, dann aus dem site_code (dh_domain_of, auch fuer
+# die Sackgasse mit _EOL).
 #
 # Die Antworten kommen nicht sofort: Auf der Statusseite stehen Nachbarn oft
 # bis zu 30 s nur als MAC da. Deshalb wird wiederholt gefragt, bis jeder
@@ -87,11 +105,7 @@ dh_lan_mesh() {
 				key="$ifname $NI_ID"
 				if ! grep -qxF "$key" "$d/found.keys" 2>/dev/null ; then
 					echo "$key" >> "$d/found.keys"
-					if [ -z "$NI_DC" ] ; then
-						case "$NI_SC" in
-							?*-?*) NI_DC="${NI_SC#*-}" ;;
-						esac
-					fi
+					NI_DC="$(dh_domain_of "$NI_DC" "$NI_SC")"
 					printf '%s%s%s%s%s\n' "$ifname" "$DH_US" "$NI_ID" \
 						"$DH_US" "$NI_DC" >> "$d/found"
 				fi

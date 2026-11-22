@@ -331,12 +331,7 @@ br_peer_domain() {
 		eval "$(jsonfilter -s "$line" -e 'NI_ID=@.node_id' \
 			-e 'NI_DC=@.system.domain_code' -e 'NI_SC=@.system.site_code' 2>/dev/null)"
 		[ "$(echo "$NI_ID" | tr 'A-F' 'a-f')" = "$2" ] || continue
-		if [ -z "$NI_DC" ] ; then
-			case "$NI_SC" in
-				?*-?*) NI_DC="${NI_SC#*-}" ;;
-			esac
-		fi
-		echo "${NI_DC%_EOL}"
+		dh_domain_of "$NI_DC" "$NI_SC"
 		return 0
 	done < "$BR_DIR/peer"
 	return 1

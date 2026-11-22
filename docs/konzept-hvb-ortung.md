@@ -227,7 +227,9 @@ am Proxy verwerfen und die Annahme begrenzen.
   Netz geht, sieht der Knoten selbst nicht; das ergibt sich aus den
   Meldungen der anderen (siehe „Wer darf gehen?“ in 4.4).
 - `lan_mesh`: die direkten Nachbarn am LAN-Mesh mit ihrer Domain (siehe
-  oben), dazu `mac`, die batman-Nachbar-MAC. Ein Nachbar, der nicht
+  oben; seit domainhelper 0.12 normalisiert: Präfix des `site_code` und das
+  `_EOL` der Sackgasse fallen weg, `nef-21_dias_EOL` wird `21_dias`), dazu
+  `mac`, die batman-Nachbar-MAC. Ein Nachbar, der nicht
   geantwortet hat, steht nur mit `iface` und `mac` da. Ohne
   LAN-Mesh-Nachbarn leer.
 - `lan_switch`: nur, wenn der Knoten gleich nach der Meldung selbst in diese

@@ -143,12 +143,7 @@ fo_cable() {
 				-e 'NI_DC=@.system.domain_code' -e 'NI_SC=@.system.site_code' 2>/dev/null)"
 			NI_ID="$(echo "$NI_ID" | tr 'A-F' 'a-f')"
 			[ -n "$NI_ID" ] && [ "$NI_ID" != "$own_id" ] || continue
-			if [ -z "$NI_DC" ] ; then
-				case "$NI_SC" in
-					?*-?*) NI_DC="${NI_SC#*-}" ;;
-				esac
-			fi
-			NI_DC="${NI_DC%_EOL}"
+			NI_DC="$(dh_domain_of "$NI_DC" "$NI_SC")"
 			[ -n "$NI_DC" ] && [ "$NI_DC" != "$own_domain" ] || continue
 			vpn=0
 			while read -r sl ; do
