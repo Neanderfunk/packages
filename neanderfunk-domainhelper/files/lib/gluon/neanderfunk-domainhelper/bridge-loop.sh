@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# Schleife fuer "neanderfunk-domainhelper bridge" und "island", als
+# Schleife fuer "neanderfunk-domainhelper bridge", "follow" und "island", als
 # procd-Instanz aus
 # /etc/init.d/neanderfunk-domainhelper (respawn). Alle 91 s statt jede volle
 # Minute aus micron.d: Die Laeufe fallen so nicht immer auf denselben
@@ -16,6 +16,7 @@ INTERVAL=91
 sleep 30
 while : ; do
 	/usr/sbin/neanderfunk-domainhelper bridge </dev/null >/dev/null 2>&1
+	/usr/sbin/neanderfunk-domainhelper follow </dev/null >/dev/null 2>&1
 	/usr/sbin/neanderfunk-domainhelper island </dev/null >/dev/null 2>&1
 	sleep "$INTERVAL"
 done

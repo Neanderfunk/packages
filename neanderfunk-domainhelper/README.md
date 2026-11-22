@@ -22,7 +22,7 @@ und 4.3.
 Wann welcher Teil Domain oder Kanal wechselt (Ausgang, Attraktor, mit VPN
 oder Insel): [docs/matrix-domainwechsel.md](../docs/matrix-domainwechsel.md).
 
-**Stand 0.10 (22.11.2026):** `island` in einer Domain mit Ortung (`25_hvb`) nach 5 min statt 60/600 min, ohne Versatz. Der Standardkanal der neuen Domain setzt `preserve_channels_<band>=0` (braucht neanderfunk-banner 5). 0.9: `bridge` trennt nicht gegen Nachbarn aus einer Domain mit Ortung (`25_hvb`), die schalten per `lan_switch` selbst um. 0.8: Fall b von `island` verwirft vor dem Domainwechsel alle Laufzeit-Deltas (sonst schriebe das pauschale `uci commit` in `001-reset-uci` etwa die Offline-SSID in den Flash). 0.7: neu `island`. 0.6: `bridge` trennt bis zum
+**Stand 0.11 (22.11.2026):** neu `follow` (#9): Knoten ohne VPN folgen nach 60 min der Domain, aus der ihr Netz über das Kabel kommt, WLAN-Kanäle bleiben (braucht neanderfunk-preserve-wifichannel 3). `bridge` trennt mit DSA nur den Port, ohne Bridge (swconfig) später und nicht gegen eigene Nachbarn am LAN, und verbindet wieder, wenn der getrennte Nachbar in die eigene Domain gewechselt ist. 0.10: `island` in einer Domain mit Ortung (`25_hvb`) nach 5 min statt 60/600 min, ohne Versatz. Der Standardkanal der neuen Domain setzt `preserve_channels_<band>=0` (braucht neanderfunk-banner 5). 0.9: `bridge` trennt nicht gegen Nachbarn aus einer Domain mit Ortung (`25_hvb`), die schalten per `lan_switch` selbst um. 0.8: Fall b von `island` verwirft vor dem Domainwechsel alle Laufzeit-Deltas (sonst schriebe das pauschale `uci commit` in `001-reset-uci` etwa die Offline-SSID in den Flash). 0.7: neu `island`. 0.6: `bridge` trennt bis zum
 Neustart, Takt 91 s. 0.5: neu `bridge`. Seit 0.4 ganz in Shell:
 `/usr/sbin/neanderfunk-domainhelper` verteilt nur noch auf
 `/lib/gluon/neanderfunk-domainhelper/cmd_<unterbefehl>.sh`, gemeinsame
@@ -178,30 +178,49 @@ eigenen Speicher.
   - die Gegenseite hat einen eigenen Uplink: Ein fremder Nachbar an dieser
     Schnittstelle erreicht sein Gateway direkt (`gateway_nexthop` gleich
     `gateway` in seiner statistics, das geht nur über einen eigenen
-    Tunnel), oder wir erreichen ein Gateway über genau diese
-    Schnittstelle.
+    Tunnel), oder in `batctl gwl` steht ein Gateway seiner Domain
+    (Originator `02:ca:ff:ee:<NN>:..`);
+  - ohne Bridge (swconfig, etwa Archer C7 oder TL-WR1043ND: alle LAN-Ports
+    sind ein Gerät, der Switch leitet in Hardware weiter, keine
+    Port-Isolation): erst 2 min später, damit eine Gegenseite mit DSA
+    zuerst ihren Port trennt, und nur, wenn am LAN kein Nachbar der eigenen
+    Domain hängt. Sonst nur Meldung, mit dem Switch-Port aus `swconfig ...
+    get arl_table`, wo der Switch ihn kennt: Trennen kappte nur unsere
+    eigenen Links, die fremden Knoten blieben über unseren Switch mit den
+    eigenen verbunden.
   Sonst bleibt die Brücke stehen und wird gemeldet. Ohne eigenes VPN
-  trennt ein Knoten nie.
+  trennt ein Knoten nie, dafür wechselt er per `follow`.
 - **Wie getrennt wird:** nur zur Laufzeit, kein uci commit.
   - Ist der Hardif eine Bridge (`br-mesh_other`, `br-wan` bei
-    Mesh-on-WAN): zwei ebtables-Regeln verwerfen batman-Frames (0x4305)
-    von und zu diesem Knoten (`--logical-in`/`--logical-out`). Die
-    Weiterleitung zwischen den Ports bleibt: Andere Knoten an unseren
-    LAN-Ports meshen weiter miteinander, nur wir sind draußen. Ein
-    `ifdown mesh_other` würde dagegen die ganze Bridge abbauen.
-  - Sonst (ein einzelnes Gerät, etwa `eth1.1`): `ifdown` auf dem
-    `gluon_wired`-Interface.
+    Mesh-on-WAN; mit DSA ist jeder Port ein eigenes Gerät): ebtables
+    verwirft batman-Frames (0x4305) an genau dem Port, hinter dem der
+    fremde Nachbar steht (Port aus der Weiterleitungstabelle
+    `/sys/class/net/<bridge>/brforward`), für uns (`INPUT -i`, `OUTPUT -o`)
+    und für die Weiterleitung zu den anderen Ports (`FORWARD -i`/`-o`).
+    Nachbarn der eigenen Domain an anderen Ports bleiben dran, und die
+    Brücke durch uns hindurch ist weg. Ist der Port nicht zu finden, wie
+    bis 0.10 die ganze Bridge für uns (`--logical-in`/`--logical-out`).
+  - Sonst (ein einzelnes Gerät, etwa `eth1.1`): `ifdown` nur auf der
+    batman-Schnittstelle (`mesh_other_mesh`, proto `gluon_mesh`). Das Gerät
+    behält seine link-local-Adresse, der getrennte Nachbar lässt sich
+    weiter per respondd fragen; unser eigener respondd hört dort dann
+    nicht mehr. Wieder verbunden wird mit `ifup mesh_other`, das die
+    Schnittstelle neu anlegt (am TL-WR1043ND v2 geprüft, 22.11.).
   - Jeder Lauf prüft, ob die Trennung noch greift (ein Neuladen der
     Firewall löscht die Regeln), und setzt sie neu.
-- **Getrennt bis zum Neustart** (adorfer 21.11.): keine Freigabe
+- **Wieder verbinden** nur, wenn der getrennte Nachbar inzwischen selbst in
+  unserer Domain steht (per `follow` herübergewechselt, adorfer 22.11.);
+  gefragt wird alle 270 s per respondd über das getrennte Kabel. Sonst
+  **getrennt bis zum Neustart** (adorfer 21.11.): keine Freigabe
   zwischendurch, die Domains wachsen also nicht alle paar Stunden wieder
   zusammen. Fällt danach ein VPN weg und steht die Wolke ohne Gateway da,
   startet ein Wächter (linkcheck `no_gateway`) den Knoten neu, dann
   beginnt die Prüfung von vorn. Nach jedem Neustart hängen die Domains
   etwa 2 bis 3 min zusammen, bis wieder getrennt ist.
 - **Beide Seiten trennen**, wenn beide die Bedingungen erfüllen, ohne
-  Absprache: Die Regeln sperren nur batman-Frames von und zu diesem
-  Knoten, eine Seite allein reicht schon, beide schaden nicht. Läuft auf
+  Absprache: Die Regeln sperren nur batman-Frames, eine Seite allein
+  reicht schon, beide schaden nicht. Dann haben beide VPN, und keiner
+  wechselt. Läuft auf
   der Gegenseite eine Firmware ohne `bridge`, trennt eben nur unsere.
 - **In einer Domain mit Ortung** (`25_hvb`) trennt `bridge` nicht, sondern
   startet einmal `locate`, das meldet und selbst in die Domain des
@@ -220,6 +239,56 @@ ohne commit lässt `bridge` so tun, als stünde der Knoten in `<d>`. Damit
 lässt sich das Trennen gegen Nachbarn der eigenen Domain prüfen, ohne eine
 fremde Domain anzuschließen. `neanderfunk-domainhelper bridge -n` zeigt,
 was passieren würde, und ändert nichts.
+
+follow
+------
+
+Knoten **ohne eigenes VPN** folgen der Domain, aus der ihr Netz kommt
+(#9). Ohne VXLAN nutzt ein solcher Knoten am Kabel einer anderen Domain
+deren Gateways und Präfix und bliebe sonst dauerhaft im Mischbetrieb.
+Läuft alle 91 s nach `bridge`, außerhalb von 25_hvb (dort schaltet
+`locate` per `lan_switch`). Zwei Regeln, beide erst nach **60 min** am
+Stück:
+
+- **R1 Kabel:** Ein Nachbar an einem Kabel steht in einer fremden Domain
+  D und hat dort ein eigenes VPN (in seiner statistics ist das Gateway sein
+  eigener Nexthop), und ein Gateway der eigenen Domain kommt höchstens
+  über WLAN. Dann nach D, auch wenn über WLAN ein eigenes Gateway da ist:
+  LAN-Mesh schlägt WLAN-Mesh (adorfer 22.11.). Abgefragt wird per respondd
+  an jedem Kabel direkt, nicht über `batctl n`: Der Nachbar mit VPN trennt
+  per `bridge` sofort, die Trennung verwirft aber nur batman, IPv6 geht
+  durch. Direkt vor dem Wechsel wird noch einmal frisch gefragt, damit der
+  Knoten sich nicht selbst auf eine Insel schiebt. Nach dem Wechsel
+  verbindet die Gegenseite wieder (`bridge`).
+- **R2 nur fremde Gateways:** In `batctl gwl` stehen nur Gateways einer
+  fremden Domain D, erkannt am Originator `02:ca:ff:ee:<NN>:..`. Das
+  betrifft Knoten, die nur per WLAN hinter einem R1-Knoten hängen.
+
+Wechsel: alle Laufzeit-Deltas verwerfen, Marke
+`/lib/gluon/core/sysconfig/neanderfunk_preserve_wifichannel_keep`, dann
+`gluon-switch-domain D` mit Neustart. Die **WLAN-Kanäle bleiben**, soweit
+`preserve_channels` oder `preserve_channels_<band>` steht
+(neanderfunk-preserve-wifichannel 3): Die WLAN-Nachbarn wechseln mit und
+finden sich auf denselben Kanälen wieder.
+
+Nichts tut `follow` mit eigenem VPN, wenn ein Gateway der eigenen Domain
+über ein Kabel kommt (LAN gegen LAN), in eine Domain mit Ortung oder
+außerhalb dieser Firmware, und wenn mehrere fremde Domains in Frage
+kommen. **Beide Seiten ohne VPN, beide sehen ein Gateway der eigenen
+Domain:** Alle sind versorgt, das wird nur gemeldet (Syslog).
+
+**Nachfolgen über `island`:** Der Zeitpunkt, seit dem die Lage gilt, bleibt
+stehen, wenn zwischendurch gar kein Gateway zu sehen ist, etwa weil der
+Kabel-Knoten vor uns gewechselt hat und neu startet. Ist er älter als
+60 min, wechselt `island` Fall b ohne Wartezeit und ohne 6-h-Sperre in
+genau diese Domain. Zurückgesetzt wird er nur durch ein Gateway der
+eigenen Domain, eigenes VPN oder eine andere Zieldomain.
+
+Banner: `/tmp/neanderfunk-domainhelper.banner.follow`, Zustand in
+`/tmp/neanderfunk-domainhelper.follow/state`. Abschalten:
+`uci set neanderfunk-domainhelper.follow.enabled=0 ; uci commit
+neanderfunk-domainhelper`. `neanderfunk-domainhelper follow -n` zeigt
+Gateways, fremde Nachbarn am Kabel und was passieren würde.
 
 island
 ------

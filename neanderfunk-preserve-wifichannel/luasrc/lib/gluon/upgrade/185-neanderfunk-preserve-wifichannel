@@ -25,6 +25,10 @@ end
 local PENDING = 'neanderfunk_preserve_wifichannel_pending'
 local CONTEXT = 'neanderfunk_preserve_wifichannel_context'
 local OUTDOOR = 'neanderfunk_preserve_wifichannel_outdoor'
+-- Von neanderfunk-domainhelper (follow) vor einem Domainwechsel ueber das
+-- LAN-Mesh geschrieben: "<site_code>/<neue Domain>". Fuer genau diesen
+-- Wechsel bleiben die Kanaele, soweit preserve_channels gesetzt ist.
+local KEEP_ONCE = 'neanderfunk_preserve_wifichannel_keep'
 local LIFTED = '/tmp/neanderfunk-preserve-wifichannel.lifted'
 local KEPT = '/tmp/neanderfunk-preserve-wifichannel.kept'
 
@@ -137,9 +141,18 @@ local site_changed = false
 local outdoor_changed = false
 local last = sysconfig[CONTEXT]
 local now = context()
+local keep_once = sysconfig[KEEP_ONCE]
+sysconfig[KEEP_ONCE] = nil
 if last and last ~= now then
-	site_changed = true
-	table.insert(reasons, 'site/domain ' .. last .. ' -> ' .. now)
+	if keep_once == now then
+		-- Wechsel ueber das LAN-Mesh (adorfer 22.11.): Die WLAN-Kanaele
+		-- bleiben, wie preserve_channels es ohne Wechsel auch taete.
+		log('site/domain ' .. last .. ' -> ' .. now .. ' over the LAN mesh (neanderfunk-domainhelper):'
+			.. ' channels stay where preserve_channels is set')
+	else
+		site_changed = true
+		table.insert(reasons, 'site/domain ' .. last .. ' -> ' .. now)
+	end
 end
 local last_outdoor = sysconfig[OUTDOOR]
 local now_outdoor = outdoor_state()

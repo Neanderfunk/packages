@@ -106,6 +106,16 @@ nichts: Aufheben und Wiedersetzen liegen beide nur im uci-Delta, committet wird
 erst von Gluons `998-commit`. Bricht ein Lauf vorher ab, gibt es keinen Commit,
 und das Delta in `/tmp` ist mit dem Reboot weg.
 
+**Ausnahme: Wechsel ueber das LAN-Mesh.** Wechselt neanderfunk-domainhelper
+(`follow`) die Domain, weil das Netz ueber ein Kabel aus der anderen Domain
+kommt, bleiben die WLAN-Kanaele: Die WLAN-Nachbarn wechseln mit und finden sich
+auf denselben Kanaelen wieder. Dazu schreibt es vorher
+`/lib/gluon/core/sysconfig/neanderfunk_preserve_wifichannel_keep` mit
+`<site_code>/<neue Domain>`. Passt das beim naechsten Lauf zum Wechsel, wird
+nichts aufgehoben; die Kanaele bleiben also genau dort, wo `preserve_channels`
+oder ein `preserve_channels_<band>` steht, die anderen folgen der neuen Domain.
+Die Marke wird bei jedem Lauf entfernt, sie gilt nur einmal.
+
 Outdoor-Wechsel
 ---------------
 

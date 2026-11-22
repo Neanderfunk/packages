@@ -2,7 +2,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-domainhelper
-PKG_VERSION:=0.10
+PKG_VERSION:=0.11
 PKG_RELEASE:=1
 PKG_LICENSE:=BSD-3-Clause
 
@@ -41,6 +41,8 @@ define Package/$(PKG_NAME)/description
 	eigenen Domain stellen (nach 60 min) oder Domain und Kanal wechseln
 	(nach 600 min, in 25_hvb beides nach 5 min), nicht zu Knoten mit
 	Offline-SSID.
+	follow: ohne eigenes VPN nach 60 min der Domain folgen, aus der das
+	Netz ueber das Kabel kommt; WLAN-Kanaele bleiben.
 endef
 
 define Build/Prepare

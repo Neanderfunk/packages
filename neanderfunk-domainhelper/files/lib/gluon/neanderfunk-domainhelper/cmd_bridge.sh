@@ -24,25 +24,44 @@
 #        Uplink;
 #      - die Gegenseite hat einen eigenen Uplink: Der fremde Nachbar erreicht
 #        sein Gateway direkt (gateway_nexthop = gateway, nur ueber einen
-#        eigenen Tunnel moeglich), oder in batctl gwl steht ein Gateway, das
-#        wir ueber genau diese Schnittstelle erreichen. Sonst schnitte das
+#        eigenen Tunnel moeglich), oder in batctl gwl steht ein Gateway
+#        seiner Domain (Originator 02:ca:ff:ee:<NN>:..). Sonst schnitte das
 #        Trennen die Gegenseite vom Netz ab.
-#      Getrennt wird nur zur Laufzeit, kein uci commit, und es bleibt
-#      getrennt bis zum naechsten Neustart (adorfer 21.11.): keine
-#      Freigabe zwischendurch, also kein erneutes Zusammenwachsen. Faellt
-#      danach ein VPN weg und die Wolke steht ohne Gateway da, startet ein
-#      Waechter (linkcheck no_gateway) den Knoten neu, dann beginnt die
-#      Pruefung von vorn:
-#      - Ist der Hardif eine Bridge (br-mesh_other, br-wan bei Mesh-on-WAN):
-#        zwei ebtables-Regeln verwerfen batman-Frames (0x4305) von und zu
-#        diesem Knoten an der Bridge. Die Weiterleitung zwischen den Ports
-#        bleibt, andere Knoten an unseren LAN-Ports meshen weiter
-#        miteinander; nur wir sind draussen. Die Nachbarn fallen nach etwa
+#      - Ohne Bridge (swconfig wie Archer C7 oder TL-WR1043ND: alle
+#        LAN-Ports sind ein Geraet, der Switch leitet in Hardware weiter,
+#        keine Port-Isolation) zusaetzlich: BR_FRIST_SW (2 min) laenger
+#        warten, damit eine Gegenseite mit DSA zuerst ihren Port trennen
+#        kann, und nur trennen, wenn am LAN kein Nachbar der eigenen Domain
+#        haengt. Sonst nur melden (mit Switch-Port aus arl_table, wo der
+#        Switch ihn kennt): Trennen kappte nur unsere eigenen Links, die
+#        fremden Knoten blieben ueber unseren Switch mit den eigenen
+#        verbunden (adorfer 22.11.).
+#      Getrennt wird nur zur Laufzeit, kein uci commit. Wieder verbunden
+#      wird nur, wenn der getrennte Nachbar inzwischen selbst in unserer
+#      Domain steht (er ist per follow herueber gewechselt, adorfer 22.11.),
+#      sonst bleibt es getrennt bis zum naechsten Neustart: kein erneutes
+#      Zusammenwachsen zweier Domains. Faellt danach ein VPN weg und die
+#      Wolke steht ohne Gateway da, startet ein Waechter (linkcheck
+#      no_gateway) den Knoten neu, dann beginnt die Pruefung von vorn:
+#      - Ist der Hardif eine Bridge (br-mesh_other, br-wan bei Mesh-on-WAN,
+#        mit DSA je Port ein Geraet): ebtables verwirft batman-Frames
+#        (0x4305) an genau dem Port, hinter dem der fremde Nachbar steht
+#        (aus der Weiterleitungstabelle der Bridge), fuer uns und fuer die
+#        Weiterleitung zu den anderen Ports. Nachbarn der eigenen Domain an
+#        anderen Ports bleiben dran. Ist der Port nicht zu finden, wie
+#        frueher die ganze Bridge fuer uns. Die Nachbarn fallen nach etwa
 #        200 s aus batctl n.
-#      - Sonst (ein einzelnes Geraet wie eth1.1): "ifdown" auf dem
-#        gluon_wired-Interface (mesh_other, ...).
+#      - Sonst (ein einzelnes Geraet wie eth1.1): "ifdown" nur auf der
+#        batman-Schnittstelle (mesh_other_mesh, proto gluon_mesh). Das
+#        Geraet und seine link-local-Adresse bleiben, wir koennen den
+#        Nachbarn weiter per respondd fragen (der eigene respondd hoert dort
+#        dann nicht mehr). Wieder verbunden wird mit "ifup" auf dem
+#        gluon_wired-Interface (mesh_other), das die Schnittstelle neu
+#        anlegt.
 #      Solange getrennt, prueft jeder Lauf, ob die Trennung noch greift
-#      (ein Neuladen der Firewall loescht die Regeln), und setzt sie neu.
+#      (ein Neuladen der Firewall loescht die Regeln), und setzt sie neu;
+#      alle BR_LIFT_EVERY Sekunden fragt er den getrennten Nachbarn nach
+#      seiner Domain.
 #
 # Nur zum Testen: uci set neanderfunk-domainhelper.bridge.test_domain=<d>
 # (ohne commit) laesst bridge so tun, als stuende der Knoten in <d>. So
@@ -61,8 +80,11 @@ BR_BANNER=/tmp/neanderfunk-domainhelper.banner
 # Ein Durchgang der Schleife (91 s) minus Spiel: erkannt in einem Lauf,
 # getrennt im naechsten
 BR_FRIST=80
+# ohne Bridge (swconfig) 2 min laenger: eine Gegenseite mit DSA trennt zuerst
+BR_FRIST_SW=200
 BR_CACHE_AGE=900
 BR_REEVAL=600
+BR_LIFT_EVERY=270
 
 dry=0
 case "$1" in
@@ -131,11 +153,11 @@ br_cut_enabled() {
 	return 0
 }
 
-# Erster fremder Nachbar aus einer dh_lan_mesh-Datei: "<iface> <node_id> <domain>"
+# Erster fremder Nachbar aus einer dh_lan_mesh-Datei: "<iface> <node_id> <domain> <mac|->"
 br_foreign() {
-	local i id d
-	awk -F "$DH_US" '$2 != "" && $3 != "" { d = $3; sub(/_EOL$/, "", d); print $1, $2, d }' "$1" |
-	while read -r i id d ; do
+	local i id d m
+	awk -F "$DH_US" '$2 != "" && $3 != "" { d = $3; sub(/_EOL$/, "", d); print $1, $2, d, ($4 == "" ? "-" : $4) }' "$1" |
+	while read -r i id d m ; do
 		[ "$d" = "$own_domain" ] && continue
 		case "$d" in
 			*[!A-Za-z0-9_-]*) continue ;;
@@ -144,8 +166,8 @@ br_foreign() {
 		# Nachbar in einer Domain mit Ortung (25_hvb): Der schaltet per
 		# lan_switch selbst zu uns um; Trennen hielte ihn danach bis zum
 		# Neustart ab.
-		[ -n "$(jsonfilter -i "/lib/gluon/domains/$d.json" -e '@.neanderfunk_domainhelper.locator.urls[0]' 2>/dev/null)" ] && continue
-		echo "$i $id $d"
+		dh_is_hvb "$d" && continue
+		echo "$i $id $d $m"
 		break
 	done
 }
@@ -163,15 +185,17 @@ br_foreign_ids() {
 	done
 }
 
-# Hat die Gegenseite hinter <iface> einen eigenen Uplink? (<iface> <datei>)
+# Hat die Gegenseite hinter <iface> einen eigenen Uplink? (<iface> <datei> <domain>)
 # Nach dem Trennen bleiben die Knoten dort ueber die Ports untereinander
 # verbunden; es reicht also, wenn einer von ihnen einen eigenen Uplink hat.
 br_far_uplink() {
-	local line ids
-	# Ein Gateway, das wir ueber genau diese Schnittstelle erreichen
-	batctl gwl -H 2>/dev/null | awk -v i="$1" '
-		{ s = $0; if (match(s, /\[[ \t]*[^] \t]+\]/)) { x = substr(s, RSTART + 1, RLENGTH - 2); gsub(/[ \t]/, "", x); if (x == i) f = 1 } }
-		END { exit !f }' && return 0
+	local line ids nn
+	# Ein Gateway ihrer Domain (02:ca:ff:ee:<NN>:..)
+	nn="$(dh_dom_nn "$3")"
+	if [ -n "$nn" ] ; then
+		dh_gw_list "$BR_DIR/gw"
+		awk -v n="$nn" '$3 == n { f = 1 } END { exit !f }' "$BR_DIR/gw" && return 0
+	fi
 	# Ein fremder Nachbar erreicht sein Gateway direkt, also ueber eigenen Tunnel
 	ids="$(br_foreign_ids "$2" "$1")"
 	[ -n "$ids" ] || return 1
@@ -201,31 +225,136 @@ br_rules_present() {
 	ebtables-tiny -L OUTPUT 2>/dev/null | grep -q -- "-p 0x4305 --logical-out $1 -j DROP"
 }
 
+# Nur ein Port einer Bridge: $1 = -I oder -D, $2 = Port
+br_port_rules() {
+	ebtables-tiny "$1" INPUT -p 0x4305 -i "$2" -j DROP 2>/dev/null
+	ebtables-tiny "$1" OUTPUT -p 0x4305 -o "$2" -j DROP 2>/dev/null
+	ebtables-tiny "$1" FORWARD -p 0x4305 -i "$2" -j DROP 2>/dev/null
+	ebtables-tiny "$1" FORWARD -p 0x4305 -o "$2" -j DROP 2>/dev/null
+}
+
+br_port_rules_present() {
+	ebtables-tiny -L INPUT 2>/dev/null | grep -q -- "-p 0x4305 -i $1 -j DROP" &&
+	ebtables-tiny -L OUTPUT 2>/dev/null | grep -q -- "-p 0x4305 -o $1 -j DROP" &&
+	[ "$(ebtables-tiny -L FORWARD 2>/dev/null | grep -c -E -- "-p 0x4305 -[io] $1 -j DROP")" -ge 2 ]
+}
+
+# br_fdb_port <bridge> <mac>: Port der Bridge, hinter dem <mac> steht
+# (Weiterleitungstabelle /sys/class/net/<bridge>/brforward, je Eintrag
+# 16 Byte: mac[6], port_no, is_local, ageing[4], port_hi, pad, unused[2])
+br_fdb_port() {
+	local no p
+	dh_is_mac "$2" || return 1
+	no="$(od -An -v -tx1 "/sys/class/net/$1/brforward" 2>/dev/null | awk -v m="$2" '
+		function hx(s,   i, v) { v = 0; for (i = 1; i <= length(s); i++) v = v * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1; return v }
+		{ for (i = 1; i <= NF; i++) b[++n] = $i }
+		END {
+			for (j = 1; j + 15 <= n; j += 16) {
+				x = b[j] ":" b[j+1] ":" b[j+2] ":" b[j+3] ":" b[j+4] ":" b[j+5]
+				if (x == m && b[j+7] == "00") { print hx(b[j+12]) * 256 + hx(b[j+6]); exit }
+			}
+		}')"
+	[ -n "$no" ] || return 1
+	for p in "/sys/class/net/$1/brif/"* ; do
+		[ -r "$p/port_no" ] || continue
+		[ "$(( $(cat "$p/port_no") ))" = "$no" ] && { echo "${p##*/}" ; return 0 ; }
+	done
+	return 1
+}
+
+# br_arl_port <mac>: Switch-Port aus arl_table (swconfig, nur manche Switches)
+br_arl_port() {
+	local sw
+	command -v swconfig >/dev/null 2>&1 || return 1
+	sw="$(swconfig list 2>/dev/null | awk '/^Found:/ { print $2 ; exit }')"
+	[ -n "$sw" ] || return 1
+	swconfig dev "$sw" get arl_table 2>/dev/null | awk -v m="$1" '
+		tolower($0) ~ m { sub(/:.*/, ""); print ; exit }' | grep .
+}
+
 br_iface_up() {
 	[ "$(ubus call "network.interface.$1" status 2>/dev/null | jsonfilter -e '@.up' 2>/dev/null)" = true ]
 }
 
+# Ziele: eb:<bridge> (ganze Bridge fuer uns), ebp:<bridge>:<port> (ein
+# Port), mif:<batman-interface>:<gluon_wired-interface>:<geraet>
+br_tparts() {
+	local IFS=:
+	set -- $1
+	T_KIND="$1" T_A="$2" T_B="$3" T_C="$4"
+}
+
 br_do_cut() {
-	case "$1" in
-		eb:*) br_rules_present "${1#eb:}" || br_rules -I "${1#eb:}" ;;
-		if:*) ifdown "${1#if:}" ;;
+	br_tparts "$1"
+	case "$T_KIND" in
+		eb) br_rules_present "$T_A" || br_rules -I "$T_A" ;;
+		ebp) br_port_rules_present "$T_B" || br_port_rules -I "$T_B" ;;
+		mif) ifdown "$T_A" ;;
+		if) ifdown "$T_A" ;;
+	esac
+}
+
+br_do_lift() {
+	br_tparts "$1"
+	case "$T_KIND" in
+		eb) br_rules -D "$T_A" ;;
+		ebp) br_port_rules -D "$T_B" ;;
+		mif) ifup "$T_B" ;;
+		if) ifup "$T_A" ;;
 	esac
 }
 
 # Greift die Trennung noch?
 br_still_cut() {
-	case "$1" in
-		eb:*) br_rules_present "${1#eb:}" ;;
-		if:*) ! br_iface_up "${1#if:}" ;;
+	br_tparts "$1"
+	case "$T_KIND" in
+		eb) br_rules_present "$T_A" ;;
+		ebp) br_port_rules_present "$T_B" ;;
+		mif|if) ! br_iface_up "$T_A" ;;
 	esac
 }
 
-# Ziel zum batman-Hardif <device>: eb:<device> bei einer Bridge, sonst
-# if:<gluon_wired-Interface>, sonst nichts
+# Geraet, ueber das der getrennte Nachbar per respondd zu fragen ist
+br_query_dev() {
+	br_tparts "$1"
+	case "$T_KIND" in
+		eb|ebp) echo "$T_A" ;;
+		mif) echo "$T_C" ;;
+	esac
+}
+
+# Domain eines Nachbarn per respondd an <geraet>: br_peer_domain <geraet> <node_id>
+br_peer_domain() {
+	local line
+	dh_respondd "$1" nodeinfo "$BR_DIR/peer"
+	while read -r line ; do
+		NI_ID= ; NI_DC= ; NI_SC=
+		eval "$(jsonfilter -s "$line" -e 'NI_ID=@.node_id' \
+			-e 'NI_DC=@.system.domain_code' -e 'NI_SC=@.system.site_code' 2>/dev/null)"
+		[ "$(echo "$NI_ID" | tr 'A-F' 'a-f')" = "$2" ] || continue
+		if [ -z "$NI_DC" ] ; then
+			case "$NI_SC" in
+				?*-?*) NI_DC="${NI_SC#*-}" ;;
+			esac
+		fi
+		echo "${NI_DC%_EOL}"
+		return 0
+	done < "$BR_DIR/peer"
+	return 1
+}
+
+# Ziel zum batman-Hardif <device> und Nachbarn <mac>: ebp:<device>:<port>
+# bei einer Bridge mit bekanntem Port, eb:<device> bei einer Bridge sonst,
+# mif:<batman-interface>:<gluon_wired-Interface>:<device> ohne Bridge,
+# sonst nichts
 br_target() {
-	local m p
+	local m p port
 	if [ -d "/sys/class/net/$1/bridge" ] ; then
-		echo "eb:$1"
+		if port="$(br_fdb_port "$1" "$2")" ; then
+			echo "ebp:$1:$port"
+		else
+			echo "eb:$1"
+		fi
 		return 0
 	fi
 	m="$(ubus call network.interface dump 2>/dev/null | jsonfilter \
@@ -235,15 +364,31 @@ br_target() {
 		*) return 0 ;;
 	esac
 	[ "$(ubus call "network.interface.$p" status 2>/dev/null | jsonfilter -e '@.proto' 2>/dev/null)" = gluon_wired ] || return 0
-	echo "if:$p"
+	echo "mif:$m:$p:$1"
 }
 
 # --- getrennt: bis zum Neustart halten ----------------------------------------
 
 if [ "$state" = cut ] ; then
-	if [ "$dry" = 1 ] ; then
-		echo "getrennt: $s_if seit $((now - s_since)) s, bis zum Neustart"
-	elif ! br_still_cut "$s_if" ; then
+	# Ist der getrennte Nachbar inzwischen in unserer Domain (follow)?
+	if [ "$dry" = 1 ] || [ $((now - s_eval)) -ge "$BR_LIFT_EVERY" ] ; then
+		qd="$(br_query_dev "$s_if")"
+		pd=
+		[ -n "$qd" ] && pd="$(br_peer_domain "$qd" "$s_node")"
+		if [ "$dry" = 1 ] ; then
+			echo "getrennt: $s_if seit $((now - s_since)) s, Nachbar $s_node jetzt in ${pd:-?}"
+			exit 0
+		fi
+		if [ -n "$pd" ] && [ "$pd" = "$own_domain" ] ; then
+			br_do_lift "$s_if"
+			br_say "Domain-Bruecke: Nachbar $s_node ist jetzt in $own_domain, Trennung $s_if aufgehoben"
+			br_save idle
+			br_banner ''
+			exit 0
+		fi
+		br_save cut "$s_if" "$s_since" "$s_dom" "$s_node" "$now" "$s_note"
+	fi
+	if ! br_still_cut "$s_if" ; then
 		br_say "Domain-Bruecke: Trennung $s_if war aufgehoben, setze sie neu"
 		br_do_cut "$s_if"
 	fi
@@ -290,7 +435,7 @@ if [ -z "$f" ] ; then
 	exit 0
 fi
 set -- $f
-f_if="$1" f_id="$2" f_dom="$3"
+f_if="$1" f_id="$2" f_dom="$3" f_mac="$4"
 
 # --- Bruecke gesehen ------------------------------------------------------------
 
@@ -332,15 +477,29 @@ else
 			exit 0
 		fi
 		set -- $f
-		f_if="$1" f_id="$2" f_dom="$3"
+		f_if="$1" f_id="$2" f_dom="$3" f_mac="$4"
 	fi
-	target="$(br_target "$f_if")"
-	if ! br_far_uplink "$f_if" "$cache" ; then
+	target="$(br_target "$f_if" "$f_mac")"
+	if ! br_far_uplink "$f_if" "$cache" "$f_dom" ; then
 		note=gegenseite_ohne_uplink
 		text="Gegenseite ohne eigenen Uplink, Trennen wuerde sie abschneiden"
 	elif [ -z "$target" ] ; then
 		note=keine_schnittstelle
 		text="weder Bridge noch gluon_wired-Interface zu $f_if"
+	else
+		case "$target" in
+			mif:*)
+				# Ohne Bridge (swconfig): keine Port-Isolation
+				if [ "$dry" = 0 ] && [ $((now - s_since)) -lt "$BR_FRIST_SW" ] ; then
+					exit 0
+				fi
+				if awk -F "$DH_US" -v w="$f_if" -v o="$own_domain" '$1 == w && $3 == o { f = 1 } END { exit !f }' "$cache" ; then
+					note=eigene_am_lan
+					port="$(br_arl_port "$f_mac")"
+					text="ohne Port-Isolation, am selben LAN auch Nachbarn der eigenen Domain${port:+ (fremder Nachbar an Switch-$port)}"
+				fi
+				;;
+		esac
 	fi
 fi
 

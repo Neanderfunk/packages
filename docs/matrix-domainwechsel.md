@@ -3,7 +3,7 @@ Domainwechsel: Testmatrix
 
 Übersicht, wann ein Knoten mit der Multidomain-Firmware von selbst Domain
 oder Kanal wechselt, wer das auslöst und was davon getestet ist. Stand
-neanderfunk-domainhelper 0.10, nodeplacer 0.1-r2, 22.11.2026.
+neanderfunk-domainhelper 0.11, nodeplacer 0.1-r2, 22.11.2026.
 Hintergrund: [entwurf-automesh.md](entwurf-automesh.md) (Abschnitt 0 und
 Feature-Tabelle 17), [konzept-hvb-ortung.md](konzept-hvb-ortung.md).
 
@@ -28,7 +28,9 @@ Matrix
 | A2 | 25_hvb | WLAN-Mesh einer anderen Domain | `locate` meldet (Boot, dann täglich), Mapserver entscheidet über E11 (ein Mesh-Punkt ab -75 dBm oder zwei) und E12 (nur mit eigenem VPN, keinen Knoten ohne VPN abschneiden), Manifest, nodeplacer schaltet zur vollen Stunde (Minute je Knoten). **getestet** (M60, etwa 50 min) | Keine Meldung möglich. `island` Fall b nach 5 min ohne Gateway (in 25_hvb ohne Versatz): Domain und Kanal, Neustart. *nur Trockenlauf aus 25_hvb* |
 | A3 | 25_hvb | WLAN-Mesh von 25_hvb, anderer Kanal | nichts (braucht kein Mesh) | `island` Fall a nach 5 min: Kanal. Danach hängt er am HVB-Knoten mit VPN; zieht der um, folgt er über A2-Insel (nächster Wechsel frühestens nach 15 min). *wie B3* |
 | A4 | 25_hvb | keiner | `locate` meldet, Mapserver ortet über die WLAN-Umgebung (E10) oder per Handeintrag, sonst bleibt er | nichts; linkcheck startet einmal neu, danach Offline-SSID |
-| B1 | andere | LAN-Mesh einer anderen Domain | `bridge` trennt nach 80 s Frist per ebtables, bis zum Neustart, aber nur wenn die Gegenseite selbst einen Uplink hat; sonst nur Meldung (Banner, Syslog). Kein Domainwechsel. **getestet** mit vorgetäuschter Domain (`test_domain`), keine echte Zwei-Domain-Brücke | Wolken verschmelzen, der Knoten nutzt die Gateways der anderen Domain und bleibt in seiner (Mischbetrieb, Domainbrücke auf der Karte). `bridge` meldet und lässt die Brücke stehen. **getestet** (NWA50AX Pro in 21_dias am Kabel von 18_nefuk: Gateway und öffentliches Präfix von 18_nefuk). **offen:** Domainwechsel am Kabel ohne VPN (#9) |
+| B1 | andere | LAN-Mesh einer anderen Domain | `bridge` trennt nach 80 s, wenn die Gegenseite selbst einen Uplink hat (eigenes VPN oder ein Gateway ihrer Domain in `batctl gwl`); sonst nur Meldung (Banner, Syslog). Mit Bridge (DSA) nur den Port des fremden Nachbarn, auch für die Weiterleitung zu den anderen Ports; ohne Bridge (swconfig, etwa Archer C7, TL-WR1043ND) 2 min später und nur, wenn am LAN kein Nachbar der eigenen Domain hängt, sonst nur Meldung mit Switch-Port. Wechselt der getrennte Nachbar per `follow` zu uns, wird wieder verbunden. Selbst kein Domainwechsel. *Trennen getestet mit vorgetäuschter Domain (`test_domain`)* | `follow` R1/R2 nach 60 min: Wechsel in die Domain, aus der das Netz über das Kabel kommt, WLAN-Kanäle bleiben (soweit `preserve_channels` steht). Knoten, die nur per WLAN dahinter hängen, folgen (R2, oder `island` b ohne Wartezeit, wenn der Vordermann schon neu startet). |
+| B1w | andere, ohne VPN | LAN-Mesh einer anderen Domain mit VPN, eigenes Gateway nur über WLAN | – | Nicht Insel, aber LAN schlägt WLAN: `follow` R1 nach 60 min wie B1-Insel. Die Gegenseite trennt das Kabel sofort; abgefragt wird per respondd trotzdem (IPv6 geht durch), nach dem Wechsel verbindet sie wieder. Hat die Gegenseite kein Bridge-Gerät (swconfig), hört ihr respondd am getrennten Kabel nicht mehr, dann bleibt es beim Trennen. |
+| B1x | andere, ohne VPN | LAN-Mesh einer anderen Domain, die Gegenseite auch ohne VPN, beide sehen ein Gateway der eigenen Domain | – | Beide versorgt, niemand trennt, niemand wechselt: nur Meldung (`follow`, Syslog). |
 | B1h | andere | LAN-Mesh zu einem Knoten in 25_hvb | `bridge` trennt nicht (0.9), der HVB-Knoten kommt per `lan_switch` herüber (A1). *nicht getestet* | wie links, der HVB-Knoten kommt herüber |
 | B2 | andere | WLAN-Mesh einer anderen Domain | nichts: verschiedene Mesh-IDs verbinden sich nie, gewollt | `island` Fall b nach 600 min (+Versatz): Laufzeit-Deltas verwerfen, `gluon-switch-domain --no-reboot`, Kanal, Neustart. Kanal: Standard der neuen Domain mit `preserve_channels_<band>=0`, sonst `=1`, egal was vorher stand. **getestet** (WS-AP3825i, 21_dias nach 10_wlf, Wartezeiten auf dem Gerät auf 5/10 min verkürzt: nach 11 min Neustart, danach je Band 2 Mesh-Nachbarn in 10_wlf; keine Offline-SSID im Flash) |
 | B3 | andere | WLAN-Mesh der eigenen Domain, anderer Kanal (auch `auto`) | nichts: getrennte Kanäle sind gewollt | `island` Fall a nach 60 min (+Versatz): nur der Kanal, fest nur, wenn nicht Standard. **getestet** (M60, nach 63 min Kanal 1 auf 9, Gateway 1 min später) |
@@ -58,7 +60,9 @@ Regeln, die für alle Fälle gelten
 - **WAN-Link sperrt nicht (#39 verworfen):** Auch ein VPN-Knoten mit
   WAN-Link und Adresse wechselt, wenn er kein Gateway sieht (gekündigter
   Anschluss, Router läuft weiter).
-- **64-MB-Geräte:** `bridge` und `island` laufen auch dort (#24).
+- **64-MB-Geräte:** `bridge`, `follow` und `island` laufen auch dort (#24).
+- **Takt `follow`:** alle 91 s, fragt die Nachbarn an jedem Kabel per
+  respondd (je 3 s), nur ohne eigenes VPN und außerhalb von 25_hvb.
 - **Kein Hindernis:** aktives LAN-Mesh oder weitere Knoten in der Wolke
   verhindern `island` nicht; maßgeblich ist nur „kein Gateway“.
 - **Zusammen mit linkcheck:** Verliert ein Knoten den Uplink zur Laufzeit,
@@ -71,18 +75,24 @@ Regeln, die für alle Fälle gelten
 Zum Überdenken
 --------------
 
-- **B1-Insel (#9):** Soll ein Knoten ohne VPN, der am Kabel einer anderen
-  Domain hängt, selbst wechseln? Heute bleibt er im Mischbetrieb. Vorschlag
-  im Entwurf: ja, höchstens ein Wechsel je Tag.
-- **B1 mit VPN, Gegenseite ohne Uplink:** Die Brücke bleibt stehen. Mit
-  #9 würde die Gegenseite herüberwechseln und das Problem löste sich von
-  ihrer Seite.
-- **Kanäle beim Domainwechsel** (entschieden 22.11., gilt für Wechsel
-  aus Domains außer 25_hvb): Kommt die Verbindung über das LAN-Mesh
-  zustande (#9), bleiben die WLAN-Kanäle, `preserve_channels=1` wird
-  respektiert. *Noch nicht umgesetzt:* heute setzt neanderfunk-preserve-
-  wifichannel bei jedem Domainwechsel einmal die Standardkanäle. Über
-  WLAN-Mesh (`island` b) wie oben in B2. Aus 25_hvb (`lan_switch`,
-  nodeplacer) bleiben es die Standardkanäle der neuen Domain.
 - **Nach Rückkehr des Uplinks** bleibt ein festgeschriebener Kanal stehen;
   zurückstellen nur von Hand.
+
+Entschieden am 22.11.
+---------------------
+
+- **#9 (`follow`):** Knoten ohne VPN folgen der Domain, aus der ihr Netz
+  über das Kabel kommt, nach 60 min. Keine Grenze „einmal je Tag“: Nach
+  dem Wechsel sieht der Knoten ein Gateway der eigenen Domain, ein Pendeln
+  ist nicht möglich. LAN-Mesh schlägt WLAN-Mesh (B1w).
+- **B1 mit VPN, Gegenseite ohne Uplink:** Die Brücke bleibt stehen, die
+  Gegenseite wechselt per `follow` herüber.
+- **Kanäle beim Domainwechsel** (Wechsel aus Domains außer 25_hvb): Über
+  das LAN-Mesh (`follow`) bleiben die WLAN-Kanäle, soweit
+  `preserve_channels` oder `preserve_channels_<band>` steht
+  (neanderfunk-preserve-wifichannel 3, Marke in sysconfig). Über WLAN-Mesh
+  (`island` b) wie in B2. Aus 25_hvb (`lan_switch`, nodeplacer) die
+  Standardkanäle der neuen Domain.
+- **Ohne Port-Isolation** (swconfig): siehe B1, länger warten, nicht gegen
+  eigene Nachbarn trennen.
+- **B1x:** nur melden, alle sind versorgt.

@@ -215,3 +215,88 @@ dh_scan_list() {
 		/^\tMESH ID:/ { v = $0; sub(/^\tMESH ID: ?/, "", v); mesh = v }
 		END { flush() }' "$1/scan.all" > "$1/scan.list"
 }
+
+# --- Domains und Gateways ------------------------------------------------------
+
+# Domain mit Ortung (neanderfunk_domainhelper.locator.urls, also 25_hvb)?
+dh_is_hvb() {
+	[ -n "$(jsonfilter -i "/lib/gluon/domains/$1.json" -e '@.neanderfunk_domainhelper.locator.urls[0]' 2>/dev/null)" ]
+}
+
+# Domainnummer: Ziffern vor dem Unterstrich (18_nefuk -> 18), sonst nichts
+dh_dom_nn() {
+	case "$1" in
+		[0-9][0-9]_*) echo "${1%%_*}" ;;
+	esac
+}
+
+# Domain dieser Firmware zur Nummer, nur wenn eindeutig
+dh_dom_by_nn() {
+	local f n=0 d=
+	for f in /lib/gluon/domains/"$1"_*.json ; do
+		[ -f "$f" ] || continue
+		n=$((n + 1))
+		d="${f##*/}"
+		d="${d%.json}"
+	done
+	[ "$n" = 1 ] && echo "$d"
+}
+
+# Eigenes VPN: ein batman-Nachbar auf mesh-vpn
+dh_has_vpn() {
+	[ "$(batctl n -H 2>/dev/null | awk '$1 == "mesh-vpn"' | wc -l)" -gt 0 ]
+}
+
+# dh_gw_list <ausgabedatei>: je Gateway aus batctl gwl eine Zeile
+#     <gateway-mac> <schnittstelle> <domainnummer|->
+# Die Domainnummer steht im Originator der Supernodes:
+# 02:ca:ff:ee:<NN>:<SS>, NN = Domainnummer, dezimal als Hexbyte geschrieben.
+dh_gw_list() {
+	batctl gwl -H 2>/dev/null | awk '
+		{
+			s = $0; sub(/^[ \t]*\*?[ \t]*/, "", s)
+			split(s, f, /[ \t]+/); m = tolower(f[1])
+			if (m !~ /^[0-9a-f][0-9a-f](:[0-9a-f][0-9a-f])(:[0-9a-f][0-9a-f])(:[0-9a-f][0-9a-f])(:[0-9a-f][0-9a-f])(:[0-9a-f][0-9a-f])$/) next
+			i = "-"
+			if (match(s, /\[[ \t]*[^] \t]+[ \t]*\]/)) { i = substr(s, RSTART + 1, RLENGTH - 2); gsub(/[ \t]/, "", i) }
+			nn = "-"
+			if (substr(m, 1, 12) == "02:ca:ff:ee:" && substr(m, 13, 2) ~ /^[0-9][0-9]$/) nn = substr(m, 13, 2)
+			print m, i, nn
+		}' > "$1"
+}
+
+# Kabel-Schnittstellen des Mesh (gluon_mesh, nicht WLAN, nicht VPN), je Zeile eine
+dh_wired_mesh_devs() {
+	ubus call network.interface dump 2>/dev/null |
+		jsonfilter -e "@.interface[@.proto='gluon_mesh' && @.up=true].device" 2>/dev/null |
+		grep -v -E '^(mesh[0-9]+|mesh-vpn)$' | sort -u
+}
+
+# dh_respondd <device> <nodeinfo|statistics> <ausgabedatei>: Antworten der
+# Nachbarn an diesem Kabel, je Zeile ein JSON. Geht auch, wenn batman dort
+# getrennt ist: Die Trennung verwirft nur batman-Frames (0x4305) oder nimmt
+# nur die batman-Schnittstelle vom Geraet, IPv6 bleibt.
+dh_respondd() {
+	gluon-neighbour-info -i "$1" -d ff02::2:1001 -p 1001 -t 3 -r "$2" > "$3" 2>/dev/null
+}
+
+# Alle Laufzeit-Deltas verwerfen (Offline-SSID, ap-timer, Blackout), vor
+# einem Domainwechsel: 001-reset-uci (gluon-reconfigure) und
+# gluon-switch-domain committen pauschal. Der Neustart verwirft sie ohnehin.
+dh_revert_all() {
+	local p
+	for p in $(uci changes 2>/dev/null | sed -n 's/^-\{0,1\}\([^.]*\)\..*/\1/p' | sort -u) ; do
+		uci revert "$p"
+	done
+}
+
+# Beim naechsten Domainwechsel nach <domain> die WLAN-Kanaele behalten,
+# soweit preserve_channels gesetzt ist (neanderfunk-preserve-wifichannel
+# setzt sonst einmal die Kanaele der neuen Domain). Fuer Wechsel ueber das
+# LAN-Mesh (adorfer 22.11.).
+dh_keep_channels_on_switch() {
+	local sc
+	sc="$(jsonfilter -i /lib/gluon/site.json -e '@.site_code' 2>/dev/null)"
+	[ -n "$sc" ] || return 1
+	printf '%s\n' "$sc/$1" > /lib/gluon/core/sysconfig/neanderfunk_preserve_wifichannel_keep
+}

@@ -44,6 +44,12 @@
 #   - in eine Domain mit Ortung (neanderfunk_domainhelper.locator.urls,
 #     also 25_hvb);
 #   - zu schwachen Mesh-Punkten (unter ISL_MIN_SIGNAL dBm).
+# Nachfolgen: Hat "follow" seit mindestens FO_WAIT (60 min) eine Zieldomain
+# (Netz kam aus ihr, etwa ueber einen Nachbarn, der schon gewechselt hat und
+# neu startet), gilt fuer genau diese Domain keine Wartezeit von Fall b; die
+# 6-h-Sperre ebenfalls nicht. So kommen Knoten, die nur per WLAN hinter dem
+# Kabel-Knoten hingen, gleich hinterher.
+#
 # Nach einem Wechsel frueheste der naechste nach ISL_REARM (6 h), damit ein
 # Mesh, das nicht ans Netz fuehrt, nicht stuendlich den Kanal kippt.
 #
@@ -120,18 +126,25 @@ age=$((now - since))
 allow_b=0
 [ "$age" -ge $((ISL_WAIT_B + offset)) ] && allow_b=1
 
+# Reife Lage von follow: Zieldomain ohne Wartezeit
+followd=
+if [ -r /tmp/neanderfunk-domainhelper.follow/state ] ; then
+	read -r f_dom f_since f_rule < /tmp/neanderfunk-domainhelper.follow/state
+	[ -n "$f_since" ] && [ $((now - f_since)) -ge 3600 ] && followd="$f_dom"
+fi
+
 if [ "$dry" = 0 ] ; then
-	[ "$age" -ge $((ISL_WAIT_A + offset)) ] || exit 0
+	[ -n "$followd" ] || [ "$age" -ge $((ISL_WAIT_A + offset)) ] || exit 0
 	last=0
 	[ -r "$ISL_DIR/lastaction" ] && read -r last < "$ISL_DIR/lastaction"
-	[ "$last" -gt 0 ] && [ $((now - last)) -lt "$ISL_REARM" ] && exit 0
+	[ -z "$followd" ] && [ "$last" -gt 0 ] && [ $((now - last)) -lt "$ISL_REARM" ] && exit 0
 	lscan=0
 	[ -r "$ISL_DIR/lastscan" ] && read -r lscan < "$ISL_DIR/lastscan"
 	[ "$lscan" -gt 0 ] && [ $((now - lscan)) -lt "$ISL_SCAN_EVERY" ] && exit 0
 	echo "$now" > "$ISL_DIR/lastscan"
 else
 	allow_b=1
-	echo "ohne Gateway seit $age s (Versatz $offset s); Fall a ab $((ISL_WAIT_A + offset)) s, Fall b ab $((ISL_WAIT_B + offset)) s"
+	echo "ohne Gateway seit $age s (Versatz $offset s); Fall a ab $((ISL_WAIT_A + offset)) s, Fall b ab $((ISL_WAIT_B + offset)) s${followd:+; follow: $followd sofort}"
 fi
 
 # Baender mit Mesh-Rolle, ohne Outdoor-5-GHz: "<band> <radio> <kanal>"
@@ -181,7 +194,7 @@ fi
 
 # Kandidat waehlen. Ausgabe: "<a|b> <domain> <band> <kanal> <signal> <bssid>"
 cand="$(awk -v US="$DH_US" -v own="$own_domain" -v pre="$prefix" \
-	-v minsig="$ISL_MIN_SIGNAL" -v allowb="$allow_b" \
+	-v minsig="$ISL_MIN_SIGNAL" -v allowb="$allow_b" -v followd="$followd" \
 	-v dfile="$ISL_DIR/domains" -v bfile="$ISL_DIR/bands" -v dry="$dry" '
 	function hx(s,   i, v) { v = 0; for (i = 1; i <= length(s); i++) v = v * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1; return v }
 	function related(x, y,   p, q, i, same) {
@@ -221,16 +234,18 @@ cand="$(awk -v US="$DH_US" -v own="$own_domain" -v pre="$prefix" \
 			else if (sg[i] < minsig) why = "zu schwach"
 			k = (d == own) ? "a" : "b"
 			if (why == "" && k == "b" && ziel[d] == "0") why = "Zieldomain mit Ortung"
-			if (why == "" && k == "b" && !allowb) why = "Fall b noch nicht dran"
+			if (why == "" && k == "b" && !allowb && d != followd) why = "Fall b noch nicht dran"
 			if (why == "" && k == "a" && cur[band] == c "") why = "gleicher Kanal wie unser Radio"
 			if (why == "")
 				for (j = 1; j <= n; j++)
 					if (j != i && fr[j] == fr[i] && index(ss[j], pre) == 1 && related(bs[i], bs[j])) why = "Knoten offline (" ss[j] ")"
 			if (dry) printf "  Mesh %s (%s, %s) Kanal %d %d dBm %s: %s\n", mi[i], (d == "" ? "-" : d), band, c, sg[i], bs[i], (why == "" ? "Kandidat " k : why) > "/dev/stderr"
 			if (why != "") continue
-			# a vor b, dann staerkstes Signal
-			if (best == "" || (k == "a" && bk == "b") || (k == bk && sg[i] > bsig)) {
-				best = k " " d " " band " " c " " sg[i] " " bs[i]; bk = k; bsig = sg[i]
+			# Nachfolgen vor allem anderen, dann a vor b, dann staerkstes Signal
+			if (followd != "" && d != followd && bk == "f") continue
+			if (followd != "" && d == followd) k2 = "f"; else k2 = k
+			if (best == "" || (k2 == "f" && bk != "f") || (k2 == "a" && bk == "b") || (k2 == bk && sg[i] > bsig)) {
+				best = k " " d " " band " " c " " sg[i] " " bs[i]; bk = k2; bsig = sg[i]
 			}
 		}
 		print best

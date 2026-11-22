@@ -11,3 +11,9 @@ config bridge 'bridge'
 # 5 min). enabled '0' schaltet es ab.
 config island 'island'
 	option enabled '1'
+
+# follow: ohne eigenes VPN der Domain folgen, aus der das Netz kommt (Nachbar
+# am Kabel mit VPN in fremder Domain, oder nur fremde Gateways), nach 60 min.
+# enabled '0' schaltet es ab.
+config follow 'follow'
+	option enabled '1'

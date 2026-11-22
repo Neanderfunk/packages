@@ -18,6 +18,12 @@
 #       Domain stellen, nach 600 min Domain und Kanal wechseln. Alle 91 s
 #       aus bridge-loop.sh. -n: Wartezeiten uebergehen, nur zeigen.
 #
+#   neanderfunk-domainhelper follow [-n]
+#       Ohne eigenes VPN der Domain folgen, aus der das Netz kommt: Nachbar
+#       am Kabel mit VPN in fremder Domain (R1) oder nur fremde Gateways
+#       (R2), nach 60 min, WLAN-Kanaele bleiben. Alle 91 s aus
+#       bridge-loop.sh. -n: Wartezeit uebergehen, nur zeigen.
+#
 #   neanderfunk-domainhelper bridge [-n]
 #       Domain-Bruecken am LAN-Mesh erkennen und bis zum Neustart trennen,
 #       alle 91 s aus bridge-loop.sh (procd). -n: nur zeigen, was passieren
@@ -27,7 +33,7 @@
 # /lib/gluon/neanderfunk-domainhelper/cmd_<name>.sh, gemeinsame Funktionen
 # in lib.sh. So laedt der Minutenlauf von "bridge" weder jshn noch locate.
 
-VERSION=0.10
+VERSION=0.11
 
 . /lib/gluon/neanderfunk/site.sh
 . /lib/gluon/neanderfunk-domainhelper/lib.sh
@@ -38,10 +44,12 @@ case "$cmd" in
 	locate) . /lib/gluon/neanderfunk-domainhelper/cmd_locate.sh ;;
 	bridge) . /lib/gluon/neanderfunk-domainhelper/cmd_bridge.sh ;;
 	island) . /lib/gluon/neanderfunk-domainhelper/cmd_island.sh ;;
+	follow) . /lib/gluon/neanderfunk-domainhelper/cmd_follow.sh ;;
 	*)
 		echo 'usage: neanderfunk-domainhelper locate [-n] [-u url] [-a domain]' >&2
 		echo '       neanderfunk-domainhelper bridge [-n]' >&2
 		echo '       neanderfunk-domainhelper island [-n]' >&2
+		echo '       neanderfunk-domainhelper follow [-n]' >&2
 		exit 2
 		;;
 esac
