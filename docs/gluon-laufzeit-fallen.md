@@ -112,6 +112,31 @@ IPv6 geht weiter durch, respondd-Abfragen über diesen Port funktionieren
 also auch mit verworfenem batman. Ein Neuladen der Firewall löscht die
 Regeln; wer sie braucht, muss sie regelmäßig prüfen und neu setzen.
 
+Keine Zahlen wie `0.1` in `luasrc/`
+-----------------------------------
+
+Gluon kürzt Lua unter `luasrc/` beim Bau mit luasrcdiet 1.0.0. Das macht aus
+`0.1` die Kurzform `.1` und lext die eigene Ausgabe danach zur Kontrolle
+neu. Das Host-Lua von OpenWrt hat den LNUM-Patch, und dort ist
+`tonumber(".1")` **nil**. Der Build bricht dann ab:
+
+```
+Minifying .../luadest/usr/bin/nodestatus...
+lua: .../luasrcdiet/llex.lua:93: [string]:241: malformed number
+```
+
+Die Zeilennummer gehört zur gekürzten Ausgabe, nicht zum Original.
+Mit dem Lua 5.1 einer Linux-Distribution läuft dieselbe Datei durch, lokal
+fällt das also nicht auf (neanderfunk-banner, Bau 26112207bro, 22.11.2026).
+Statt Kommazahlen mit führender Null ganzzahlig rechnen: `a * 10 < b`
+statt `a < b * 0.1`, `x + 1 / 2` statt `x + 0.5`. Gilt nur für `luasrc/`;
+unter `files/` wird nichts gekürzt.
+
+Nachstellen: Lua 5.1.5 mit den Patches aus
+`openwrt/package/utils/lua/patches-host` bauen (`make linux`) und
+luasrcdiet damit über die Datei laufen lassen:
+`luasrcdiet --noopt-binequiv -o /tmp/out.lua <datei>`.
+
 Dateien im Overlay nicht hinter dem Rücken löschen
 --------------------------------------------------
 
