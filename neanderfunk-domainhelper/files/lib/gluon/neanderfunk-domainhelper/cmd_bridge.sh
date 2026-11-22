@@ -239,21 +239,20 @@ br_port_rules_present() {
 	[ "$(ebtables-tiny -L FORWARD 2>/dev/null | grep -c -E -- "-p 0x4305 -[io] $1 -j DROP")" -ge 2 ]
 }
 
-# br_fdb_port <bridge> <mac>: Port der Bridge, hinter dem <mac> steht
-# (Weiterleitungstabelle /sys/class/net/<bridge>/brforward, je Eintrag
-# 16 Byte: mac[6], port_no, is_local, ageing[4], port_hi, pad, unused[2])
+# br_fdb_port <bridge> <mac>: Port der Bridge, hinter dem <mac> steht. Aus
+# "brctl showmacs" (busybox, Spalten: port no, mac, is local, ageing), sonst
+# aus der Weiterleitungstabelle /sys/class/net/<bridge>/brforward (je
+# Eintrag 16 Byte: mac[6], port_no, is_local, ageing[4], port_hi, pad,
+# unused[2]) per hexdump; od fehlt in unseren Images.
 br_fdb_port() {
 	local no p
 	dh_is_mac "$2" || return 1
-	no="$(od -An -v -tx1 "/sys/class/net/$1/brforward" 2>/dev/null | awk -v m="$2" '
-		function hx(s,   i, v) { v = 0; for (i = 1; i <= length(s); i++) v = v * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1; return v }
-		{ for (i = 1; i <= NF; i++) b[++n] = $i }
-		END {
-			for (j = 1; j + 15 <= n; j += 16) {
-				x = b[j] ":" b[j+1] ":" b[j+2] ":" b[j+3] ":" b[j+4] ":" b[j+5]
-				if (x == m && b[j+7] == "00") { print hx(b[j+12]) * 256 + hx(b[j+6]); exit }
-			}
-		}')"
+	no="$(brctl showmacs "$1" 2>/dev/null | awk -v m="$2" 'tolower($2) == m && $3 == "no" { print $1 + 0 ; exit }')"
+	if [ -z "$no" ] && command -v hexdump >/dev/null 2>&1 ; then
+		no="$(hexdump -v -e '16/1 "%02x " "\n"' "/sys/class/net/$1/brforward" 2>/dev/null | awk -v m="$2" '
+			function hx(s,   i, v) { v = 0; for (i = 1; i <= length(s); i++) v = v * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1; return v }
+			NF >= 16 && ($1 ":" $2 ":" $3 ":" $4 ":" $5 ":" $6) == m && $8 == "00" { print hx($13) * 256 + hx($7) ; exit }')"
+	fi
 	[ -n "$no" ] || return 1
 	for p in "/sys/class/net/$1/brif/"* ; do
 		[ -r "$p/port_no" ] || continue

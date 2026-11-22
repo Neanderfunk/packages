@@ -161,7 +161,8 @@ fo_cable() {
 			echo "$NI_DC $vpn $NI_ID $dev" >> "$1"
 		done < "$FO_DIR/ni"
 	done
-	sort -u "$1" -o "$1"
+	# busybox sort kennt kein -o
+	sort -u "$1" > "$1.s" && mv "$1.s" "$1"
 }
 
 cand= rule= why=
