@@ -205,12 +205,17 @@ dispatcher tree, below that the pages of the current category as tabs.
 	})();
 
 	// Invalid fields turn red only after they were left or changed, or once a
-	// save was tried (CSS: .nf-touched / .nf-tried). Capturing on the
+	// save was tried (CSS: [data-nf-touched] / .nf-tried). Capturing on the
 	// document, because gluon-web adds and removes fields.
+	// An attribute, not a class: gluon-web-model.js takes its mark off again
+	// with className.replace(/ gluon-input-invalid/), leading space included.
+	// classList.add() rewrites className without that space, and a field that
+	// was once invalid stayed invalid for good (an empty optional password
+	// could not be saved again, 22.11.2026).
 	(function() {
 		function touch(e) {
 			var el = e.target;
-			if (el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) el.classList.add('nf-touched');
+			if (el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) el.setAttribute('data-nf-touched', '');
 		}
 		document.addEventListener('focusout', touch, true);
 		document.addEventListener('change', touch, true);

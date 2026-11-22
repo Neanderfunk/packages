@@ -103,10 +103,10 @@ select {
 	background-size: 5px 5px; background-repeat: no-repeat;
 }
 /* Red only once the field was left or changed, or a save was tried
-   (nf-touched / nf-tried from the layout script): gluon-web marks empty
+   (data-nf-touched / nf-tried from the layout script): gluon-web marks empty
    required fields invalid right away, which looked like an error before
    anyone typed. Server-side errors (.gluon-value-error) stay red. */
-.nf-touched.gluon-input-invalid, .nf-tried .gluon-input-invalid, .gluon-value-error input, .gluon-value-error select { border-color: var(--danger) !important; }
+[data-nf-touched].gluon-input-invalid, .nf-tried .gluon-input-invalid, .gluon-value-error input, .gluon-value-error select { border-color: var(--danger) !important; }
 input[type=file] { font: inherit; color: var(--muted); max-width: 100%; }
 input[type=file]::file-selector-button {
 	font: 600 14px var(--sans); margin-right: 12px; padding: 9px 14px; cursor: pointer;
