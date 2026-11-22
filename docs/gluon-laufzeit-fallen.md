@@ -24,6 +24,13 @@ Vor dem Einsatz eines Werkzeugs auf dem Zielgerät mit `command -v`
 nachsehen. Ein Skript, das ein fehlendes Werkzeug in einer Pipe benutzt,
 läuft ohne Fehlermeldung weiter: Die Pipe liefert dann einfach nichts.
 
+busybox `awk`
+-------------
+
+Keine GNU-Erweiterungen: `strtonum`, `xor`, `and` aus gawk fehlen bzw. sind
+nicht verlässlich (`Call to undefined function`). Bitoperationen und
+Hex-Umrechnung in der Shell: `$((0x$b ^ 2))`, `printf '%x'`.
+
 busybox `sort`
 --------------
 
@@ -168,6 +175,18 @@ nächsten Neustart nicht mehr überschreiben (`cp: can't create ...: File
 exists`, M60, 22.11.2026). Stattdessen das Original vorher nach `/tmp`
 sichern und mit `cp` zurückschreiben, oder nur über den gemounteten Pfad
 arbeiten.
+
+Unsere Pakete stehen nicht im Paketindex des Builds
+---------------------------------------------------
+
+Unter `output/packages/gluon-<site>-<release>/<target>/` (bei uns
+`packages/` neben den Images) legt Gluon nur
+`openwrt/bin/targets/<target>/packages/` ab, also Kernel-Module und
+zielspezifische Pakete (`scripts/copy_output.lua`). Pakete aus Site-Feeds
+wie `neanderfunk-*` landen unter `openwrt/bin/packages/<arch>/<feed>/` und
+werden nicht kopiert. Das ist Gluons Verhalten, kein Fehler: Sie stecken nur
+im Image. Nachinstallieren per opkg geht für sie deshalb nicht; die
+installierte Version zeigt `opkg list-installed` auf dem Knoten.
 
 Siehe auch
 ----------

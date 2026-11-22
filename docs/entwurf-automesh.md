@@ -237,6 +237,17 @@ Am WDR3600 durchgespielt (02.10.). Nur batman-adv und respondd:
    Mesh-Interfaces der Antwort steht. Sonst unbekannt.
 6. Code normalisieren (Abschnitt 2), dann Heimat, fremd oder unbekannt.
 
+**Stand 22.11.2026** (seit 03./04.11. teilen sich alle Supernodes einer
+Domain den Originator `02:ca:ff:ee:<NN>:00`): In `batctl tg` stehen unter
+diesem Originator `f2:be:ef:00:<NN>:00` (der gemeinsame Router, antwortet
+nicht auf respondd) und die bat-Schnittstellen der einzelnen Supernodes
+`f2:be:ef:00:<NN>:<SS>`. sinope antwortet über `fe80::f0be:efff:fe00:2107`
+mit `domain_code: nef-21_dias` (jetzt im Format des `site_code`, nicht mehr
+`ffnefd21`) und `network.mesh.bat21.interfaces.tunnel: ["02:ca:ff:ee:21:00"]`.
+`dh_gw_domain` fragt deshalb bis zu drei Einträge nacheinander. busybox-`awk`
+kennt kein `strtonum`/`xor`; die EUI-64-Adresse rechnet die Shell
+(`$((0x$b1 ^ 2))`).
+
 Versuche: 3 mal je 3 s. Abgefragt wird bei jedem neuen Originator in `gwl`
 und im 60-s-Takt für Gateways, die noch unbekannt sind (R1-8).
 
@@ -532,13 +543,13 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | # | Feature | Fassung 2 | Status | Seit | Grund, Anmerkung |
 |---|---|---|---|---|---|
 | 1 | LAN-Mesh-Nachbarn und ihre Domain erkennen (`batctl n`, respondd per Link-Local) | 4, 7 | umgesetzt | 21.11. | domainhelper 0.5/0.6 `bridge`, alle Domains, alle 91 s; live getestet, noch nicht im Testbau |
-| 2 | Signalisierung: Syslog, respondd, Statusseite, Banner | 11 | teilweise umgesetzt | 21.11. | Syslog und Banner (0.5); respondd-Feld und Statusseite offen (C-Modul braucht einen Build) |
-| 3 | Prüfkette „Wer ist dieses Gateway?“ | 4 | geplant | 21.11. | einfacher, weil Multi-Knoten `domain_code` melden |
-| 4 | MAC-Schema `02:ca:ff:ee:<NN>:<SS>` als Heimat-Hinweis | 4, 10 | geplant | 02.10. | nur Hinweis, nie Urteil |
+| 2 | Signalisierung: Syslog, respondd, Statusseite, Banner | 11 | umgesetzt | 22.11. | Syslog und Banner (0.5); respondd `statistics.neanderfunk.domainhelper` (neanderfunk-respondd 2, nur was gilt), Statusseite höchstens eine Zeile „Domain-Helfer“ (gluon-patches-packages statuspage-domainhelper), letzter Domainwechsel im Flash (respondd `last_switch`, nodestatus) (A, 22.11.) |
+| 3 | Prüfkette „Wer ist dieses Gateway?“ | 4 | umgesetzt | 22.11. | 0.12 `dh_gw_domain`, als Gegenprobe vor einem Wechsel nach `follow` R2 (keine oder andere Antwort: kein Wechsel); am M60 geprüft, Supernode antwortet in etwa 6 s |
+| 4 | MAC-Schema `02:ca:ff:ee:<NN>:<SS>` als Heimat-Hinweis | 4, 10 | umgesetzt | 22.11. | `dh_gw_list`: Auslöser für `follow` R2 und Uplink-Prüfung in `bridge` (Trennen ist umkehrbar); vor einem Domainwechsel nur mit Gegenprobe #3 |
 | 5 | Normalisierung von Altcodes, `home_extra` | 2, 12 | umgesetzt | 22.11. | 0.12 `dh_domain_of`: `domain_code`, sonst `site_code` ohne Präfix und ohne `_EOL` der Sackgasse, weil viele Sackgassen-Knoten bleiben (A, 22.11.); ältere Codes (`ffnef`, `ffnefd<NN>`) und `home_extra` nicht |
 | 6 | linkcheck: Gateway-Marker nur bei Heimat-Gateway, alle Geräte | 9, 10 | verworfen | 21.11. | nur nötig, solange ein Beitritt ein fremdes Gateway leiht und wieder auflöst (dann bootete die ganze Wolke). Mit Fall a/b (eigene Domain, Kanalwechsel bzw. Domainwechsel) gibt es kein Auflösen mehr |
 | 7 | Fall A: Domain-Brücke trennen, Knoten mit VPN, nur Laufzeit | 7 | umgesetzt | 21.11. | 0.5; an einer Bridge per ebtables (0x4305 von und zu uns), nicht `ifdown`: das baute die ganze Bridge ab und trennte auch die anderen Knoten an unseren Ports; nur bei Einzelgerät `ifdown`. Zusätzlich: Gegenseite muss eigenen Uplink haben |
-| 8 | Frist und Notbremse „eigener Randknoten meldet sich“ | 7 | teilweise umgesetzt | 21.11. | Frist ein Durchgang (91 s, nicht auf der vollen Minute, A); Notbremse erst mit dem Beitritt (#14) nötig |
+| 8 | Frist und Notbremse „eigener Randknoten meldet sich“ | 7 | teilweise umgesetzt | 22.11. | Frist ein Durchgang (91 s, nicht auf der vollen Minute, A); die Notbremse hing am Beitritt zu Nachbar-Communities (#16) und entfällt mit ihm |
 | 9 | Domainwechsel ohne eigenes VPN am Kabel, alle Domains | neu | umgesetzt | 22.11. | 0.11 `follow`: R1 Nachbar am Kabel mit VPN in fremder Domain (LAN schlägt WLAN), R2 nur fremde Gateways; 60 min Schonfrist, keine Tagesgrenze (A, 22.11.); Kanäle bleiben; Fall „beide ohne VPN, beide versorgt“ nur melden |
 | 10 | Fall B `merged`: ohne VPN im fremden Mesh bleiben, Filter für fremde Präfixe | 6.4, 6.5 | aufgeschoben | 21.11. | für eigene Domains ersetzt durch #9; bleibt Thema für Nachbar-Communities |
 | 11 | Beitritt am LAN per VXLAN (zweite VNI) | 6.2 | aufgeschoben | 21.11. | VXLAN ausgeklammert (A) |
@@ -549,17 +560,17 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 16 | Beitritt zu Nachbar-Communities | 6.3, 16.2 | aufgeschoben | 21.11. | (A); kommt mit #17 zurück |
 | 17 | Sperrliste `deny`, PPA-Begründung | 12, 13 | aufgeschoben | 21.11. | war für Nachbar-Communities gedacht (A) |
 | 18 | Kanalwechsel für den Beitritt, AP wechselt mit | 6.3, 16.5 | umgesetzt | 21.11. | 0.7 über `channel` (speichert ohne uci-Delta, `wifi up <radio>`) |
-| 19 | Zustände in `/tmp/automesh.state` | 5 | geplant | 21.11. | ohne `merged` und VXLAN-Zustände kleiner |
+| 19 | Zustände in `/tmp/automesh.state` | 5 | verworfen | 22.11. | überholt: je Unterbefehl ein Zustandsverzeichnis `/tmp/neanderfunk-domainhelper.<teil>/` |
 | 20 | Sperren gegen Pendeln, exponentiell, global und je Netz | 8 | aufgeschoben | 21.11. | für Fall A entfällt die Freigabe: getrennt bis zum Neustart (A, 0.6); global und je Netz erst mit dem Beitritt |
 | 21 | Gemeinsames WLAN-Lock `/var/lock/neanderfunk-wifi.lock` | 3, 9 | umgesetzt | 21.11. | `channel` nimmt das Lock |
-| 22 | Rücksicht auf autoupdater-wifi-fallback | 9 | geplant | 02.10. | ob ohne Gluon-Patch möglich, offen |
+| 22 | Rücksicht auf autoupdater-wifi-fallback | 9 | entfällt | 22.11. | durchgespielt, kein Konflikt (docs/autoupdater-wifi-fallback.md, „Zusammenspiel“): `island` in 25_hvb (5 min) und Fall a (60 min) kommen vor dem Fallback, `follow` sieht ein Gateway; nur vor Fall b (600 min) läuft der Fallback, stört aber nicht |
 | 23 | Doppel-Randknoten: höhere MAC löst auf | 5 | verworfen | 21.11. | gibt es mit Fall a/b nicht: jeder Knoten wechselt Kanal bzw. Domain für sich |
 | 24 | Kein automesh auf 64-MB-Geräten | 3, 16.4 | verworfen | 22.11. | `bridge` (A, 21.11.) und `island` a/b (A, 22.11.) laufen auch auf 64-MB-Geräten; Platz reicht, das Paket ist ohnehin in allen Images |
 | 25 | Scan nur über scan-guard | 6.3 | verworfen | 04.10. | scan-guard in v2025.1.x entfallen |
 | 26 | Kein WLAN-Scan auf MT7915 | 6.3 | verworfen | 04.10. | Scan-Fehler nur unter 2023.2, nicht unter 2025.1 |
 | 27 | Mesh-IDs per Muster `.*-mesh` erkennen | 6.3 | verworfen | 02.10. | Domains 43 bis 47 heißen `mesh-<kurz>`; Liste statt Muster |
 | 28 | Erlaubnisliste statt Sperrliste | 13 | verworfen | 02.10. | PPA (A); für eigene Domains ist #15 faktisch eine Liste aus der Firmware |
-| 29 | Paket: automesh in `neanderfunk-domainhelper`, Beitritt als eigenes Binärpaket | neu | geplant | 21.11. | Integration entschieden (A); Binärpaket wegen #24 |
+| 29 | Paket: automesh in `neanderfunk-domainhelper`, Beitritt als eigenes Binärpaket | neu | teilweise umgesetzt | 22.11. | Integration in den domainhelper umgesetzt; das Binärpaket hing an #24 (verworfen) und entfällt |
 | 30 | Alles in Shell, auch `locate` (bis 0.3 Lua) | 3.7 | umgesetzt | 21.11. | domainhelper 0.4, live auf Testknoten getestet, noch nicht im Testbau; gemeinsame Funktionen in `lib.sh` |
 | 31 | In `25_hvb` nicht trennen, sondern `locate` starten (schaltet selbst um) | neu | umgesetzt | 21.11. | 0.5 |
 | 32 | Fall A getrennt bis zum Neustart, keine Neuprüfung zwischendurch | 8 | umgesetzt | 21.11. | (A); fällt ein VPN weg, rettet der Wächter (linkcheck `no_gateway`) per Neustart |

@@ -108,6 +108,18 @@ ein Image gibt.
   den Fallback.
 - **ssid-changer** stellt ohne Gateway auf die Offline-SSID um; der Hostname
   wird darin mit „...“ gekürzt (`FF_Offline_dias-104...est-4402`).
+- **neanderfunk-domainhelper** (durchgespielt 22.11.2026, #22 im
+  automesh-Entwurf): kein Konflikt, keine Anpassung nötig.
+  - `island` in 25_hvb (5 min ohne Gateway) und Fall a (Kanal, 60 min)
+    greifen lange vor dem Fallback (frühestens gut 3 h nach dem Boot).
+  - `follow`: Der Knoten sieht ein fremdes Gateway, `has_default_gw4`
+    steht, der Fallback hält ihn für online und läuft nicht.
+  - `island` Fall b (Domain über WLAN, 600 min): Hier kommt der Fallback
+    vorher, stündlich. Die Wartezeit von `island` läuft weiter (Datei in
+    `/tmp`, kein Neustart); ein Scan während der Fallback-Minuten findet
+    nichts und wird 5 min später wiederholt. Findet der Fallback ein neueres
+    Image, flasht er, und die 600 min beginnen nach dem Neustart von vorn:
+    gewollt, der Knoten ist dann aktuell.
 - **ap-timer**: Er schaltet das Client-WLAN über das uci-Delta ab. `wifi up` am
   Ende eines Fallbacks ohne Update baut die WLANs aus uci samt Delta neu, eine
   laufende Aus-Zeit bleibt also bestehen (aus dem Code abgeleitet, nicht

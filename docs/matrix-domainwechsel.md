@@ -61,6 +61,11 @@ Regeln, die für alle Fälle gelten
   WAN-Link und Adresse wechselt, wenn er kein Gateway sieht (gekündigter
   Anschluss, Router läuft weiter).
 - **64-MB-Geräte:** `bridge`, `follow` und `island` laufen auch dort (#24).
+- **autoupdater-wifi-fallback** (gut 3 h nach dem Boot ohne Gateway,
+  dann stündlich) stört nicht: In 25_hvb und bei Fall a kommt `island`
+  vorher, `follow` sieht ein Gateway, nur vor Fall b (600 min) läuft er,
+  und dessen Wartezeit läuft dabei weiter (#22,
+  [autoupdater-wifi-fallback.md](autoupdater-wifi-fallback.md)).
 - **Takt `follow`:** alle 91 s, fragt die Nachbarn an jedem Kabel per
   respondd (je 3 s), nur ohne eigenes VPN und außerhalb von 25_hvb.
 - **Kein Hindernis:** aktives LAN-Mesh oder weitere Knoten in der Wolke
