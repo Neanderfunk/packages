@@ -229,6 +229,14 @@ Sekunden (die Zustandsdateien zählen ab dem Boot).
 - `follow`: Das Netz kommt aus `domain`, Regel `R1` (Kabel) oder `R2` (nur
   fremde Gateways); Wechsel, wenn `age` `wait` erreicht.
 - `island`: kein Gateway seit `age` Sekunden.
+**Feste Schnittstelle zur Karte** (seit 22.11.2026): Der yanic-Fork der Karte
+liest diesen Block (Grafana: „Domainwechsel“, „Domainhelper gerade aktiv“).
+Feldnamen und Typen bleiben deshalb stabil: `last_switch.from`/`to`/`how`
+Strings, `time` Zahl; `age`, `wait` Zahlen; `bridge.state`/`where`/`domain`/
+`node`/`note` Strings. Ein falscher Typ lässt dort den betroffenen Teil
+fallen. Neue Felder sind unkritisch; Umbenennen oder ein anderer Typ nur
+nach Absprache mit der Mapserver-Session.
+
 - `last_switch`: der letzte Domainwechsel durch `follow-R1`, `follow-R2`,
   `island`, `lan_switch` oder `nodeplacer`, mit Unix-Zeit (ohne NTP vor dem
   Wechsel kann sie falsch sein). Steht im Flash, übersteht Neustart und
