@@ -14,7 +14,7 @@ shells only - `nodestatus`.
 terminal (`NO_COLOR` disables, `FORCE_COLOR` forces colour). It shows what is
 actually running, not just what is configured:
 
-- node, image name, domain (code and, on multi-domain firmware, the domain name from `domain_names` instead of the site name), firmware, uptime, load, free RAM and flash,
+- node, image name, domain (code and, on multi-domain firmware, the domain name from `domain_names` instead of the site name; below it the last domain switch by neanderfunk-domainhelper or nodeplacer, `gewechselt 22.11.26  21_dias -> 18_nefuk  follow-R1`, from `/lib/gluon/core/sysconfig/neanderfunk_domainhelper_last_switch`), firmware, uptime, load, free RAM and flash,
   the SoC temperature where the hardware has a sensor (`SoC 56.3°C` next to
   RAM and flash, from `statistics.neanderfunk.temperature.soc` of
   neanderfunk-respondd - the same value as on the status page; nothing on

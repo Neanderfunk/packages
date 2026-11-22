@@ -343,6 +343,17 @@ elseif uci:get('nodeplacer', 'settings') then
 	np = is_true(uci:get('nodeplacer', 'settings', 'disable')) and 0 or 1
 end
 row('Domain', site_code .. (domain and (' / ' .. domain) or '') .. (np and ('  NP:' .. np) or ''), cut(sname, room), '')
+-- Letzter Domainwechsel (neanderfunk-domainhelper follow/island/lan_switch,
+-- nodeplacer): "<von> <nach> <wie> <unix-zeit>" in sysconfig. Ohne NTP vor
+-- dem Wechsel kann die Zeit falsch sein, vor 2020 steht deshalb "?".
+do
+	local from, to, how, t = (readline('/lib/gluon/core/sysconfig/neanderfunk_domainhelper_last_switch') or '')
+		:match('^(%S+) (%S+) (%S+) (%d+)')
+	if from then
+		t = tonumber(t)
+		row('', 'gewechselt ' .. (t > 1577836800 and os.date('%d.%m.%y', t) or '?'), from .. ' -> ' .. to, how)
+	end
+end
 
 row('Firmw.', readline('/lib/gluon/release') or '?',
 	-- ohne "Gluon "-Praefix: die meisten Knoten auf der Karte laufen mit einem
