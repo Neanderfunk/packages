@@ -112,6 +112,18 @@ IPv6 geht weiter durch, respondd-Abfragen über diesen Port funktionieren
 also auch mit verworfenem batman. Ein Neuladen der Firewall löscht die
 Regeln; wer sie braucht, muss sie regelmäßig prüfen und neu setzen.
 
+Dateien im Overlay nicht hinter dem Rücken löschen
+--------------------------------------------------
+
+Eine zum Test überschriebene Datei aus dem Image (etwa
+`/lib/gluon/status-page/view/status-page.html`) nicht durch Löschen in
+`/overlay/upper/...` zurückholen. overlayfs merkt das zur Laufzeit nicht:
+Die Datei sieht danach aus wie das Original, lässt sich aber bis zum
+nächsten Neustart nicht mehr überschreiben (`cp: can't create ...: File
+exists`, M60, 22.11.2026). Stattdessen das Original vorher nach `/tmp`
+sichern und mit `cp` zurückschreiben, oder nur über den gemounteten Pfad
+arbeiten.
+
 Siehe auch
 ----------
 
