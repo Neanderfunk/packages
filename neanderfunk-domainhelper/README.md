@@ -49,9 +49,9 @@ Umschaltziel) stehen in `/lib/gluon/neanderfunk-domainhelper/lib.sh`, zum
 Sourcen für weitere Teile.
 
 **Falle busybox `sort`:** Die busybox der Knoten kennt bei `sort` nur
-`-n -r -u -s -z`. `-t` und `-k` werden ohne Fehlermeldung ignoriert, die
-Ausgabe ist dann nicht nach dem gewünschten Feld sortiert. Deshalb steht
-der Sortierschlüssel vorn in der Zeile.
+`-n -r -u -s -z`. `-t`, `-k` und `-o` werden ohne Fehlermeldung ignoriert.
+Deshalb steht der Sortierschlüssel vorn in der Zeile. Weitere Fallen:
+[docs/gluon-laufzeit-fallen.md](../docs/gluon-laufzeit-fallen.md).
 
 Einschalten (locate)
 --------------------

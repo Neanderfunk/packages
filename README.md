@@ -71,6 +71,12 @@ and whether Gluon 2025.1 changes that:
 Flash and RAM of the devices in the field, grouped by how soon a Gluon
 release may drop them: [docs/feldgeraete-flash-ram.md](docs/feldgeraete-flash-ram.md).
 
+Pitfalls for shell packages at runtime (tools missing from busybox such as
+`od` and `pkill`, busybox `sort` silently ignoring `-o`, `-t` and `-k`,
+`ifdown <name>_mesh` deleting the interface so that only `ifup <name>`
+brings it back, bridge ports via `brctl showmacs`, per-port ebtables):
+[docs/gluon-laufzeit-fallen.md](docs/gluon-laufzeit-fallen.md).
+
 Calling `sysupgrade` from a script: exec it and do nothing afterwards. It
 returns as soon as it has handed over to procd, seconds before stage2 reads
 the image, so any cleanup after it breaks the upgrade:

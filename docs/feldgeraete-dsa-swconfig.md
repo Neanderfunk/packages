@@ -1,6 +1,8 @@
 # Feldgeräte: DSA oder swconfig
 
 Flash und RAM derselben Flotte: [feldgeraete-flash-ram.md](feldgeraete-flash-ram.md).
+Was das zur Laufzeit für Shell-Pakete heißt (Port eines Nachbarn, batman je
+Port trennen, `arl_table`): [gluon-laufzeit-fallen.md](gluon-laufzeit-fallen.md).
 
 Stand 2026-09-10. Welche Geräte im Feld ihre LAN-Ports über **DSA** führen,
 welche hinter **swconfig**, und ob sich daran mit Gluon 2025.1 etwas ändert.
