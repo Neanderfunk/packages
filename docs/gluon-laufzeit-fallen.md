@@ -143,6 +143,20 @@ PATH=<gluon>/openwrt/staging_dir/hostpkg/bin:$PATH \
 Ohne Baum geht es auch mit Lua 5.1.5 und den Patches aus
 `openwrt/package/utils/lua/patches-host` (`make linux`).
 
+Config-Mode: kein `classList` an Eingabefeldern von gluon-web
+--------------------------------------------------------------
+
+gluon-web-model.js markiert ungültige Felder mit
+`className += " gluon-input-invalid"` und nimmt die Markierung mit
+`className.replace(/ gluon-input-invalid/g, "")` wieder ab, **mit
+führendem Leerzeichen**. Ein eigenes `el.classList.add(...)` am selben Feld
+schreibt `className` normalisiert neu, und dann steht das Wort am Anfang,
+ohne Leerzeichen: Die Markierung geht nie mehr weg. Gesehen im Setup-Mode
+(neanderfunk-config-mode-theme bis 1): Ein angefangenes Passwort ließ sich
+nicht mehr leeren, Speichern verweigert. Eigene Zustände an diesen Feldern
+deshalb als Datenattribut setzen (`el.setAttribute('data-...', '')`), nie
+als Klasse.
+
 Dateien im Overlay nicht hinter dem Rücken löschen
 --------------------------------------------------
 

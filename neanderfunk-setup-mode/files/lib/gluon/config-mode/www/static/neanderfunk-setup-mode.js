@@ -257,6 +257,19 @@
 		return out;
 	}
 
+	/* A red row (from a refused save or from the node) clears as soon as
+	   the user has fixed its field: gluon-web-model checks on keyup, blur
+	   and change, so look right after those. Only after user input, never
+	   on load, so errors from the node stay visible until touched. */
+	function recheck(e) {
+		var r = e.target && e.target.closest && e.target.closest('.row.invalid');
+		if (!r) return;
+		setTimeout(function () {
+			if (!r.querySelector('.gluon-input-invalid')) r.classList.remove('invalid');
+		}, 0);
+	}
+	['keyup', 'change', 'focusout'].forEach(function (t) { form.addEventListener(t, recheck); });
+
 	form.addEventListener('submit', function (e) {
 		var bad = [];
 		each('.gluon-input-invalid', form, function (el) { bad.push(el); });
