@@ -235,7 +235,7 @@ Feldnamen und Typen bleiben deshalb stabil: `last_switch.from`/`to`/`how`
 Strings, `time` Zahl; `age`, `wait` Zahlen; `bridge.state`/`where`/`domain`/
 `node`/`note` Strings. Ein falscher Typ lässt dort den betroffenen Teil
 fallen. Neue Felder sind unkritisch; Umbenennen oder ein anderer Typ nur
-nach Absprache mit der Mapserver-Session.
+nach Absprache mit dem Kartenbetrieb ([Neanderfunk/mapserver](https://github.com/Neanderfunk/mapserver)).
 
 - `last_switch`: der letzte Domainwechsel durch `follow-R1`, `follow-R2`,
   `island`, `lan_switch` oder `nodeplacer`, mit Unix-Zeit (ohne NTP vor dem
