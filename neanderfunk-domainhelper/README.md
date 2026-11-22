@@ -22,7 +22,7 @@ und 4.3.
 Wann welcher Teil Domain oder Kanal wechselt (Ausgang, Attraktor, mit VPN
 oder Insel): [docs/matrix-domainwechsel.md](../docs/matrix-domainwechsel.md).
 
-**Stand 0.9 (21.11.2026):** `bridge` trennt nicht gegen Nachbarn aus einer Domain mit Ortung (`25_hvb`), die schalten per `lan_switch` selbst um. 0.8: Fall b von `island` verwirft vor dem Domainwechsel alle Laufzeit-Deltas (sonst schriebe das pauschale `uci commit` in `001-reset-uci` etwa die Offline-SSID in den Flash). 0.7: neu `island`. 0.6: `bridge` trennt bis zum
+**Stand 0.10 (22.11.2026):** `island` in einer Domain mit Ortung (`25_hvb`) nach 5 min statt 60/600 min, ohne Versatz. Der Standardkanal der neuen Domain setzt `preserve_channels_<band>=0` (braucht neanderfunk-banner 5). 0.9: `bridge` trennt nicht gegen Nachbarn aus einer Domain mit Ortung (`25_hvb`), die schalten per `lan_switch` selbst um. 0.8: Fall b von `island` verwirft vor dem Domainwechsel alle Laufzeit-Deltas (sonst schriebe das pauschale `uci commit` in `001-reset-uci` etwa die Offline-SSID in den Flash). 0.7: neu `island`. 0.6: `bridge` trennt bis zum
 Neustart, Takt 91 s. 0.5: neu `bridge`. Seit 0.4 ganz in Shell:
 `/usr/sbin/neanderfunk-domainhelper` verteilt nur noch auf
 `/lib/gluon/neanderfunk-domainhelper/cmd_<unterbefehl>.sh`, gemeinsame
@@ -240,11 +240,16 @@ gescannt wird höchstens alle 5 min.
 - **Versatz:** zu beiden Zeiten kommen je Knoten 0 bis 15 min aus der MAC.
   Fällt eine Wolke gemeinsam aus, wechselt einer zuerst; die anderen sehen
   danach über das LAN-Mesh wieder ein Gateway.
+- **In 25_hvb (Domain mit Ortung) so bald wie möglich:** Fall a und b nach
+  5 min ohne Gateway (Zeit für VPN und Gateway-Wahl nach dem Boot), ohne
+  Versatz, der nächste Wechsel frühestens nach 15 min. Außerhalb von
+  25_hvb bleibt es bei den langen Zeiten: keine hastigen Wechsel.
 - **Kanal dauerhaft:** über den Befehl `channel` (neanderfunk-banner), der
   ohne das uci-Delta speichert und nur das Radio neu startet
   (`wifi up <radio>`). Ist der neue Kanal der Standardkanal der (neuen)
-  Domain, mit `--no-keep`, sonst mit `preserve_channels_<band>`, damit ein
-  Update ihn nicht zurücksetzt. Ein Wechsel hält auch über den Weekly
+  Domain, mit `--no-keep` (`preserve_channels_<band>=0`, das Band folgt
+  wieder der Domain), sonst mit `preserve_channels_<band>=1`, egal was
+  vorher stand, damit ein Update ihn nicht zurücksetzt. Ein Wechsel hält auch über den Weekly
   Reboot; aufräumen, wenn der eigentliche Uplink wieder steht, muss man
   von Hand.
 - **Nicht gewechselt wird**
@@ -258,7 +263,7 @@ gescannt wird höchstens alle 5 min.
     im Outdoor-Modus, in eine Domain mit Ortung (`25_hvb`), zu
     Mesh-Punkten unter -80 dBm.
   Eigene Domain geht vor fremder, dann das stärkste Signal.
-- **Nach einem Wechsel** frühestens nach 6 h der nächste.
+- **Nach einem Wechsel** frühestens nach 6 h der nächste (in 25_hvb 15 min).
 - Ein aktives LAN-Mesh oder weitere Knoten in der Wolke verhindern den
   Wechsel nicht; maßgeblich ist nur: kein Gateway.
 - **Zusammen mit linkcheck:** Fällt der Uplink zur Laufzeit weg, startet

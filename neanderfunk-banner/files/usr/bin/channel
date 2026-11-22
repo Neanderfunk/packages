@@ -20,13 +20,15 @@
 --
 -- Behalten: Gluon setzt bei jedem Update Kanal, Kanalliste und Breite auf die
 -- Werte der Site zurueck. Ausser mit --no-keep setzt channel deshalb fuer jedes
--- geaenderte Band gluon.wireless.preserve_channels_<band>=1; die wertet
+-- angegebene Band gluon.wireless.preserve_channels_<band>=1; die wertet
 -- neanderfunk-preserve-wifichannel aus (zusaetzlich zu Gluons globalem
--- preserve_channels). Steht der globale Schalter noch auf 1, wird er dabei in
--- die Band-Schluessel ueberfuehrt: jedes Band bekommt seinen Schluessel auf 1,
--- der globale geht auf 0 - fuer den Knoten aendert sich dadurch nichts, aber
--- von da an laesst sich je Band entscheiden. Wer ihn spaeter wieder auf 1
--- setzt, haelt wie bisher alle Baender fest.
+-- preserve_channels). Mit --no-keep geht der Schluessel der angegebenen
+-- Baender auf 0, das Band folgt beim naechsten Update wieder der Site. Steht
+-- der globale Schalter noch auf 1, wird er dabei in die Band-Schluessel
+-- ueberfuehrt: jedes Band bekommt seinen Schluessel auf 1 (mit --no-keep die
+-- angegebenen auf 0), der globale geht auf 0. Ohne --no-keep aendert sich
+-- dadurch nichts, aber von da an laesst sich je Band entscheiden. Wer ihn
+-- spaeter wieder auf 1 setzt, haelt wie bisher alle Baender fest.
 --
 -- Schutz vor dem Aussperren: Laeuft der Weg zum gewaehlten Gateway (batctl gwl)
 -- ueber das Mesh-Interface eines Radios, aendert channel dessen Kanal nur mit
@@ -98,7 +100,7 @@ Aufruf: channel [2.4-GHz-Kanal [5-GHz-Kanal]] [-n] [--no-keep] [-f]
   Kanal "mesh": Mesh einschalten und den Kanal mit dem staerksten eigenen Mesh
              waehlen ("channel mesh", "channel mesh -", "channel - mesh")
   -n         nur zeigen, was passieren wuerde (mit autofix: die Auswertung)
-  --no-keep  Kanal nicht ueber Updates behalten (kein preserve_channels_<band>)
+  --no-keep  Kanal nicht ueber Updates behalten (preserve_channels_<band>=0)
   -f         auch wenn Mesh-Nachbarn an diesem Radio haengen
 ]==])
 	finish(1)
@@ -641,20 +643,26 @@ for _, ch in ipairs(changes) do
 	end
 end
 
-if keep and #changes > 0 then
+if #changes > 0 then
+	local given = {}
+	for _, ch in ipairs(changes) do given[ch.band] = true end
 	if uci:get_bool('gluon', 'wireless', 'preserve_channels') then
-		-- Ueberfuehren: alle Baender, die es gibt, behalten wie bisher
+		-- Ueberfuehren: alle Baender, die es gibt, behalten wie bisher, mit
+		-- --no-keep ausser den angegebenen
 		for _, band in ipairs(BANDS) do
 			if radios[band] then
-				table.insert(gluon_sets, { 'wireless', 'preserve_channels_' .. band, '1' })
+				table.insert(gluon_sets, { 'wireless', 'preserve_channels_' .. band,
+					(given[band] and not keep) and '0' or '1' })
 			end
 		end
 		table.insert(gluon_sets, { 'wireless', 'preserve_channels', '0' })
 		table.insert(notes, 'globales preserve_channels in die Band-Schluessel ueberfuehrt')
 	else
 		for _, ch in ipairs(changes) do
-			if not band_key_on(ch.band) then
+			if keep and not band_key_on(ch.band) then
 				table.insert(gluon_sets, { 'wireless', 'preserve_channels_' .. ch.band, '1' })
+			elseif not keep and band_key_on(ch.band) then
+				table.insert(gluon_sets, { 'wireless', 'preserve_channels_' .. ch.band, '0' })
 			end
 		end
 	end
@@ -688,9 +696,7 @@ for _, n in ipairs(notes) do
 	print('channel: ' .. n)
 end
 if not keep then
-	print('channel: --no-keep: das naechste Update setzt '
-		.. (uci:get_bool('gluon', 'wireless', 'preserve_channels') and 'trotzdem nichts zurueck (globales preserve_channels steht)'
-			or 'auf die Kanaele der Site zurueck, soweit kein preserve_channels_<band> steht'))
+	print('channel: --no-keep: das naechste Update setzt die angegebenen Baender auf die Kanaele der Site zurueck')
 end
 os.execute('logger -t channel -- "' .. table.concat((function()
 	local t = {}

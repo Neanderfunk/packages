@@ -2,7 +2,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-domainhelper
-PKG_VERSION:=0.9
+PKG_VERSION:=0.10
 PKG_RELEASE:=1
 PKG_LICENSE:=BSD-3-Clause
 
@@ -39,7 +39,8 @@ define Package/$(PKG_NAME)/description
 	alle 91 s als procd-Dienst.
 	island: steht lange kein Gateway in Sicht, Kanal auf ein Mesh der
 	eigenen Domain stellen (nach 60 min) oder Domain und Kanal wechseln
-	(nach 600 min), nicht zu Knoten mit Offline-SSID.
+	(nach 600 min, in 25_hvb beides nach 5 min), nicht zu Knoten mit
+	Offline-SSID.
 endef
 
 define Build/Prepare

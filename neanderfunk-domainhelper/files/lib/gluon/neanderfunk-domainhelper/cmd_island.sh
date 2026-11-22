@@ -17,13 +17,19 @@
 #
 # Dazu je Knoten ein fester Versatz von 0 bis 15 min aus der MAC: Fallen
 # mehrere Knoten einer Wolke gleichzeitig aus, wechselt einer zuerst, die
-# anderen sehen danach ueber das LAN-Mesh wieder ein Gateway.
+# anderen sehen danach ueber das LAN-Mesh wieder ein Gateway. Ausserhalb von
+# 25_hvb soll nichts hastig wechseln (adorfer 22.11.).
+#
+# In einer Domain mit Ortung (25_hvb, "Halteverbot") so bald wie moeglich:
+# Fall a und b nach ISL_WAIT_HVB (5 min, Zeit fuer VPN und Gateway-Wahl nach
+# dem Boot), ohne Versatz, naechster Wechsel nach ISL_REARM_HVB (15 min).
 #
 # Der Kanal wird dauerhaft gespeichert (Befehl "channel" aus
 # neanderfunk-banner, ohne das uci-Delta mitzuschreiben, danach "wifi up
-# <radio>"). Ist er der Standardkanal der (neuen) Domain, ohne Schutz
-# (--no-keep), der Knoten folgt dann weiter der Domain; sonst mit
-# preserve_channels_<band>, damit ein Update ihn nicht zuruecksetzt.
+# <radio>"). Ist er der Standardkanal der (neuen) Domain, mit --no-keep:
+# preserve_channels_<band>=0, der Knoten folgt dann weiter der Domain; sonst
+# preserve_channels_<band>=1, egal was vorher stand, damit ein Update ihn
+# nicht zuruecksetzt (adorfer 22.11.).
 #
 # Nicht gewechselt wird:
 #   - zu einem Mesh-Punkt, dessen Knoten selbst offline ist: Ein AP auf
@@ -52,6 +58,8 @@ ISL_BANNER=/tmp/neanderfunk-domainhelper.banner.island
 ISL_WAIT_A=3600
 ISL_WAIT_B=36000
 ISL_REARM=21600
+ISL_WAIT_HVB=300
+ISL_REARM_HVB=900
 ISL_SCAN_EVERY=300
 ISL_MIN_SIGNAL=-80
 
@@ -91,14 +99,23 @@ if [ -n "$(batctl gwl -H 2>/dev/null)" ] ; then
 	fi
 fi
 
+own_domain="$(uci -q get gluon.core.domain)"
+offset=
+if [ -n "$(jsonfilter -i "/lib/gluon/domains/$own_domain.json" -e '@.neanderfunk_domainhelper.locator.urls[0]' 2>/dev/null)" ] ; then
+	# eigene Domain mit Ortung (25_hvb): so bald wie moeglich weg
+	ISL_WAIT_A="$ISL_WAIT_HVB" ISL_WAIT_B="$ISL_WAIT_HVB" ISL_REARM="$ISL_REARM_HVB" offset=0
+fi
+
 since="$now"
 if [ -r "$ISL_DIR/since" ] ; then
 	read -r since < "$ISL_DIR/since"
 else
 	echo "$now" > "$ISL_DIR/since"
 fi
-IFS=: read a a a a a m < /lib/gluon/core/sysconfig/primary_mac
-offset=$(( (0x$m % 16) * 60 ))
+if [ -z "$offset" ] ; then
+	IFS=: read a a a a a m < /lib/gluon/core/sysconfig/primary_mac
+	offset=$(( (0x$m % 16) * 60 ))
+fi
 age=$((now - since))
 allow_b=0
 [ "$age" -ge $((ISL_WAIT_B + offset)) ] && allow_b=1
@@ -116,8 +133,6 @@ else
 	allow_b=1
 	echo "ohne Gateway seit $age s (Versatz $offset s); Fall a ab $((ISL_WAIT_A + offset)) s, Fall b ab $((ISL_WAIT_B + offset)) s"
 fi
-
-own_domain="$(uci -q get gluon.core.domain)"
 
 # Baender mit Mesh-Rolle, ohne Outdoor-5-GHz: "<band> <radio> <kanal>"
 : > "$ISL_DIR/bands"

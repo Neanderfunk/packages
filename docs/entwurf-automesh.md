@@ -81,7 +81,7 @@ gilt dieser Abschnitt.
   - *Internet an der Pforte fällt aus.* Alle Knoten gehen auf die
     Offline-SSID, niemand wechselt.
 
-  **Vertagt** (A, 21.11.): eine zusätzliche Sperre „VPN an und WAN mit
+  **Verworfen** (A, 22.11., vorher vertagt): eine zusätzliche Sperre „VPN an und WAN mit
   Link und Adresse: nie wechseln“. Sie hielte bei einem Ortsausfall auch
   Knoten ohne Offline-Signal fest, verhinderte aber den Fall
   „Telekom-Anschluss gekündigt, Speedport läuft weiter“: WAN hat Link und
@@ -554,7 +554,7 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 21 | Gemeinsames WLAN-Lock `/var/lock/neanderfunk-wifi.lock` | 3, 9 | umgesetzt | 21.11. | `channel` nimmt das Lock |
 | 22 | Rücksicht auf autoupdater-wifi-fallback | 9 | geplant | 02.10. | ob ohne Gluon-Patch möglich, offen |
 | 23 | Doppel-Randknoten: höhere MAC löst auf | 5 | verworfen | 21.11. | gibt es mit Fall a/b nicht: jeder Knoten wechselt Kanal bzw. Domain für sich |
-| 24 | Kein automesh auf 64-MB-Geräten | 3, 16.4 | geplant | 21.11. | `bridge` läuft auch auf 64-MB-Geräten (A, 21.11.); für Fall a/b noch offen |
+| 24 | Kein automesh auf 64-MB-Geräten | 3, 16.4 | verworfen | 22.11. | `bridge` (A, 21.11.) und `island` a/b (A, 22.11.) laufen auch auf 64-MB-Geräten; Platz reicht, das Paket ist ohnehin in allen Images |
 | 25 | Scan nur über scan-guard | 6.3 | verworfen | 04.10. | scan-guard in v2025.1.x entfallen |
 | 26 | Kein WLAN-Scan auf MT7915 | 6.3 | verworfen | 04.10. | Scan-Fehler nur unter 2023.2, nicht unter 2025.1 |
 | 27 | Mesh-IDs per Muster `.*-mesh` erkennen | 6.3 | verworfen | 02.10. | Domains 43 bis 47 heißen `mesh-<kurz>`; Liste statt Muster |
@@ -564,11 +564,11 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 31 | In `25_hvb` nicht trennen, sondern `locate` starten (schaltet selbst um) | neu | umgesetzt | 21.11. | 0.5 |
 | 32 | Fall A getrennt bis zum Neustart, keine Neuprüfung zwischendurch | 8 | umgesetzt | 21.11. | (A); fällt ein VPN weg, rettet der Wächter (linkcheck `no_gateway`) per Neustart |
 | 33 | Prüftakt 91 s als procd-Schleife statt jeder Minute aus micron.d | neu | umgesetzt | 21.11. | (A); nicht im Gleichschritt mit der vollen Minute |
-| 34 | Fall a: Schonzeit 60 min, Fall b: Schonzeit 600 min ohne Gateway | neu | umgesetzt | 21.11. | 0.7 |
+| 34 | Fall a: Schonzeit 60 min, Fall b: Schonzeit 600 min ohne Gateway | neu | umgesetzt | 22.11. | 0.7; in 25_hvb beides 5 min, ohne Versatz, nächster Wechsel nach 15 min (A, 22.11., 0.10) |
 | 35 | Fall b: kein Zurückwechseln in die Domain, aus der der Knoten gerade kam | neu | verworfen | 21.11. | zwei Inseln ohne Uplink: ohnehin verloren, in der Praxis selten (A); ersetzt durch #37 |
 | 36 | Kanal dauerhaft wechseln, in a und b; nur festschreiben, wenn nicht der Domain-Standard (dann `preserve_channels_<band>`) | neu | umgesetzt | 21.11. | 0.7: `channel`, bei Standardkanal `--no-keep` |
 | 37 | Nicht zu Mesh-Punkten wechseln, deren Knoten eine Offline-SSID sendet (Zuordnung über Frequenz und BSSID-Muster) | neu | umgesetzt | 21.11. | 0.7; beide Muster mit gebastelter Scan-Liste geprüft |
 | 38 | Versatz 0 bis 15 min je Knoten (MAC) auf die Schonzeit | neu | umgesetzt | 21.11. | 0.7 |
-| 39 | Sperre „VPN an und WAN mit Link und Adresse: nie wechseln“ | neu | offen | 21.11. | vertagt (A): Gegenfall gekündigter Anschluss mit laufendem Router |
+| 39 | Sperre „VPN an und WAN mit Link und Adresse: nie wechseln“ | neu | verworfen | 22.11. | auch dann Domain wechseln (A, 22.11.): gekündigter Anschluss mit laufendem Router |
 | 40 | Nach einem Wechsel frühestens nach 6 h der nächste; Scan höchstens alle 5 min; Mesh-Punkte unter -80 dBm zählen nicht | neu | umgesetzt | 21.11. | 0.7, Vorschlag |
 | 41 | Band ohne Mesh-Rolle: Mesh nicht einschalten | neu | umgesetzt | 21.11. | 0.7; dort ist das Mesh bewusst aus |

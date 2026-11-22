@@ -7,6 +7,7 @@ config bridge 'bridge'
 	option cut '1'
 
 # island: Insel ohne Gateway - nach 60 min Kanal auf ein Mesh der eigenen
-# Domain, nach 600 min Domain und Kanal wechseln. enabled '0' schaltet es ab.
+# Domain, nach 600 min Domain und Kanal wechseln (in 25_hvb beides nach
+# 5 min). enabled '0' schaltet es ab.
 config island 'island'
 	option enabled '1'
