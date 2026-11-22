@@ -132,10 +132,16 @@ Statt Kommazahlen mit führender Null ganzzahlig rechnen: `a * 10 < b`
 statt `a < b * 0.1`, `x + 1 / 2` statt `x + 0.5`. Gilt nur für `luasrc/`;
 unter `files/` wird nichts gekürzt.
 
-Nachstellen: Lua 5.1.5 mit den Patches aus
-`openwrt/package/utils/lua/patches-host` bauen (`make linux`) und
-luasrcdiet damit über die Datei laufen lassen:
-`luasrcdiet --noopt-binequiv -o /tmp/out.lua <datei>`.
+Vor einem Pin prüfen, mit einem schon gebauten Gluon-Baum (dort liegen
+luasrcdiet und das Host-Lua von OpenWrt):
+
+```sh
+PATH=<gluon>/openwrt/staging_dir/hostpkg/bin:$PATH \
+  luasrcdiet --noopt-binequiv -o /tmp/out.lua <datei>
+```
+
+Ohne Baum geht es auch mit Lua 5.1.5 und den Patches aus
+`openwrt/package/utils/lua/patches-host` (`make linux`).
 
 Dateien im Overlay nicht hinter dem Rücken löschen
 --------------------------------------------------
