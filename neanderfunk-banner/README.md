@@ -268,3 +268,13 @@ Mutually exclusive packages
 Declares `CONFLICTS:=ffmuc-custom-banner`. That package also owns
 `/etc/banner.gluon` and also replaces the login banner - it templates it from an
 upgrade script rather than symlinking - so the two would clobber each other.
+
+Footprint
+---------
+
+Estimate (22.11.2026, build 26112210bro). Method and all packages compared:
+[docs/platzbedarf.md](../docs/platzbedarf.md) (German).
+
+- **Flash:** about 31 KB in the squashfs (xz), mostly `nodestatus` and `channel`.
+- **RAM, permanent:** nothing.
+- **RAM, short-lived:** only at login and when a command is run: `nodestatus` (Lua) 0.6 MB own memory, 2.1 MB including the pages of Lua and its libraries (measured on a TL-WR1043ND v2), about 1 to 2 s.

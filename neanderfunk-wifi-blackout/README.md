@@ -92,3 +92,13 @@ confirmed on real hardware:
 
 The last two masked the first: had only the typo been fixed, every node would
 have restarted its wifi every few hours regardless of chipset.
+
+Footprint
+---------
+
+Estimate (22.11.2026, build 26112210bro). Method and all packages compared:
+[docs/platzbedarf.md](../docs/platzbedarf.md) (German).
+
+- **Flash:** about 2.5 KB in the squashfs (xz).
+- **RAM, permanent:** only state below `/tmp`: 8 KB.
+- **RAM, short-lived:** `wifi-blackout` every 10 min (Lua, under 1 s, estimated 0.3 to 0.5 MB own memory).

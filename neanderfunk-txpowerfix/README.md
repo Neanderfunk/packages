@@ -187,3 +187,13 @@ Beim Wechsel auf eine Gluon-Basis mit 25.12 deshalb eins von beiden:
 
 Nicht betroffen: 2.4 GHz (nur 20 MHz in der Liste), `HT40` auf reinen
 11n-5-GHz-Radios (etwa ath9k im WDR3600), `HE40` und alle 80-MHz-Modi.
+
+Platzbedarf
+-----------
+
+Schätzung (22.11.2026, Bau 26112210bro). Methode und alle Pakete im
+Vergleich: [docs/platzbedarf.md](../docs/platzbedarf.md).
+
+- **Flash:** etwa 1 KB im squashfs (xz).
+- **RAM dauerhaft:** nichts.
+- **RAM kurzzeitig:** nur beim Start nach einem Update (Upgrade-Skript).

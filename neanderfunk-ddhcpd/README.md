@@ -86,6 +86,16 @@ Test
 `lua5.1 tests/upgrade_test.lua` aus dem Paketverzeichnis prüft
 `500-neanderfunk-ddhcpd` mit Attrappen für `gluon.site` und `simple-uci`.
 
+Platzbedarf
+-----------
+
+Schätzung (22.11.2026, Bau 26112210bro). Methode und alle Pakete im
+Vergleich: [docs/platzbedarf.md](../docs/platzbedarf.md).
+
+- **Flash:** etwa 24 KB (ath79) bis 26 KB (arm64) im squashfs (xz).
+- **RAM dauerhaft:** der Daemon `ddhcpd`: 128 KB eigener Speicher am TL-WR1043ND v2, 164 KB am M60 (Code als Datei-Seiten, etwa 0,9 bis 1,1 MB, nicht mitgezählt).
+- **RAM kurzzeitig:** nichts Nennenswertes.
+
 Lizenz
 ------
 

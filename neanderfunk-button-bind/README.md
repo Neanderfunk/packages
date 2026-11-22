@@ -97,3 +97,13 @@ Nur das Nötige, damit es hier sauber läuft:
 
 Die Oberflächentexte sind bewusst auf Deutsch geblieben, passend zum Rest
 unserer Config-Mode-Seiten.
+
+Platzbedarf
+-----------
+
+Schätzung (22.11.2026, Bau 26112210bro). Methode und alle Pakete im
+Vergleich: [docs/platzbedarf.md](../docs/platzbedarf.md).
+
+- **Flash:** etwa 2 bis 3 KB im squashfs (xz).
+- **RAM dauerhaft:** nichts.
+- **RAM kurzzeitig:** nur beim Start (`/etc/init.d/button-bind`) und beim Druck auf den Knopf.

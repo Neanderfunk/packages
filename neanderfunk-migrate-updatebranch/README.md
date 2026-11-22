@@ -29,3 +29,13 @@ Then add `neanderfunk-migrate-updatebranch` to your `site.mk` or `image-customiz
 `<commit>` with a commit of the `v2023.2.x` branch. If your site already uses
 other feeds, append `neanderfunk` to the existing `GLUON_SITE_FEEDS` instead
 of replacing it. See also [Using this feed](../README.md#using-this-feed).
+
+Footprint
+---------
+
+Estimate (22.11.2026, build 26112210bro). Method and all packages compared:
+[docs/platzbedarf.md](../docs/platzbedarf.md) (German).
+
+- **Flash:** under 1 KB in the squashfs (xz).
+- **RAM, permanent:** nothing.
+- **RAM, short-lived:** only at the first boot after an update (upgrade script).

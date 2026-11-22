@@ -78,8 +78,8 @@ einzelnen Seiten wie bisher.
 Seitenwechsel wäre er sinnlos. Im klassischen Wizard bleibt er. Unten rechts
 läuft eine Leiste mit dem Knopf und einem Zähler der Änderungen mit.
 
-**Größe:** etwa 15,5 KB xz für dieses Paket und
-neanderfunk-config-mode-theme zusammen.
+**Größe:** siehe [Platzbedarf](#platzbedarf), zusammen mit
+neanderfunk-config-mode-theme etwa 22 KB.
 
 Interna, auf die sich das Paket verlässt
 ----------------------------------------
@@ -165,6 +165,16 @@ Test
 In QEMU (x86-64, Setup-Mode, eine NIC mit hostfwd auf 192.168.1.1:80).
 Templates, CSS, JS und Lua hängen nicht von der Architektur ab. Ins Overlay
 kopiert, laufen sie auf jedem Knoten im Setup-Mode.
+
+Platzbedarf
+-----------
+
+Schätzung (22.11.2026, Bau 26112210bro). Methode und alle Pakete im
+Vergleich: [docs/platzbedarf.md](../docs/platzbedarf.md).
+
+- **Flash:** etwa 12 KB im squashfs (xz).
+- **RAM dauerhaft:** nichts.
+- **RAM kurzzeitig:** nur im Config-Mode.
 
 Lizenz
 ------

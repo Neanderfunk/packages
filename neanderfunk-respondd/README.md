@@ -366,3 +366,13 @@ Beobachtungen dazu (12.-14.09.2026):
   können von der Aufstellung kommen: Die NWA50AX Pro der Schulstr7 stehen dicht
   gestapelt in einer Kiste in der Werkstatt, auf denselben Kanälen. Vor einer
   Treiber-Ursache erst Feldwerte anderer mt76-Knoten vergleichen.
+
+Platzbedarf
+-----------
+
+Schätzung (22.11.2026, Bau 26112210bro). Methode und alle Pakete im
+Vergleich: [docs/platzbedarf.md](../docs/platzbedarf.md).
+
+- **Flash:** etwa 11 KB (ath79) bis 12 KB (arm64) im squashfs (xz).
+- **RAM dauerhaft:** im Prozess `respondd`: etwa 15 KB fester Speicher (`.bss`) und 26 bis 32 KB Code (Datei-Seiten), dazu 4 KB unter `/tmp`.
+- **RAM kurzzeitig:** je respondd-Abfrage kurz der Aufbau der Antwort (nicht gemessen).

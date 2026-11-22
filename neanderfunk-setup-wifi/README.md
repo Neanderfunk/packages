@@ -154,3 +154,13 @@ Fallen
   (`env`) ändert.** Damit ein erneuter Kurzdruck den Timer neu startet, muss
   sich die Kommandozeile ändern, deshalb geht der Zeitpunkt als Argument an
   die Timeout-Instanz.
+
+Platzbedarf
+-----------
+
+Schätzung (22.11.2026, Bau 26112210bro). Methode und alle Pakete im
+Vergleich: [docs/platzbedarf.md](../docs/platzbedarf.md).
+
+- **Flash:** etwa 2,5 KB im squashfs (xz).
+- **RAM dauerhaft:** nichts.
+- **RAM kurzzeitig:** nur im Setup-Mode und beim Druck auf den Knopf.

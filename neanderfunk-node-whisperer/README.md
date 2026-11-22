@@ -175,3 +175,13 @@ passten wegen geaenderten Kontexts (bereinigte Leerzeichen, neue Debug-Pruefung)
 nicht mehr und sind inhaltlich unveraendert neu erzeugt; die alte `0005` heisst jetzt `0004`.
 Upstream baut inzwischen auch `node-monitor` mit; das Paket installiert ihn
 weiterhin nicht. Gebaut mit der x86_64-Toolchain von Gluon 2025.1 (`-Werror`).
+
+Platzbedarf
+-----------
+
+Schätzung (22.11.2026, Bau 26112210bro). Methode und alle Pakete im
+Vergleich: [docs/platzbedarf.md](../docs/platzbedarf.md).
+
+- **Flash:** etwa 8 KB im squashfs (xz).
+- **RAM dauerhaft:** der Daemon: 164 KB eigener Speicher am M60. Auf Geräten mit 64 MB RAM nicht im Image (FirmwareConfigs, am TL-WR1043ND v2 waren es 1,5 MB RSS samt Datei-Seiten).
+- **RAM kurzzeitig:** nichts Nennenswertes.

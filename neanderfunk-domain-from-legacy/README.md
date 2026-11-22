@@ -152,3 +152,13 @@ Stand
 
 Nicht in den Bauten, adorfer evaluiert separat (Aufnahme ins Image und die
 Multi-Domain-Site macht Buildsystem).
+
+Platzbedarf
+-----------
+
+Schätzung (22.11.2026, Bau 26112210bro). Methode und alle Pakete im
+Vergleich: [docs/platzbedarf.md](../docs/platzbedarf.md).
+
+- **Flash:** etwa 1 KB im squashfs (xz).
+- **RAM dauerhaft:** nichts.
+- **RAM kurzzeitig:** nur beim Start nach einem Update (Upgrade-Skript).

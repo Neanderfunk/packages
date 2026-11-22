@@ -199,3 +199,13 @@ uci commit linkcheck
 A second line, `on bat if <if> : <n> originators`, was dropped outright: the
 same number already appears in the summary as `batman.originators.<if>:<n>`.
 It was two lines per run per interface for nothing.
+
+Footprint
+---------
+
+Estimate (22.11.2026, build 26112210bro). Method and all packages compared:
+[docs/platzbedarf.md](../docs/platzbedarf.md) (German).
+
+- **Flash:** about 5 KB in the squashfs (xz).
+- **RAM, permanent:** only state below `/tmp`: 50 to 100 KB (96 KB on a TL-WR1043ND v2, 52 KB of which is a WiFi scan), plus about 70 empty marker files.
+- **RAM, short-lived:** `linkcheck.sh` every 5 min (124 KB), `gateway.sh` every 8 min (100 KB).

@@ -232,3 +232,13 @@ in `wired_mesh`.
 
 Die Seite ist per Nachbau geprüft (mt7530 unter 5.15 und 6.6, x86, WDR3600 mit
 swconfig; VLANs anlegen und entfernen).
+
+Platzbedarf
+-----------
+
+Schätzung (22.11.2026, Bau 26112210bro). Methode und alle Pakete im
+Vergleich: [docs/platzbedarf.md](../docs/platzbedarf.md).
+
+- **Flash:** etwa 6 KB im squashfs (xz).
+- **RAM dauerhaft:** nichts.
+- **RAM kurzzeitig:** nur beim Start nach einem Update, im Config-Mode und bei Aufruf von `portrole`.

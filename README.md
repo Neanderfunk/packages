@@ -71,6 +71,11 @@ and whether Gluon 2025.1 changes that:
 Flash and RAM of the devices in the field, grouped by how soon a Gluon
 release may drop them: [docs/feldgeraete-flash-ram.md](docs/feldgeraete-flash-ram.md).
 
+What each package of this feed costs in flash (xz in the squashfs) and RAM
+at runtime, as an estimate for choosing packages:
+[docs/platzbedarf.md](docs/platzbedarf.md) (German), and the section
+"Platzbedarf"/"Footprint" in every package README.
+
 Pitfalls for shell packages at runtime (tools missing from busybox such as
 `od` and `pkill`, busybox `sort` silently ignoring `-o`, `-t` and `-k`,
 `ifdown <name>_mesh` deleting the interface so that only `ifup <name>`

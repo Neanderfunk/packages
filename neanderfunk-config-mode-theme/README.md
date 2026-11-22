@@ -95,6 +95,16 @@ Einzelheiten
   Capture-Phase). In Headless-Chromium an einer nachgebauten Seite geprüft,
   30.09.2026.
 
+Platzbedarf
+-----------
+
+Schätzung (22.11.2026, Bau 26112210bro). Methode und alle Pakete im
+Vergleich: [docs/platzbedarf.md](../docs/platzbedarf.md).
+
+- **Flash:** etwa 10 KB im squashfs (xz).
+- **RAM dauerhaft:** nichts.
+- **RAM kurzzeitig:** nur im Config-Mode (uhttpd/Lua je Seitenaufruf).
+
 Lizenz
 ------
 

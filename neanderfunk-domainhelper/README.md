@@ -40,9 +40,8 @@ unter Speicherdruck verdrängt und immer wieder neu gelesen. Die
 Shell-Fassung nutzt busybox, `jsonfilter` und `jshn`, die ohnehin ständig
 gebraucht werden. Gemessen an einem M60 (je Lauf, Summe aller Prozesse):
 eigener Speicher (`RssAnon`) etwa gleich, 0.8 bis 1.3 MB mit Lua, 0.75 bis
-0.9 MB mit Shell; der Unterschied liegt in den Datei-Seiten. Flash:
-Programm und Bibliothek sind xz-komprimiert 6.6 KB groß, das Lua-Skript
-von 0.3 war es 5.2 KB.
+0.9 MB mit Shell; der Unterschied liegt in den Datei-Seiten. Flash und RAM
+heute: Abschnitt [Platzbedarf](#platzbedarf).
 
 Die gemeinsamen Funktionen (LAN-Mesh-Nachbarn und ihre Domain,
 Umschaltziel) stehen in `/lib/gluon/neanderfunk-domainhelper/lib.sh`, zum
@@ -484,6 +483,16 @@ in `21_dias` blieben auf 9 und 44.
 - Nicht getestet: B1w (eigenes Gateway über WLAN, R1 trotzdem), R2 und das
   Nachfolgen über `island`, Trennen und Aufheben ohne Bridge im echten
   Lauf, die Regel „nicht gegen eigene Nachbarn am LAN“.
+
+Platzbedarf
+-----------
+
+Schätzung (22.11.2026, Bau 26112210bro). Methode und alle Pakete im
+Vergleich: [docs/platzbedarf.md](../docs/platzbedarf.md).
+
+- **Flash:** etwa 13 KB im squashfs (xz).
+- **RAM dauerhaft:** etwa 0,1 MB: die Schleife `bridge-loop.sh` (40 bis 52 KB eigener Speicher) und ihr `sleep` (40 bis 50 KB), dazu 20 bis 40 KB Zustand unter `/tmp`.
+- **RAM kurzzeitig:** alle 91 s für wenige Sekunden `bridge`, `follow` und `island` (je bis 136 KB eigener Speicher, dazu kurze Hilfsprozesse und respondd-Abfragen an die Nachbarn), höchstens alle 5 min ein WLAN-Scan; stündlich `locate.sh`, das außerhalb von 25_hvb sofort endet.
 
 Lizenz
 ------

@@ -99,3 +99,13 @@ Im Image beider 2025.1-Linien (FirmwareConfigs `templates/common`, mit dem
 Gluon-Patch `hostname/default-hostname` aus gluon-patches-packages). Im
 Multi-Domain-Image steht `neanderfunk_hostname_prefix` in allen 48 Domains
 (Stand 18.11.2026). 
+
+Platzbedarf
+-----------
+
+Schätzung (22.11.2026, Bau 26112210bro). Methode und alle Pakete im
+Vergleich: [docs/platzbedarf.md](../docs/platzbedarf.md).
+
+- **Flash:** etwa 2 KB im squashfs (xz).
+- **RAM dauerhaft:** nichts.
+- **RAM kurzzeitig:** nur beim Start nach einem Update (Upgrade-Skript).

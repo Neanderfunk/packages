@@ -626,3 +626,12 @@ already runs: `healthcheck.sh` `5-59/7`, `IfNoWificlient.sh` `14-59/15`,
 not the load average: on 32/64 MB nodes several shells or Lua interpreters at
 once push the page cache out. micrond only knows ranges with a step: `5/7`
 alone would mean minute 5 only.
+
+## Footprint
+
+Estimate (22.11.2026, build 26112210bro). Method and all packages compared:
+[docs/platzbedarf.md](../docs/platzbedarf.md) (German).
+
+- **Flash:** about 8 KB in the squashfs (xz).
+- **RAM, permanent:** about 0.2 MB: `watchdog.sh` runs all the time (together with its `sh -c` and `sleep` 0.2 to 0.23 MB own memory), plus 4 KB below `/tmp`.
+- **RAM, short-lived:** `healthcheck.sh` every 7 min (100 KB), `IfNoWificlient.sh` every 15 min (shell, estimated similar).

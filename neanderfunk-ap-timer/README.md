@@ -75,3 +75,13 @@ config week 'Sun'
 	list on '06:00'
 	list off '23:00'
 ```
+
+Footprint
+---------
+
+Estimate (22.11.2026, build 26112210bro). Method and all packages compared:
+[docs/platzbedarf.md](../docs/platzbedarf.md) (German).
+
+- **Flash:** about 2 KB in the squashfs (xz).
+- **RAM, permanent:** nothing.
+- **RAM, short-lived:** one `uci get` per minute; only when enabled also `/usr/sbin/ap-timer` (Lua, under 1 s, estimated 0.3 to 0.5 MB own memory).

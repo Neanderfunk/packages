@@ -15,7 +15,7 @@ statt an `ethN`.
 Das Paket landet in jedem 2025.1-Image. Bei Herkunft ab 2022.1 (unsere Flotte)
 ändert es nichts außer der x86-Bindung (siehe Tests).
 
-Größe im Image: etwa 2,7 KB xz ohne Kommentare.
+Größe im Image: siehe [Platzbedarf](#platzbedarf).
 
 Ablauf beim Upgrade
 -------------------
@@ -347,3 +347,13 @@ Ohne Weg per Autoupdater (bewusst nicht im Manifest, von Hand umstellen):
 
 Offen: ob der Autoupdater sehr alter Firmwares (ecdsautils 0.3.x) heutige
 Signaturen annimmt, ist noch nicht im Labor geprüft.
+
+Platzbedarf
+-----------
+
+Schätzung (22.11.2026, Bau 26112210bro). Methode und alle Pakete im
+Vergleich: [docs/platzbedarf.md](../docs/platzbedarf.md).
+
+- **Flash:** etwa 3,5 KB im squashfs (xz).
+- **RAM dauerhaft:** nichts.
+- **RAM kurzzeitig:** nur beim Start nach einem Update (Upgrade-Skripte).

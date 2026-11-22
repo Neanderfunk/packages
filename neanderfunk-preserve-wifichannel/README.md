@@ -203,3 +203,13 @@ wifi24 = {
 
 (steht bei uns schon so drin). Zahl oder Boolean, beides wird angenommen; der
 Wert wird per `check_site.lua` geprueft.
+
+Platzbedarf
+-----------
+
+Schätzung (22.11.2026, Bau 26112210bro). Methode und alle Pakete im
+Vergleich: [docs/platzbedarf.md](../docs/platzbedarf.md).
+
+- **Flash:** etwa 1,5 KB im squashfs (xz).
+- **RAM dauerhaft:** nichts.
+- **RAM kurzzeitig:** nur beim Start nach einem Update (Upgrade-Skripte).

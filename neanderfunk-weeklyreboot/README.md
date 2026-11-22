@@ -57,3 +57,13 @@ Die Markierung fuer "Uhr wurde gestellt" setzt
 `-S /usr/sbin/ntpd-hotplug` und feuert bei Synchronisation ein Ereignis mit
 `ACTION=stratum`. Die Datei liegt in `/tmp`, muss also nach jedem Boot neu
 verdient werden.
+
+Footprint
+---------
+
+Estimate (22.11.2026, build 26112210bro). Method and all packages compared:
+[docs/platzbedarf.md](../docs/platzbedarf.md) (German).
+
+- **Flash:** about 1 KB in the squashfs (xz).
+- **RAM, permanent:** nothing.
+- **RAM, short-lived:** once a week (shell) and at the first time sync (hotplug).

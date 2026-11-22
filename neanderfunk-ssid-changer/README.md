@@ -198,3 +198,12 @@ Minuten nach dem Boot, `uci:save` in der Schleife, leere Zustandsdateien)
 wirken mit unseren Site-Werten (`switch_timeframe = 2`, `first = 10`,
 `gwofflinemaxcount = 3`, `tq_limit` 35/45) nicht oder sind schon behoben.
 Feldbeobachtung adorfer: kein Flappen der Offline-SSID. Keine Aenderung.
+
+## Footprint
+
+Estimate (22.11.2026, build 26112210bro). Method and all packages compared:
+[docs/platzbedarf.md](../docs/platzbedarf.md) (German).
+
+- **Flash:** about 3 KB in the squashfs (xz).
+- **RAM, permanent:** only state below `/tmp`: 20 KB.
+- **RAM, short-lived:** `ssid-changer.lua` every minute (Lua, under 1 s, estimated 0.3 to 0.5 MB own memory).

@@ -270,3 +270,12 @@ es nach dem Update weg, denn Gluon stellt die Verschlüsselung nicht selbst
 zurück. Das Upgrade-Skript setzt `gluon.wireless.private_encryption` dann auf
 `psk2` - nach 022-wireless-roles (das den alten Wert aus `wan_radioN` holt) und
 vor 325-gluon-private-wifi. Kein commit, das macht 998.
+
+## Platzbedarf
+
+Schätzung (22.11.2026, Bau 26112210bro). Methode und alle Pakete im
+Vergleich: [docs/platzbedarf.md](../docs/platzbedarf.md).
+
+- **Flash:** etwa 2 KB im squashfs (xz).
+- **RAM dauerhaft:** nichts: eine Bibliothek, die andere Pakete einbinden; keine eigenen Prozesse.
+- **RAM kurzzeitig:** nur im Prozess des Pakets, das sie einbindet.

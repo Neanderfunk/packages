@@ -145,6 +145,15 @@ that is what it takes to mature the design before a v2021.1.x backport is
 worth doing (see the project's `docs/DECISIONS.md` D-038).
 **PRs and suggestions welcome!**
 
+## Footprint
+
+Estimate (22.11.2026, build 26112210bro). Method and all packages compared:
+[docs/platzbedarf.md](../docs/platzbedarf.md) (German).
+
+- **Flash:** about 12 KB in the squashfs (xz).
+- **RAM, permanent:** nothing worth mentioning: the respondd module has 4 to 5 KB of code and hardly any fixed memory.
+- **RAM, short-lived:** hourly `nodeplacer` (Lua, 0.4 MB own memory, 2.1 MB including Lua) and `nodeplacer-fetch` (C, 0.1 MB).
+
 ## License
 
 BSD-2-Clause. `src/uclient.c`, `src/hexutil.c`, `src/util.c` and
