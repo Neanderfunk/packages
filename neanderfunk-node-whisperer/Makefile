@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-node-whisperer
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 
 # Upstream bleibt gepinnt und unveraendert; unsere Aenderungen liegen als
 # Patches daneben. Ein Backport ist damit: PKG_SOURCE_VERSION/-DATE hochziehen,
@@ -22,7 +22,12 @@ MAKE_VARS += \
 	NL_LIB="libnl-tiny" \
 	NL_GENL_LIB="libnl-tiny"
 
-Build/Compile=$(call Build/Compile/Default)
+# Quelltext von upstream bauen, dazu Gluons Kuerzung fuer luasrc/ (das
+# Upgrade-Skript, ohne Kommentare ins Image)
+define Build/Compile
+	$(call Build/Compile/Default)
+	$(call GluonSrcDiet,luasrc,$(PKG_BUILD_DIR)/luadest/)
+endef
 
 define Package/$(PKG_NAME)
   TITLE:=Diagnoseinformationen ueber WLAN-Beacons (Fork von ffda-node-whisperer)
@@ -51,14 +56,14 @@ endef
 # Alle installierten Pfade tragen den Paketnamen, damit nichts mit
 # ffda-node-whisperer oder einem anderen Paket kollidiert.
 define Package/$(PKG_NAME)/install
-	$(INSTALL_DIR) $(1)/usr/bin $(1)/etc/init.d $(1)/etc/config $(1)/lib/gluon/upgrade
+	$(INSTALL_DIR) $(1)/usr/bin $(1)/etc/init.d $(1)/etc/config
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/node-whisperer $(1)/usr/bin/neanderfunk-node-whisperer
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/openwrt/node-whisperer/files/node-whisperer.init $(1)/etc/init.d/neanderfunk-node-whisperer
 	$(CP) $(PKG_BUILD_DIR)/openwrt/node-whisperer/files/node-whisperer.uci $(1)/etc/config/neanderfunk-node-whisperer
 	# 330-, nicht mehr 150-: das Skript zaehlt die client_radio*-Sektionen auf,
 	# und die entstehen erst in 320-gluon-client-bridge-wireless. Als 150- lief
 	# es davor und haette nie etwas gefunden.
-	$(INSTALL_BIN) ./files/node-whisperer.upgrade.lua $(1)/lib/gluon/upgrade/330-neanderfunk-node-whisperer
+	$(CP) $(PKG_BUILD_DIR)/luadest/. $(1)/
 	$(call NfStripShell,$(1))
 endef
 

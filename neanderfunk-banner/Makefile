@@ -49,8 +49,9 @@ endef
 define Build/Configure
 endef
 
-define Build/Compile
-endef
+# Build/Compile bleibt Gluons Vorgabe (gluon.mk): Die Lua-Befehle liegen unter
+# luasrc/ und werden mit luasrcdiet gekuerzt (ohne Kommentare ins Image), die
+# Shell-Befehle unter files/ kuerzt NfStripShell.
 
 define Package/$(PKG_NAME)/preinst
 #!/bin/sh
@@ -101,6 +102,7 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_DATA) ./files/etc/banner.gluon $(1)/etc/
 	$(INSTALL_DATA) ./files/etc/profile.gluon $(1)/etc/
 	$(CP) ./files/* $(1)/
+	$(CP) $(PKG_BUILD_DIR)/luadest/. $(1)/
 	$(call NfStripShell,$(1))
 endef
 
