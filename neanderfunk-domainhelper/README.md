@@ -458,6 +458,33 @@ in `21_dias` blieben auf 9 und 44.
 - Nicht getestet: B1h (Gegenseite ohne `bridge`), eine echte Brücke
   zwischen zwei VPN-Knoten verschiedener Domains.
 
+22.11.2026, 0.11 live:
+
+- **`follow` R1 auf dem NWA50AX Pro** (26112107bro, 0.11 und
+  neanderfunk-preserve-wifichannel 3 eingespielt): per
+  `gluon-switch-domain 21_dias` aus 18_nefuk geholt, dort Kanäle 8/auto per
+  `channel` gesetzt (Band-Schlüssel 1). Kein eigenes VPN, am Kabel die
+  FRITZ!Box 4040 und der Cudy WR3000E mit VPN in 18_nefuk. `follow` meldet
+  R1 bei 59 s Laufzeit; Wartezeit nur auf dem Gerät auf 5 min gekürzt. Nach
+  dem Wechsel in 18_nefuk, Gateway da, **Kanäle 8/auto geblieben**, die
+  Marke in sysconfig verbraucht. Vorher in 21_dias kurz Mischbetrieb: per
+  SSH über das Präfix von 18_nefuk zeitweise nicht erreichbar.
+- **`bridge` je Port auf dem M60** (DSA, `br-mesh_other` mit lan1 bis
+  lan4, eigenes VPN), fremde Domain mit `test_domain=10_wlf` vorgetäuscht:
+  Port `lan3` aus `brctl showmacs`, vier Regeln (`INPUT -i`, `OUTPUT -o`,
+  `FORWARD -i`/`-o`), der Nachbar fiel aus `batctl n`, respondd über das
+  getrennte Kabel antwortete weiter. Nach `uci revert` von `test_domain`
+  stand der Nachbar in der eigenen Domain: Trennung nach 4 min 36 s
+  aufgehoben, Nachbar wieder in `batctl n`.
+- **Ohne Bridge auf dem TL-WR1043ND v2** (swconfig, AR8327) nur von Hand:
+  `ifdown mesh_other_mesh` nimmt batman vom LAN, `eth1.1` behält die
+  link-local-Adresse, respondd-Abfrage über das Kabel geht, `ifup
+  mesh_other` legt die Schnittstelle neu an; `swconfig dev switch0 get
+  arl_table` nennt den Port des Nachbarn.
+- Nicht getestet: B1w (eigenes Gateway über WLAN, R1 trotzdem), R2 und das
+  Nachfolgen über `island`, Trennen und Aufheben ohne Bridge im echten
+  Lauf, die Regel „nicht gegen eigene Nachbarn am LAN“.
+
 Lizenz
 ------
 
