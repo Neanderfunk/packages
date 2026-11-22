@@ -4,7 +4,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-nodeplacer
 PKG_VERSION:=0.1
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 PKG_LICENSE:=BSD-2-Clause
 
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)

@@ -1661,6 +1661,135 @@ static struct json_object * get_ethernet(void) {
 }
 
 
+/* --- statistics: neanderfunk-domainhelper ---------------------------------- */
+
+/*
+ * Zustand von neanderfunk-domainhelper, nur was gerade laeuft; im Normalfall
+ * fehlt der ganze Block. Die Zeiten in den Zustandsdateien sind Sekunden seit
+ * dem Boot (/proc/uptime), gemeldet wird das Alter in Sekunden.
+ *
+ *   bridge       /tmp/neanderfunk-domainhelper.bridge/state
+ *                "<zustand> <ziel> <seit> <domain> <nachbar> <geprueft> <grund>",
+ *                nur Zustand bridge (gesehen) oder cut (getrennt)
+ *   follow       /tmp/neanderfunk-domainhelper.follow/state
+ *                "<domain> <seit> <regel> [<wartezeit>]"
+ *   island       /tmp/neanderfunk-domainhelper.island/since: ohne Gateway seit
+ *   last_switch  /lib/gluon/core/sysconfig/neanderfunk_domainhelper_last_switch
+ *                "<von> <nach> <wie> <unix-zeit>", uebersteht den Neustart
+ */
+
+#define DH_FIELDS 8
+
+static long long uptime_s(void) {
+	char buf[64];
+	if (!read_line("/proc/uptime", buf, sizeof(buf)))
+		return -1;
+	return strtoll(buf, NULL, 10);
+}
+
+static int split_fields(char *line, char **f, int max) {
+	int n = 0;
+	char *save = NULL;
+	for (char *t = strtok_r(line, " \t", &save); t && n < max; t = strtok_r(NULL, " \t", &save))
+		f[n++] = t;
+	return n;
+}
+
+static bool parse_ll(const char *s, long long *val) {
+	char *end;
+	errno = 0;
+	long long v = strtoll(s, &end, 10);
+	if (errno || end == s || *end)
+		return false;
+	*val = v;
+	return true;
+}
+
+static void add_age(struct json_object *obj, long long up, const char *since) {
+	long long s;
+	if (up >= 0 && parse_ll(since, &s) && s <= up)
+		json_object_object_add(obj, "age", json_object_new_int64(up - s));
+}
+
+/* Wo die Bruecke haengt: Port (ebp:<bridge>:<port>), Bridge (eb:<bridge>),
+ * Geraet (mif:<batman-if>:<wired-if>:<geraet>), sonst die Schnittstelle */
+static const char * bridge_where(const char *t) {
+	if (!strncmp(t, "ebp:", 4) || !strncmp(t, "mif:", 4)) {
+		const char *p = strrchr(t, ':');
+		return p ? p + 1 : t;
+	}
+	if (!strncmp(t, "eb:", 3) || !strncmp(t, "if:", 3))
+		return t + 3;
+	return t;
+}
+
+static struct json_object * get_domainhelper(void) {
+	char line[256];
+	char *f[DH_FIELDS];
+	long long up = uptime_s();
+	struct json_object *ret = json_object_new_object();
+	bool any = false;
+
+	if (read_line("/tmp/neanderfunk-domainhelper.bridge/state", line, sizeof(line))) {
+		int n = split_fields(line, f, DH_FIELDS);
+		if (n >= 5 && (!strcmp(f[0], "bridge") || !strcmp(f[0], "cut"))) {
+			struct json_object *b = json_object_new_object();
+			json_object_object_add(b, "state", json_object_new_string(f[0]));
+			json_object_object_add(b, "where", json_object_new_string(bridge_where(f[1])));
+			json_object_object_add(b, "domain", json_object_new_string(f[3]));
+			json_object_object_add(b, "node", json_object_new_string(f[4]));
+			if (n >= 7)
+				json_object_object_add(b, "note", json_object_new_string(f[6]));
+			add_age(b, up, f[2]);
+			json_object_object_add(ret, "bridge", b);
+			any = true;
+		}
+	}
+
+	if (read_line("/tmp/neanderfunk-domainhelper.follow/state", line, sizeof(line))) {
+		int n = split_fields(line, f, DH_FIELDS);
+		if (n >= 3) {
+			struct json_object *o = json_object_new_object();
+			long long w;
+			json_object_object_add(o, "domain", json_object_new_string(f[0]));
+			json_object_object_add(o, "rule", json_object_new_string(f[2]));
+			add_age(o, up, f[1]);
+			if (n >= 4 && parse_ll(f[3], &w))
+				json_object_object_add(o, "wait", json_object_new_int64(w));
+			json_object_object_add(ret, "follow", o);
+			any = true;
+		}
+	}
+
+	if (read_line("/tmp/neanderfunk-domainhelper.island/since", line, sizeof(line))) {
+		struct json_object *o = json_object_new_object();
+		add_age(o, up, line);
+		json_object_object_add(ret, "island", o);
+		any = true;
+	}
+
+	if (read_line("/lib/gluon/core/sysconfig/neanderfunk_domainhelper_last_switch", line, sizeof(line))) {
+		int n = split_fields(line, f, DH_FIELDS);
+		long long t;
+		if (n >= 4 && parse_ll(f[3], &t)) {
+			struct json_object *o = json_object_new_object();
+			json_object_object_add(o, "from", json_object_new_string(f[0]));
+			json_object_object_add(o, "to", json_object_new_string(f[1]));
+			json_object_object_add(o, "how", json_object_new_string(f[2]));
+			json_object_object_add(o, "time", json_object_new_int64(t));
+			json_object_object_add(ret, "last_switch", o);
+			any = true;
+		}
+	}
+
+	if (!any) {
+		json_object_put(ret);
+		return NULL;
+	}
+	return ret;
+}
+
+
 static struct json_object * respondd_provider_statistics(void) {
 	struct json_object *nf = json_object_new_object();
 
@@ -1682,6 +1811,10 @@ static struct json_object * respondd_provider_statistics(void) {
 		json_object_object_add(nf, "ddhcpd", ddhcpd);
 
 	json_object_object_add(nf, "clients_ipv4", get_clients_ipv4());
+
+	struct json_object *dh = get_domainhelper();
+	if (dh)
+		json_object_object_add(nf, "domainhelper", dh);
 
 	struct json_object *ret = json_object_new_object();
 	json_object_object_add(ret, "neanderfunk", nf);

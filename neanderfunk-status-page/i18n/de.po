@@ -129,3 +129,21 @@ msgstr "IPv4-Clients"
 
 msgid "of them from ddhcpd"
 msgstr "davon ddhcpd"
+
+msgid "Domain helper"
+msgstr "Domain-Helfer"
+
+msgid "network comes from %s, switch in %d min"
+msgstr "Netz kommt aus %s, Wechsel in %d min"
+
+msgid "network comes from %s, switch due"
+msgstr "Netz kommt aus %s, Wechsel steht an"
+
+msgid "domain bridge to %s at %s cut"
+msgstr "Domainbrücke zu %s an %s getrennt"
+
+msgid "domain bridge to %s at %s"
+msgstr "Domainbrücke zu %s an %s"
+
+msgid "no gateway for %d min"
+msgstr "Ohne Gateway seit %d min"

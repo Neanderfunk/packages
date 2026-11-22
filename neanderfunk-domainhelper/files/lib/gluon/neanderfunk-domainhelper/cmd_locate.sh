@@ -283,6 +283,7 @@ fi
 if [ -n "$switch_to" ] ; then
 	dh_log "LAN-Mesh-Nachbarn in $switch_to, schalte von $own_domain dorthin um"
 	rm -rf "$W"
+	dh_last_switch "$own_domain" "$switch_to" lan_switch
 	gluon-switch-domain "$switch_to"
 	exit 0
 fi

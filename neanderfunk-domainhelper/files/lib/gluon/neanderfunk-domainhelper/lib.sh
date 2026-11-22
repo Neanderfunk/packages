@@ -35,16 +35,18 @@ dh_own_id() {
 # dh_domain_of <domain_code> <site_code>: Domain eines Nachbarn aus seiner
 # respondd-Antwort. Multi-Domain-Firmware meldet domain_code. Single-Domain-
 # Images melden nur site_code "<praefix>-<domain>", die Sackgasse 2021.1
-# dazu mit Suffix _EOL (nef-21_dias_EOL, dus-13_dusfl_EOL, bgl-43_bggl_EOL):
-# Praefix und Suffix fallen weg, es bleibt die Domain dieser Firmware. Aeltere
-# Codes (ffnef, ffnefd<NN>) bewusst nicht (adorfer 22.11.).
+# dazu mit Suffix _EOL (nef-21_dias_EOL, dus-13_dusfl_EOL, bgl-43_bggl_EOL),
+# die Supernodes melden domain_code im selben Format (nef-21_dias). Praefix
+# und Suffix fallen weg, es bleibt die Domain dieser Firmware; deren Codes
+# haben nie einen Bindestrich. Aeltere Codes (ffnef, ffnefd<NN>) bewusst
+# nicht (adorfer 22.11.).
 dh_domain_of() {
 	local d="$1"
-	if [ -z "$d" ] ; then
-		case "$2" in
-			?*-?*) d="${2#*-}" ;;
-		esac
-	fi
+	[ -n "$d" ] || d="$2"
+	case "$d" in
+		?*-?*) d="${d#*-}" ;;
+		*) [ -n "$1" ] || d= ;;
+	esac
 	d="${d%_EOL}"
 	d="${d%_eol}"
 	echo "$d"
@@ -292,6 +294,45 @@ dh_wired_mesh_devs() {
 # nur die batman-Schnittstelle vom Geraet, IPv6 bleibt.
 dh_respondd() {
 	gluon-neighbour-info -i "$1" -d ff02::2:1001 -p 1001 -t 3 -r "$2" > "$3" 2>/dev/null
+}
+
+# dh_gw_domain <originator>: Gegenprobe "Wer ist dieses Gateway?"
+# (docs/entwurf-automesh.md, Abschnitt 4, #3). Aus batctl tg die Clients
+# dieses Originators (die bat-Schnittstellen der Supernodes,
+# f2:be:ef:00:<NN>:<SS>), je eine link-local-Adresse daraus (EUI-64) per
+# respondd fragen. Gueltig nur, wenn der Originator in den Mesh-Interfaces
+# der Antwort steht. Ausgabe: die Domain, sonst nichts (unbekannt).
+dh_gw_domain() {
+	local orig m b1 ll line n=0 q="/tmp/$DH_TAG.gwq.$$"
+	orig="$(echo "$1" | tr 'A-F' 'a-f')"
+	dh_is_mac "$orig" || return 1
+	for m in $(batctl tg -H 2>/dev/null | tr 'A-F' 'a-f' | awk -v g="$orig" '
+			{ s = $0; sub(/^[ \t]*\*?[ \t]*/, "", s); split(s, f, /[ \t]+/); c = f[1] }
+			index($0, g) && c != g && c !~ /^(33:33|01:00:5e):/ { print c }' | sort -u) ; do
+		dh_is_mac "$m" || continue
+		n=$((n + 1))
+		[ "$n" -le 3 ] || break
+		b1="${m%%:*}"
+		set -- $(echo "${m#*:}" | tr ':' ' ')
+		ll="fe80::$(printf '%x' $((0x$b1 ^ 2)))$1:$2ff:fe$3:$4$5"
+		gluon-neighbour-info -i br-client -d "$ll" -p 1001 -t 3 -r nodeinfo > "$q" 2>/dev/null
+		line="$(head -n 1 "$q")"
+		rm -f "$q"
+		[ -n "$line" ] || continue
+		echo "$line" | tr 'A-F' 'a-f' | grep -qF "\"$orig\"" || continue
+		NI_DC= ; NI_SC=
+		eval "$(jsonfilter -s "$line" -e 'NI_DC=@.system.domain_code' -e 'NI_SC=@.system.site_code' 2>/dev/null)"
+		dh_domain_of "$NI_DC" "$NI_SC"
+		return 0
+	done
+	return 1
+}
+
+# dh_last_switch <von> <nach> <wie>: Domainwechsel vermerken, im Flash
+# (sysconfig, uebersteht Neustart und sysupgrade). respondd meldet ihn als
+# statistics.neanderfunk.domainhelper.last_switch, nodestatus zeigt ihn.
+dh_last_switch() {
+	printf '%s %s %s %s\n' "$1" "$2" "$3" "$(date +%s)" > /lib/gluon/core/sysconfig/neanderfunk_domainhelper_last_switch
 }
 
 # Alle Laufzeit-Deltas verwerfen (Offline-SSID, ap-timer, Blackout), vor

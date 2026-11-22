@@ -242,6 +242,13 @@ if entry.method == 'domain' then
 	state.record_attempt(st, key, date, uptime)
 	state.save(st)
 	log('switching to domain ' .. entry.target)
+	-- Note for neanderfunk-respondd (statistics.neanderfunk.domainhelper.last_switch)
+	-- and nodestatus: "<from> <to> <how> <unix time>", kept in sysconfig.
+	local f = io.open('/lib/gluon/core/sysconfig/neanderfunk_domainhelper_last_switch', 'w')
+	if f then
+		f:write(string.format('%s %s nodeplacer %d\n', uci:get('gluon', 'core', 'domain') or '-', entry.target, os.time()))
+		f:close()
+	end
 	unistd.execp('gluon-switch-domain', {[0] = 'gluon-switch-domain', entry.target})
 	log('failed to execute gluon-switch-domain')
 	os.exit(1)

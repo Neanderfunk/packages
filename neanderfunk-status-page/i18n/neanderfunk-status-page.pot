@@ -123,3 +123,21 @@ msgstr ""
 
 msgid "of them from ddhcpd"
 msgstr ""
+
+msgid "Domain helper"
+msgstr ""
+
+msgid "network comes from %s, switch in %d min"
+msgstr ""
+
+msgid "network comes from %s, switch due"
+msgstr ""
+
+msgid "domain bridge to %s at %s cut"
+msgstr ""
+
+msgid "domain bridge to %s at %s"
+msgstr ""
+
+msgid "no gateway for %d min"
+msgstr ""

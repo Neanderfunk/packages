@@ -3,7 +3,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-respondd
-PKG_VERSION:=1
+PKG_VERSION:=2
 PKG_LICENSE:=BSD-3-Clause
 
 include $(TOPDIR)/../package/gluon.mk
@@ -25,7 +25,9 @@ define Package/$(PKG_NAME)/description
   neanderfunk-ddhcpd via its control socket, cached for 10 s; local IPv4
   clients: active local batman-adv clients as in clients.total with an
   address from the DAT cache, the ARP table or an own ddhcpd lease, split by
-  the domain's ddhcpd range, cached for 10 s). Written in C to stay cheap: the status page polls
+  the domain's ddhcpd range, cached for 10 s; what neanderfunk-domainhelper
+  is doing (domain bridge, follow, island, last domain switch), only while
+  something applies). Written in C to stay cheap: the status page polls
   statistics every 3 seconds.
 endef
 

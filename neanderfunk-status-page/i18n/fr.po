@@ -129,3 +129,21 @@ msgstr "Appareils IPv4"
 
 msgid "of them from ddhcpd"
 msgstr "dont ddhcpd"
+
+msgid "Domain helper"
+msgstr "Aide au domaine"
+
+msgid "network comes from %s, switch in %d min"
+msgstr "Le réseau vient de %s, changement dans %d min"
+
+msgid "network comes from %s, switch due"
+msgstr "Le réseau vient de %s, changement bientôt"
+
+msgid "domain bridge to %s at %s cut"
+msgstr "Pont vers le domaine %s sur %s coupé"
+
+msgid "domain bridge to %s at %s"
+msgstr "Pont vers le domaine %s sur %s"
+
+msgid "no gateway for %d min"
+msgstr "Pas de passerelle depuis %d min"

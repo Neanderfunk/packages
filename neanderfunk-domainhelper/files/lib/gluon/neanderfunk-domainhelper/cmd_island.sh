@@ -129,7 +129,7 @@ allow_b=0
 # Reife Lage von follow: Zieldomain ohne Wartezeit
 followd=
 if [ -r /tmp/neanderfunk-domainhelper.follow/state ] ; then
-	read -r f_dom f_since f_rule < /tmp/neanderfunk-domainhelper.follow/state
+	read -r f_dom f_since f_rule f_wait < /tmp/neanderfunk-domainhelper.follow/state
 	[ -n "$f_since" ] && [ $((now - f_since)) -ge 3600 ] && followd="$f_dom"
 fi
 
@@ -304,6 +304,7 @@ if ! gluon-switch-domain --no-reboot "$tdom" > "$ISL_DIR/switch.out" 2>&1 ; then
 	dh_log "Insel: gluon-switch-domain fehlgeschlagen: $(tail -n 1 "$ISL_DIR/switch.out")"
 	exit 0
 fi
+dh_last_switch "$own_domain" "$tdom" island
 # shellcheck disable=SC2086
 channel $args $keep -f > "$ISL_DIR/channel.out" 2>&1 || \
 	dh_log "Insel: channel fehlgeschlagen: $(tail -n 1 "$ISL_DIR/channel.out")"

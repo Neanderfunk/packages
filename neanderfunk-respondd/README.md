@@ -31,6 +31,7 @@ ab, wie schnell er sich ändert:
 | mittel | IPv4 der lokalen Clients (DAT-Cache, ARP, eigene Leases); der ddhcpd-Bereich der Domain alle 10 min | `statistics` | 10 s gecacht; der DAT-Cache kommt per Netlink-Dump von batman-adv |
 | langsam | Speicherdruck: MemAvailable, Refaults, Forks, zram | `statistics` | 60 s gecacht; Zähler für Raten über Minuten, dafür reicht das |
 | schnell | je Ethernet-Port Link, Geschwindigkeit, Duplex; ssid-changer-Zähler | `statistics` | bei jeder Abfrage aus sysfs bzw. `/tmp`; das ioctl für `possible` nur, wenn sich die Geschwindigkeit des Ports geändert hat |
+| schnell | neanderfunk-domainhelper: Domainbrücke, `follow`, Insel, letzter Domainwechsel | `statistics` | bei jeder Abfrage aus vier kleinen Dateien (`/tmp`, sysconfig) |
 
 Datenvertrag
 ------------
@@ -42,7 +43,8 @@ an. Ausnahmen: `ssid_changer` fehlt ganz, wenn eine seiner Dateien
 fehlt (Paket nicht installiert), `temperature` fehlt ganz, wenn die
 Hardware keinen Sensor hat bzw. keiner einen gültigen Wert liefert, und
 `ddhcpd` fehlt ohne das Paket; läuft der Daemon nicht, enthält es nur
-`running`. Auch
+`running`. `domainhelper` fehlt ganz, solange nichts läuft und nie die
+Domain gewechselt wurde, und enthält nur die Teile, die gerade gelten. Auch
 innerhalb von `temperature` kann ein Sensor von Abfrage zu Abfrage fehlen.
 
 ### nodeinfo
@@ -204,6 +206,33 @@ Welche Hardware was liefert (Testknoten, 14.09.2026):
 | mpc85xx | Extreme WS-AP3825i | nichts |
 | x86 | FUTRO S550 (`k8temp`) | nichts: der Sempron meldet 4294918296 = −49 °C, verworfen |
 | x86 | QEMU-VM | nichts |
+
+**domainhelper** - was neanderfunk-domainhelper gerade tut, nur die Teile,
+die gelten; im Normalfall fehlt der Block ganz. Zeiten als Alter in
+Sekunden (die Zustandsdateien zählen ab dem Boot).
+
+```json
+"domainhelper": {
+  "bridge": { "state": "cut", "where": "lan3", "domain": "18_nefuk",
+              "node": "dceae7aeb483", "note": "getrennt", "age": 100 },
+  "follow": { "domain": "18_nefuk", "rule": "R1", "age": 600, "wait": 3600 },
+  "island": { "age": 300 },
+  "last_switch": { "from": "21_dias", "to": "18_nefuk", "how": "follow-R1",
+                   "time": 1795300000 }
+}
+```
+
+- `bridge`: Domainbrücke am Kabel. `state` `bridge` (gesehen, bleibt;
+  der Grund in `note`, etwa `ohne_vpn`, `gegenseite_ohne_uplink`,
+  `eigene_am_lan`) oder `cut` (getrennt). `where`: Port bei DSA, sonst
+  Bridge oder Gerät. `domain` und `node`: der fremde Nachbar.
+- `follow`: Das Netz kommt aus `domain`, Regel `R1` (Kabel) oder `R2` (nur
+  fremde Gateways); Wechsel, wenn `age` `wait` erreicht.
+- `island`: kein Gateway seit `age` Sekunden.
+- `last_switch`: der letzte Domainwechsel durch `follow-R1`, `follow-R2`,
+  `island`, `lan_switch` oder `nodeplacer`, mit Unix-Zeit (ohne NTP vor dem
+  Wechsel kann sie falsch sein). Steht im Flash, übersteht Neustart und
+  sysupgrade.
 
 **ddhcpd** - der verteilte DHCP-Server (`neanderfunk-ddhcpd`), über seinen
 Control-Socket (`ddhcpdctl -m`, Fork Neanderfunk/ddhcpd), höchstens alle 10 s.
