@@ -38,18 +38,67 @@ dh_own_id() {
 # dazu mit Suffix _EOL (nef-21_dias_EOL, dus-13_dusfl_EOL, bgl-43_bggl_EOL),
 # die Supernodes melden domain_code im selben Format (nef-21_dias). Praefix
 # und Suffix fallen weg, es bleibt die Domain dieser Firmware; deren Codes
-# haben nie einen Bindestrich. Aeltere Codes (ffnef, ffnefd<NN>) bewusst
-# nicht (adorfer 22.11.).
+# haben nie einen Bindestrich.
+#
+# Aeltere Codes (0.13, Herkunft aus der Git-Historie von FirmwareConfigs,
+# site-ffnef und ansible-ffnef, 23.11.2026):
+# - <NN>_<name> mit oder ohne Praefix: die Nummer entscheidet, so dass auch
+#   umbenannte Domains passen (18_dusuk und nef-18_uk = 18_nefuk, 13_dus,
+#   bgl-43_bglgl bis 47_bglrr, 48_rdv, lvrsw-37_lvrsw ... vom 05.03.2024).
+#   Kennt die Firmware die Nummer nicht, bleibt der Code wie er ist.
+# - nef-01_erk (Tippfehler bis 2020) = 07_erk, nef-mon_05 = 05_mon.
+# - ffnefd<NN>, bis 2023 FFNEFd<NN>: Supernodes (py_respondd, Ansible
+#   "<kurzname>d<domaene>").
+# - Namen vor den Domainnummern (bis 2020, Bergisch Gladbach bis 2018):
+#   ffnef-<name>, ffnef_<name> (Multidomain 2019/2020), ff<name>,
+#   ffgl-<name> und <name> allein, ueber die Tabelle unten.
+# - Mehrdeutig, also unbekannt: ffnef ohne domain_code, Siegerland vor 2020
+#   (sisi, sihb, ffhb, sifb), Kuerten, Overath, Koeln-rrh, Langenfeld der
+#   GL-Gruppe (ffgl-kut, -ovr, -cgr, -lgn). Fremde Communities (ffw, ffki,
+#   ffgek, ffwit, ffmz, ffmsd<NN>) loesen ohnehin nichts aus, weil sie keine
+#   Domain dieser Firmware nennen.
 dh_domain_of() {
-	local d="$1"
+	local d="$1" s n=
 	[ -n "$d" ] || d="$2"
-	case "$d" in
-		?*-?*) d="${d#*-}" ;;
-		*) [ -n "$1" ] || d= ;;
-	esac
 	d="${d%_EOL}"
 	d="${d%_eol}"
-	echo "$d"
+	case "$d" in
+		nef-01_erk) d=07_erk ;;
+		nef-mon_05) d=05_mon ;;
+	esac
+	s="${d#*-}"
+	case "$s" in
+		[0-9][0-9]_?*)
+			n="$(dh_dom_by_nn "${s%%_*}")"
+			echo "${n:-$s}"
+			return 0 ;;
+	esac
+	case "$d" in
+		[Ff][Ff][Nn][Ee][Ff]d[0-9][0-9])
+			dh_dom_by_nn "${d#?????d}"
+			return 0 ;;
+		ffnef[-_]?*) s="${d#ffnef?}" ;;
+		ffgl-?*) s="${d#ffgl-}" ;;
+		ff?*) s="${d#ff}" ;;
+		*) s="$d" ;;
+	esac
+	case "$s" in
+		vel) n=01 ;; met) n=02 ;; rat) n=03 ;; hld) n=04 ;; mon) n=05 ;;
+		han) n=06 ;; erk) n=07 ;; hlg) n=08 ;; lgf) n=09 ;; wlf) n=10 ;;
+		lvr) n=11 ;; dusuk) n=12 ;; dusfl|dus) n=13 ;; bar) n=14 ;;
+		mrh) n=15 ;; gmb) n=16 ;; wip) n=17 ;; bgl) n=43 ;; lln) n=44 ;;
+		bcd) n=45 ;; ode) n=46 ;; rrh) n=47 ;;
+		nef|sisi|sihb|hb|sifb|kut|ovr|cgr|lgn) return 0 ;;
+	esac
+	if [ -n "$n" ] ; then
+		dh_dom_by_nn "$n"
+		return 0
+	fi
+	case "$d" in
+		?*-?*) echo "${d#*-}" ;;
+		*) [ -n "$1" ] && echo "$d" ;;
+	esac
+	return 0
 }
 
 # MAC-Adresse? (klein geschrieben erwartet)
