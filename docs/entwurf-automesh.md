@@ -542,7 +542,7 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 
 | # | Feature | Fassung 2 | Status | Seit | Grund, Anmerkung |
 |---|---|---|---|---|---|
-| 1 | LAN-Mesh-Nachbarn und ihre Domain erkennen (`batctl n`, respondd per Link-Local) | 4, 7 | umgesetzt | 21.11. | domainhelper 0.5/0.6 `bridge`, alle Domains, alle 91 s; live getestet, noch nicht im Testbau |
+| 1 | LAN-Mesh-Nachbarn und ihre Domain erkennen (`batctl n`, respondd per Link-Local) | 4, 7 | umgesetzt | 21.11. | domainhelper 0.5/0.6 `bridge`, alle Domains, alle 91 s; live getestet, im Testbau seit 26112210bro, 26112222bro auf Testknoten ohne Befund (23.11.) |
 | 2 | Signalisierung: Syslog, respondd, Statusseite, Banner | 11 | umgesetzt | 22.11. | Syslog und Banner (0.5); respondd `statistics.neanderfunk.domainhelper` (neanderfunk-respondd 2, nur was gilt), Statusseite höchstens eine Zeile „Domain-Helfer“ (gluon-patches-packages statuspage-domainhelper), letzter Domainwechsel im Flash (respondd `last_switch`, nodestatus) (A, 22.11.); **im Bau 26112210bro geprüft** (M60, Zustand nachgestellt: respondd-Block mit allen Typen, Statuszeile de/en/fr, Vorrang follow vor island, ohne Zustand keine Zeile) |
 | 3 | Prüfkette „Wer ist dieses Gateway?“ | 4 | umgesetzt | 22.11. | 0.12 `dh_gw_domain`, als Gegenprobe vor einem Wechsel nach `follow` R2 (keine oder andere Antwort: kein Wechsel); am M60 geprüft, Supernode antwortet in etwa 6 s |
 | 4 | MAC-Schema `02:ca:ff:ee:<NN>:<SS>` als Heimat-Hinweis | 4, 10 | umgesetzt | 22.11. | `dh_gw_list`: Auslöser für `follow` R2 und Uplink-Prüfung in `bridge` (Trennen ist umkehrbar); vor einem Domainwechsel nur mit Gegenprobe #3 |
@@ -571,7 +571,7 @@ Gebaut ist von automesh selbst noch nichts. Vorarbeit liegt in
 | 27 | Mesh-IDs per Muster `.*-mesh` erkennen | 6.3 | verworfen | 02.10. | Domains 43 bis 47 heißen `mesh-<kurz>`; Liste statt Muster |
 | 28 | Erlaubnisliste statt Sperrliste | 13 | verworfen | 02.10. | PPA (A); für eigene Domains ist #15 faktisch eine Liste aus der Firmware |
 | 29 | Paket: automesh in `neanderfunk-domainhelper`, Beitritt als eigenes Binärpaket | neu | teilweise umgesetzt | 22.11. | Integration in den domainhelper umgesetzt; das Binärpaket hing an #24 (verworfen) und entfällt |
-| 30 | Alles in Shell, auch `locate` (bis 0.3 Lua) | 3.7 | umgesetzt | 21.11. | domainhelper 0.4, live auf Testknoten getestet, noch nicht im Testbau; gemeinsame Funktionen in `lib.sh` |
+| 30 | Alles in Shell, auch `locate` (bis 0.3 Lua) | 3.7 | umgesetzt | 21.11. | domainhelper 0.4, live auf Testknoten getestet, im Testbau seit 26112210bro; gemeinsame Funktionen in `lib.sh` |
 | 31 | In `25_hvb` nicht trennen, sondern `locate` starten (schaltet selbst um) | neu | umgesetzt | 21.11. | 0.5 |
 | 32 | Fall A getrennt bis zum Neustart, keine Neuprüfung zwischendurch | 8 | umgesetzt | 21.11. | (A); fällt ein VPN weg, rettet der Wächter (linkcheck `no_gateway`) per Neustart |
 | 33 | Prüftakt 91 s als procd-Schleife statt jeder Minute aus micron.d | neu | umgesetzt | 21.11. | (A); nicht im Gleichschritt mit der vollen Minute |
