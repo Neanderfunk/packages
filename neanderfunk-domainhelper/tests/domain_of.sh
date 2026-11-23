@@ -33,7 +33,8 @@ t ffnefd99 "" ""
 t "" ffnef-vel 01_vel
 t ffnef_lvr ffnef 11_lvr
 t "" ffnef-dusuk 12_dusuk
-t "" ffdus 13_dusfl
+t "" ffdus ""
+t "" dusfl 13_dusfl
 t "" ffbar 14_bar
 t "" wip 17_wip
 t "" ffgl-bgl 43_bggl

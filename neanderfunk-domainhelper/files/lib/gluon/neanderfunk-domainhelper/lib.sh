@@ -52,7 +52,9 @@ dh_own_id() {
 # - Namen vor den Domainnummern (bis 2020, Bergisch Gladbach bis 2018):
 #   ffnef-<name>, ffnef_<name> (Multidomain 2019/2020), ff<name>,
 #   ffgl-<name> und <name> allein, ueber die Tabelle unten.
-# - Mehrdeutig, also unbekannt: ffnef ohne domain_code, Siegerland vor 2020
+# - Mehrdeutig, also unbekannt: ffnef ohne domain_code, ffdus (bis 2020
+#   eine Domain 10.155.0.0/16, daraus 06.2020 12_dusuk und 13_dusfl),
+#   Siegerland vor 2020
 #   (sisi, sihb, ffhb, sifb), Kuerten, Overath, Koeln-rrh, Langenfeld der
 #   GL-Gruppe (ffgl-kut, -ovr, -cgr, -lgn). Fremde Communities (ffw, ffki,
 #   ffgek, ffwit, ffmz, ffmsd<NN>) loesen ohnehin nichts aus, weil sie keine
@@ -85,10 +87,10 @@ dh_domain_of() {
 	case "$s" in
 		vel) n=01 ;; met) n=02 ;; rat) n=03 ;; hld) n=04 ;; mon) n=05 ;;
 		han) n=06 ;; erk) n=07 ;; hlg) n=08 ;; lgf) n=09 ;; wlf) n=10 ;;
-		lvr) n=11 ;; dusuk) n=12 ;; dusfl|dus) n=13 ;; bar) n=14 ;;
+		lvr) n=11 ;; dusuk) n=12 ;; dusfl) n=13 ;; bar) n=14 ;;
 		mrh) n=15 ;; gmb) n=16 ;; wip) n=17 ;; bgl) n=43 ;; lln) n=44 ;;
 		bcd) n=45 ;; ode) n=46 ;; rrh) n=47 ;;
-		nef|sisi|sihb|hb|sifb|kut|ovr|cgr|lgn) return 0 ;;
+		nef|dus|sisi|sihb|hb|sifb|kut|ovr|cgr|lgn) return 0 ;;
 	esac
 	if [ -n "$n" ] ; then
 		dh_dom_by_nn "$n"
