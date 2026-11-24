@@ -90,7 +90,7 @@ dry=0
 case "$1" in
 	-n) dry=1 ;;
 	'') ;;
-	*) echo 'usage: neanderfunk-domainhelper bridge [-n]' >&2 ; exit 2 ;;
+	*) echo 'usage: domainhelper bridge [-n]' >&2 ; exit 2 ;;
 esac
 
 [ "$(uci -q get gluon-setup-mode.@setup_mode[0].configured)" = 1 ] || exit 0

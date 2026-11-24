@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # neanderfunk-domainhelper: Hilfen rund um die Domain eines Knotens.
+# Kurz: domainhelper (Symlink in /usr/sbin).
 #
 #   neanderfunk-domainhelper locate [-n] [-u url] [-a domain]
 #       Lokator und Abschleppdienst fuer die Halteverbots-Defaultdomain
@@ -33,7 +34,7 @@
 # /lib/gluon/neanderfunk-domainhelper/cmd_<name>.sh, gemeinsame Funktionen
 # in lib.sh. So laedt der Minutenlauf von "bridge" weder jshn noch locate.
 
-VERSION=0.12
+VERSION=0.13
 
 . /lib/gluon/neanderfunk/site.sh
 . /lib/gluon/neanderfunk-domainhelper/lib.sh
@@ -46,10 +47,10 @@ case "$cmd" in
 	island) . /lib/gluon/neanderfunk-domainhelper/cmd_island.sh ;;
 	follow) . /lib/gluon/neanderfunk-domainhelper/cmd_follow.sh ;;
 	*)
-		echo 'usage: neanderfunk-domainhelper locate [-n] [-u url] [-a domain]' >&2
-		echo '       neanderfunk-domainhelper bridge [-n]' >&2
-		echo '       neanderfunk-domainhelper island [-n]' >&2
-		echo '       neanderfunk-domainhelper follow [-n]' >&2
+		echo 'usage: domainhelper locate [-n] [-u url] [-a domain]' >&2
+		echo '       domainhelper bridge [-n]' >&2
+		echo '       domainhelper island [-n]' >&2
+		echo '       domainhelper follow [-n]' >&2
 		exit 2
 		;;
 esac

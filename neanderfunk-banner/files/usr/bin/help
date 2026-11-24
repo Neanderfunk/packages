@@ -47,6 +47,13 @@ Firmware
                         --hooks / --no-hooks erzwingt das bzw. schaltet es ab
   flash <url> [opt]     dasselbe als Befehl, auch "ssh knoten flash <url>"
                         alles im Detail: flash -h bzw. sysupgrade -h
+Domain (domainhelper, kurz fuer neanderfunk-domainhelper)
+  domainhelper bridge -n  Kabel-Nachbarn anderer Domains, was bridge taete
+  domainhelper island -n  ohne Gateway: gesehene Meshes mit Kanal und Pegel,
+                          und warum (nicht) gewechselt wuerde
+  domainhelper follow -n  ohne VPN: woher das Netz kommt, was follow taete
+  domainhelper locate -n  WLAN-Scan und Kabel-Nachbarn als JSON (Ortung)
+                          mit -n nur zeigen; ohne -n wird ggf. gewechselt
 Eingriffe (schreiben, wirksam nach "reconf")
   portrole              Rollen aller Interfaces, dazu Ports ohne Rolle
   portrole <if> [rolle] Rolle setzen: if = lan, wan, eth2, lan3 ...;

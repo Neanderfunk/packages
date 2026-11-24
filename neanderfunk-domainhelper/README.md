@@ -92,6 +92,10 @@ Wann locate läuft
 Aufruf
 ------
 
+Kurz geht es auch mit `domainhelper` statt `neanderfunk-domainhelper`
+(Symlink in `/usr/sbin`, seit 0.13-r3); `help` auf dem Knoten listet die
+Trockenläufe mit `-n`.
+
 ```sh
 neanderfunk-domainhelper locate        # scannen und melden
 neanderfunk-domainhelper locate -n     # nur scannen, JSON ausgeben, nichts senden

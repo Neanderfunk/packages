@@ -23,7 +23,7 @@ MAX_NETS=50
 
 . /usr/share/libubox/jshn.sh
 
-USAGE='usage: neanderfunk-domainhelper locate [-n] [-u url] [-a domain]'
+USAGE='usage: domainhelper locate [-n] [-u url] [-a domain]'
 
 usage() {
 	echo "$USAGE" >&2
