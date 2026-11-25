@@ -7,6 +7,7 @@ PKG_RELEASE:=$(GLUON_VERSION).$(GLUON_SITE_CODE)-$(GLUON_RELEASE).$(GLUON_CONFIG
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/$(PKG_NAME)
   SECTION:=neanderfunk
@@ -95,9 +96,7 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_DATA) ./files/etc/profile.gluon $(1)/etc/
 	$(CP) ./files/* $(1)/
 	$(CP) $(PKG_BUILD_DIR)/luadest/* $(1)/
-	for f in $(1)/etc/profile.gluon $(1)/usr/bin/*; do \
-		head -c 30 "$$$$f" | grep -q '^#!/bin/sh' && ./gluonShellDiet.sh "$$$$f"; \
-	done; true
+	$(call NfStripShell,$(1))
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))

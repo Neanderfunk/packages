@@ -4,6 +4,7 @@ PKG_NAME:=neanderfunk-ssid-changer
 PKG_VERSION:=8
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/$(PKG_NAME)
   TITLE:=changes the SSID to an Offline-SSID so clients don't connect to an offline WiFi
@@ -23,7 +24,7 @@ endef
 
 define Build/Compile
 	$(call Gluon/Build/Compile)
-	./gluonShellDiet.sh shsrc/ssid-changer.sh > $(PKG_BUILD_DIR)/ssid-changer.sh
+	$(CP) shsrc/ssid-changer.sh $(PKG_BUILD_DIR)/ssid-changer.sh
 endef
 
 define Package/$(PKG_NAME)/install
@@ -31,6 +32,7 @@ define Package/$(PKG_NAME)/install
 
 	$(INSTALL_DIR) $(1)/lib/gluon/ssid-changer
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/ssid-changer.sh $(1)/lib/gluon/ssid-changer/
+	$(call NfStripShell,$(1))
 endef
 
 

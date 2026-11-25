@@ -7,6 +7,7 @@ PKG_VERSION:=1
 PKG_LICENSE:=BSD-3-Clause
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/$(PKG_NAME)
   TITLE:=respondd module: hardware, radios, offline SSID, ethernet links, memory pressure, temperatures

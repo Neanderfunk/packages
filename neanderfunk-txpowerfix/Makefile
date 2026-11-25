@@ -4,6 +4,7 @@ PKG_NAME:=neanderfunk-txpowerfix
 PKG_VERSION:=4
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/$(PKG_NAME)
   TITLE:=Regulatory country and htmode from the channels, no pinned txpower

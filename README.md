@@ -6,6 +6,21 @@ Branch `v2021.1.x` (Neanderfunk, since 2026-10-04): based on `v2020.1.x`
 `cd24c70` (what the 2021.1 "sackgasse" build pins), plus
 `neanderfunk-legacy-migrate` for pulling 2015.1/2016.x nodes onto 2021.1.
 
+Comments in shell scripts: Gluon minifies only Lua below `luasrc/`
+(luasrcdiet). Everything below `files/` would otherwise go into the image
+with its comments, and on the 4/32 devices of this branch every KB of flash
+counts. Every package Makefile includes [neanderfunk.mk](neanderfunk.mk)
+right after `gluon.mk`; after installation it runs
+[scripts/strip-shell-comments](scripts/strip-shell-comments), which drops
+whole comment lines and blank lines from all shell files of the package. It
+tracks quotes, `$( ... )` and heredocs, keeps the shebang and SPDX lines,
+leaves `etc/config/` alone and falls back to the original if `sh -n` fails
+afterwards. A package with its own `define Package/<name>/install` ends it
+with `$(call NfStripShell,$(1))`. Same script as on v2025.1.x; it replaces
+the former per-package `gluonShellDiet.sh`, which only knew explicit file
+lists and missed five packages entirely. neanderfunk-nodeplacer is
+generated and has no shell files, it is left out.
+
 ### eulenfunk-ch13to9 ###
 
 moves radios from ch13 to 9 during firmwareupdate, even if "keep-wifichannels" is set. 

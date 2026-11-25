@@ -10,6 +10,7 @@ PKG_LICENSE:=BSD-2-Clause
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
 
 include $(TOPDIR)/../package/gluon.mk
+include ../neanderfunk.mk
 
 define Package/neanderfunk-common
   SECTION:=gluon
@@ -39,11 +40,7 @@ endef
 
 define Package/$(PKG_NAME)/install
 	$(CP) ./files/* $(1)/
-	./gluonShellDiet.sh $(1)/lib/gluon/neanderfunk/*.sh \
-	                    $(1)/lib/gluon/upgrade/490-neanderfunk-common \
-	                    $(1)/lib/gluon/upgrade/300-neanderfunk-private-wifi-wpa3 \
-	                    $(1)/usr/bin/nf-ps $(1)/usr/bin/nf-pgrep \
-	                    $(1)/usr/bin/nf-reboot-log $(1)/usr/bin/nf-reboot
+	$(call NfStripShell,$(1))
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))

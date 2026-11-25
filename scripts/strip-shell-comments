@@ -1,0 +1,182 @@
+#!/bin/sh
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# strip-shell-comments <verzeichnis>
+#
+# Entfernt in den Shell-Dateien eines Paket-Installationsverzeichnisses ganze
+# Kommentarzeilen und Leerzeilen. Gluon kuerzt beim Bau nur Lua unter
+# luasrc/ (luasrcdiet); alles unter files/ landet sonst samt Kommentaren im
+# Image. Aufgerufen aus neanderfunk.mk nach der Installation jedes Pakets.
+#
+# Was als Shell gilt:
+#   - Shebang /bin/sh, /bin/ash, /bin/bash (auch "#!/bin/sh /etc/rc.common");
+#   - ohne Shebang: Name auf .sh, Dateien unter etc/hotplug.d/ und
+#     etc/profile.gluon (werden gesourct).
+# Dateien unter usr/lib/micron.d/ (crontab-Format) verlieren ebenfalls
+# Kommentar- und Leerzeilen. etc/config/ bleibt unberuehrt: Die Kommentare
+# dort sind Doku fuer Admins, und die Dateien sind conffiles.
+#
+# Sicher, weil:
+#   - nur ganze Zeilen fallen weg, keine Kommentare hinter Befehlen;
+#   - ein kleiner Lexer verfolgt Anfuehrungszeichen, $( ... ) und Heredocs:
+#     Zeilen innerhalb eines mehrzeiligen Strings oder Heredocs bleiben, auch
+#     wenn sie mit # beginnen oder leer sind;
+#   - die erste Zeile (Shebang) und SPDX-Zeilen bleiben;
+#   - Gegenprobe mit "sh -n" (sonst "bash -n"): Besteht das Original die
+#     Pruefung, das Ergebnis aber nicht, bleibt das Original und es gibt eine
+#     Warnung. Besteht schon das Original sie nicht, bleibt es ebenfalls.
+
+set -e
+
+dir="$1"
+[ -n "$dir" ] && [ -d "$dir" ] || {
+	echo "usage: $0 <verzeichnis>" >&2
+	exit 2
+}
+
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+
+AWK_SH='
+function push(s) { sp++; stk[sp] = s; dep[sp] = 0 }
+function scan(line,   i, n, ch, nx, pv, j, d, tabs) {
+	n = length(line)
+	for (i = 1; i <= n; i++) {
+		ch = substr(line, i, 1)
+		if (st == "s") {
+			if (ch == "\047") st = "n"
+			continue
+		}
+		if (st == "d") {
+			if (ch == "\\") { i++; continue }
+			if (ch == "\"") { st = "n"; continue }
+			if (ch == "$" && substr(line, i + 1, 1) == "(") { push("d"); st = "n"; i++ }
+			continue
+		}
+		# st == "n"
+		if (ch == "\\") { i++; continue }
+		if (ch == "\047") { st = "s"; continue }
+		if (ch == "\"") { st = "d"; continue }
+		if (ch == "#") {
+			pv = (i == 1) ? " " : substr(line, i - 1, 1)
+			if (index(" \t;&|()", pv)) return
+			continue
+		}
+		if (ch == "$" && substr(line, i + 1, 1) == "(") { push("n"); i++; continue }
+		if (ch == "(") { if (sp > 0) dep[sp]++; continue }
+		if (ch == ")") {
+			if (sp > 0) {
+				if (dep[sp] > 0) dep[sp]--
+				else { st = stk[sp]; sp-- }
+			}
+			continue
+		}
+		if (ch == "<" && substr(line, i + 1, 1) == "<" && substr(line, i + 2, 1) != "<") {
+			j = i + 2
+			tabs = 0
+			if (substr(line, j, 1) == "-") { tabs = 1; j++ }
+			while (substr(line, j, 1) == " " || substr(line, j, 1) == "\t") j++
+			d = ""
+			while (j <= n) {
+				nx = substr(line, j, 1)
+				if (index(" \t;&|<>()", nx)) break
+				if (nx != "\047" && nx != "\"" && nx != "\\") d = d nx
+				j++
+			}
+			if (d != "") { hq++; hd[hq] = d; ht[hq] = tabs }
+			i = j - 1
+			continue
+		}
+	}
+}
+BEGIN { st = "n"; sp = 0; hq = 0; hp = 0; inhd = 0 }
+{
+	line = $0
+	if (inhd) {
+		print line
+		t = line
+		if (ht[hp]) sub(/^\t+/, "", t)
+		if (t == hd[hp]) { inhd = 0; if (hp < hq) { hp++; inhd = 1 } }
+		next
+	}
+	keep = 1
+	if (st == "n" && NR > 1) {
+		if (line ~ /^[ \t]*$/) keep = 0
+		else if (line ~ /^[ \t]*#/ && line !~ /SPDX-License-Identifier/) keep = 0
+	}
+	if (keep) print line
+	if (!keep) next
+	scan(line)
+	if (hq > hp) { hp++; inhd = 1 }
+}
+'
+
+AWK_CRON='
+NR == 1 && /^#!/ { print; next }
+/^[ \t]*$/ { next }
+/^[ \t]*#/ && !/SPDX-License-Identifier/ { next }
+{ print }
+'
+
+syntax_ok() {
+	sh -n "$1" 2>/dev/null && return 0
+	command -v bash >/dev/null 2>&1 && bash -n "$1" 2>/dev/null && return 0
+	return 1
+}
+
+is_text() {
+	[ "$(tr -d '\000' < "$1" | wc -c)" = "$(wc -c < "$1")" ]
+}
+
+files=0
+before=0
+after=0
+find "$dir" -type f | sort > "$tmp.list"
+while read -r f ; do
+	rel="${f#"$dir"/}"
+	case "$rel" in
+		etc/config/*) continue ;;
+	esac
+	[ -s "$f" ] || continue
+	is_text "$f" || continue
+
+	mode=
+	first="$(head -n 1 "$f")"
+	case "$first" in
+		'#!/bin/sh'|'#!/bin/sh '*|'#! /bin/sh'|'#! /bin/sh '*|'#!/bin/ash'*|'#!/bin/bash'*) mode=sh ;;
+		'#!'*) ;;
+		*)
+			case "$rel" in
+				*.sh|etc/hotplug.d/*|etc/profile.gluon) mode=sh ;;
+			esac
+			;;
+	esac
+	case "$rel" in
+		usr/lib/micron.d/*) mode=cron ;;
+	esac
+	[ -n "$mode" ] || continue
+
+	if [ "$mode" = sh ] ; then
+		awk "$AWK_SH" "$f" > "$tmp"
+		if syntax_ok "$f" && ! syntax_ok "$tmp" ; then
+			echo "strip-shell-comments: WARNUNG $rel nach dem Kuerzen syntaktisch kaputt, bleibt ungekuerzt" >&2
+			continue
+		fi
+		if ! syntax_ok "$f" ; then
+			echo "strip-shell-comments: $rel besteht sh -n schon ungekuerzt nicht, bleibt ungekuerzt" >&2
+			continue
+		fi
+	else
+		awk "$AWK_CRON" "$f" > "$tmp"
+	fi
+	b="$(wc -c < "$f")"
+	a="$(wc -c < "$tmp")"
+	files=$((files + 1))
+	before=$((before + b))
+	after=$((after + a))
+	# cat statt mv: Rechte und Eigentuemer der Datei bleiben
+	cat "$tmp" > "$f"
+done < "$tmp.list"
+rm -f "$tmp.list"
+
+echo "strip-shell-comments: $files Dateien, $before -> $after Bytes"
