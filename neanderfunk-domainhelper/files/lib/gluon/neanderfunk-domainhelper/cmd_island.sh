@@ -56,19 +56,11 @@
 # Ein aktives LAN-Mesh oder weitere Knoten in der Wolke verhindern den
 # Wechsel nicht (adorfer 21.11.); massgeblich ist nur: kein Gateway.
 #
-# Scan ohne AP (2.4 GHz): ath11k verlaesst beim Scan seinen Kanal nicht,
-# solange auf dem Radio ein AP laeuft. Gemessen am Mercusys MR80X v2
-# (IPQ5018, Firmware WLAN.HK.2.7.0.1-01744): mit AP nur Netze des eigenen
-# Kanals, auch bei "scan freq ..." und ap-force; mit abgeschaltetem AP alle
-# Kanaele; das 5-GHz-Radio scannt normal (24./25.11.2026). Auch auf einem
-# Xiaomi AX3600 (ipq807x) nachgestellt. Sieht der Scan auf 2.4 GHz nichts,
-# was mehr als ISL_HOP_NEAR MHz vom eigenen Kanal entfernt ist, und war
-# bisher kein Kandidat dabei, schaltet island die APs dieses Radios kurz ab
-# (uci set ohne commit, wifi up), scannt ueber das Mesh-Interface und stellt
-# den alten Zustand wieder her. Etwa 15 s ohne Client-WLAN auf 2.4 GHz,
-# hoechstens alle ISL_HOP_EVERY (30 min, in 25_hvb 15 min). Ohne Gateway
-# gehen "richtige Domain und runter von der Insel" vor (adorfer 24.11.).
-# Mit -n nur zusammen mit -k.
+# Scan: passiv (dh_scan), damit ath11k bei laufendem AP alle Kanaele sieht.
+# Bis 0.14 schaltete island dafuer auf 2.4 GHz kurz die APs ab, wenn der
+# (damals aktive) Scan nur den eigenen Kanal sah; mit dem passiven Scan
+# entfaellt das (25.11.2026, MR80X v2). Ohne Gateway gehen "richtige Domain
+# und runter von der Insel" vor (adorfer 24.11.).
 #
 # Abschalten: uci neanderfunk-domainhelper.island.enabled=0.
 # -n: Wartezeiten uebergehen, scannen und zeigen, was passieren wuerde.
@@ -82,22 +74,16 @@ ISL_WAIT_HVB=300
 ISL_REARM_HVB=900
 ISL_SCAN_EVERY=300
 ISL_MIN_SIGNAL=-80
-ISL_HOP_EVERY=1800
-ISL_HOP_EVERY_HVB=900
-ISL_HOP_NEAR=15
-ISL_HOP_WAIT=30
-ISL_HOP_SCAN=40
 
 dry=0
-hop_force=0
 for a in "$@" ; do
 	case "$a" in
 		-n) dry=1 ;;
-		-k) hop_force=1 ;;
-		*) echo 'usage: domainhelper island [-n [-k]]' >&2 ; exit 2 ;;
+		# -k (bis 0.14: Scan ohne AP) wird still angenommen
+		-k) ;;
+		*) echo 'usage: domainhelper island [-n]' >&2 ; exit 2 ;;
 	esac
 done
-[ "$hop_force" = 1 ] && [ "$dry" = 0 ] && { echo '-k nur zusammen mit -n' >&2 ; exit 2 ; }
 
 [ "$(uci -q get gluon-setup-mode.@setup_mode[0].configured)" = 1 ] || exit 0
 case "$(uci -q get neanderfunk-domainhelper.island.enabled)" in
@@ -133,7 +119,6 @@ offset=
 if [ -n "$(jsonfilter -i "/lib/gluon/domains/$own_domain.json" -e '@.neanderfunk_domainhelper.locator.urls[0]' 2>/dev/null)" ] ; then
 	# eigene Domain mit Ortung (25_hvb): so bald wie moeglich weg
 	ISL_WAIT_A="$ISL_WAIT_HVB" ISL_WAIT_B="$ISL_WAIT_HVB" ISL_REARM="$ISL_REARM_HVB" offset=0
-	ISL_HOP_EVERY="$ISL_HOP_EVERY_HVB"
 fi
 
 since="$now"
@@ -277,109 +262,7 @@ awk -v US="$DH_US" -v own="$own_domain" -v pre="$prefix" \
 	}' "$ISL_DIR/scan.list"
 }
 
-# --- 2.4 GHz ohne AP scannen --------------------------------------------------
-
-# isl_apoff_scan <radio>: die AP-Interfaces dieses Radios kurz abschalten
-# (uci set ohne commit, wifi up), ueber das Mesh-Interface scannen, danach den
-# alten Zustand zurueck. Rohausgabe nach $ISL_DIR/hop/scan.all; gibt 1 aus,
-# wenn gescannt wurde. Ein schon vorher gesetztes disabled (etwa von
-# ap-timer) bleibt, wie es war.
-isl_apoff_restore() {
-	local s v
-	[ -n "$apoff_radio" ] || return 0
-	while read -r s v ; do
-		case "$v" in
-			-) uci -q revert "$s.disabled" ;;
-			*) uci set "$s.disabled=$v" >/dev/null 2>&1 ;;
-		esac
-	done < "$ISL_DIR/hop/apoff"
-	wifi up "$apoff_radio" >/dev/null 2>&1
-	apoff_radio=
-	rmdir "$ISL_DIR/hop.lock" 2>/dev/null
-}
-
-isl_apoff_scan() {
-	local r="$1" s i p k n=0 end
-	mkdir "$ISL_DIR/hop.lock" 2>/dev/null || return 1
-	rm -rf "$ISL_DIR/hop"
-	mkdir -p "$ISL_DIR/hop"
-	cp "$ISL_DIR/own" "$ISL_DIR/hop/own" 2>/dev/null
-	: > "$ISL_DIR/hop/scan.all"
-	: > "$ISL_DIR/hop/apoff"
-	for s in $(uci -q show wireless | sed -n "s/^\(wireless\.[^.]*\)\.device='$r'\$/\1/p") ; do
-		[ "$(uci -q get "$s.mode")" = ap ] || continue
-		if uci changes wireless 2>/dev/null | grep -q "^$s\.disabled=" ; then
-			echo "$s $(uci -q get "$s.disabled")" >> "$ISL_DIR/hop/apoff"
-		else
-			echo "$s -" >> "$ISL_DIR/hop/apoff"
-		fi
-	done
-	[ -s "$ISL_DIR/hop/apoff" ] || { rmdir "$ISL_DIR/hop.lock" ; return 1 ; }
-	apoff_radio="$r"
-	trap isl_apoff_restore EXIT INT TERM
-	while read -r s _ ; do
-		uci set "$s.disabled=1"
-	done < "$ISL_DIR/hop/apoff"
-	wifi up "$r" >/dev/null 2>&1
-	# warten, bis das Mesh-Interface auf 2.4 GHz wieder steht
-	end=$(( $(dh_uptime) + ISL_HOP_WAIT ))
-	i=
-	while [ -z "$i" ] && [ "$(dh_uptime)" -lt "$end" ] ; do
-		sleep 2
-		i="$(iw dev 2>/dev/null | awk '
-			/^[ \t]*Interface[ \t]/ { n = $2 ; t = "" ; next }
-			/^[ \t]*type[ \t]/ { t = $2 }
-			/\([0-9]+ MHz\)/ { s = $0 ; sub(/^.*\(/, "", s) ; sub(/ MHz\).*$/, "", s)
-				if (t == "mesh" && s + 0 < 4000) { print n ; exit } }')"
-	done
-	if [ -n "$i" ] ; then
-		sleep 3
-		# BusyBox hat kein timeout: Scan im Hintergrund, nach ISL_HOP_SCAN s abbrechen
-		iw dev "$i" scan flush > "$ISL_DIR/hop/scan.all" 2>/dev/null &
-		p=$!
-		( sleep "$ISL_HOP_SCAN" ; kill "$p" 2>/dev/null ) &
-		k=$!
-		wait "$p" && n=1
-		kill "$k" 2>/dev/null
-	fi
-	isl_apoff_restore
-	trap - EXIT INT TERM
-	dh_scan_list "$ISL_DIR/hop"
-	echo "$n"
-}
-
 cand="$(isl_pick)"
-
-# Nichts gefunden und der 2.4-GHz-Scan sah nur den eigenen Kanal: Kanaele
-# einzeln durchgehen (siehe Kopf).
-if [ -z "$cand" ] && grep -q '^2g ' "$ISL_DIR/bands" ; then
-	r2="$(awk '$1 == "2g" { print $2 }' "$ISL_DIR/bands")"
-	f2="$(awk '$3 > 0 && $3 < 4000 { print $3 ; exit }' "$ISL_DIR/ifaces")"
-	c2=$(( (f2 - 2407) / 5 ))
-	far="$(awk -F "$DH_US" -v o="$f2" -v d="$ISL_HOP_NEAR" \
-		'$2 < 4000 && ($2 - o > d || o - $2 > d) { n++ } END { print n + 0 }' "$ISL_DIR/scan.list")"
-	lhop=0
-	[ -r "$ISL_DIR/lasthop" ] && read -r lhop < "$ISL_DIR/lasthop"
-	go=0
-	if [ "$dry" = 1 ] ; then
-		[ "$hop_force" = 1 ] && go=1
-		[ "$go" = 1 ] || echo "2.4 GHz: $far Netze weiter als $ISL_HOP_NEAR MHz vom eigenen Kanal $c2; Scan ohne AP nur mit -n -k"
-	elif [ -n "$f2" ] && [ "$far" = 0 ] && { [ "$lhop" = 0 ] || [ $((now - lhop)) -ge "$ISL_HOP_EVERY" ] ; } ; then
-		go=1
-	fi
-	if [ "$go" = 1 ] && [ -n "$r2" ] && [ -n "$f2" ] ; then
-		echo "$now" > "$ISL_DIR/lasthop"
-		isl_say "Insel: 2.4-GHz-Scan sieht nur Kanal $c2, scanne mit abgeschaltetem AP ($r2)"
-		n="$(isl_apoff_scan "$r2")"
-		if [ "$n" = 1 ] ; then
-			cat "$ISL_DIR/hop/scan.list" >> "$ISL_DIR/scan.list"
-			isl_say "Insel: Scan ohne AP: $(grep -c . "$ISL_DIR/hop/scan.list") Netze"
-			cand="$(isl_pick)"
-		else
-			isl_say "Insel: Scan ohne AP fehlgeschlagen"
-		fi
-	fi
-fi
 
 if [ -z "$cand" ] ; then
 	[ "$dry" = 1 ] && echo 'kein passendes Mesh gefunden'

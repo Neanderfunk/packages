@@ -77,6 +77,10 @@ end
 -- Scan ohne Unicast) trat am 04.10.2026 auf keinem 2025.1-Knoten mehr auf
 -- (MT7981, mt7603e, ath10k, ath9k); der Guard startete dagegen auf Radios
 -- ohne WLAN-Mesh-Nachbarn jedes Mal das WLAN neu (Entscheidung adorfer).
+-- iwinfo scannt passiv (TRIGGER_SCAN ohne SSID-Liste). Das ist wichtig: ath11k
+-- verlaesst bei einem aktiven Scan seinen Kanal nicht, solange auf dem Radio
+-- ein AP laeuft, passiv sieht es alle Kanaele (MR80X v2, 25.11.2026). Nicht
+-- auf "iw scan" umstellen, ohne "passive" mitzugeben.
 local function scanlist(r)
 	return require('iwinfo').nl80211.scanlist(r.name) or {}
 end

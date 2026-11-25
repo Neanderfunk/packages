@@ -19,6 +19,10 @@
 -- WLAN-Mesh notduerftig wieder anbinden - etwa wenn Richtfunk, Powerline oder
 -- ein Kabel im LAN-Mesh ausgefallen ist.
 
+-- iwinfo scannt passiv (TRIGGER_SCAN ohne SSID-Liste). Das ist wichtig: ath11k
+-- verlaesst bei einem aktiven Scan seinen Kanal nicht, solange auf dem Radio
+-- ein AP laeuft, passiv sieht es alle Kanaele (MR80X v2, 25.11.2026).
+
 local uci = require('simple-uci').cursor()
 local iwinfo = require('iwinfo')
 

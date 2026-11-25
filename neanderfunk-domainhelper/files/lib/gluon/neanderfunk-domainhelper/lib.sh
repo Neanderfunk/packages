@@ -218,7 +218,23 @@ dh_lan_target() {
 #   own       eigene MACs
 #   targets   gescannte Interfaces "name|typ"
 #   scan.res  je Scan "iface ok anzahl"
-#   scan.all  rohe Ausgabe aller Scans (iw dev <if> scan)
+#   scan.all  rohe Ausgabe aller Scans (iw dev <if> scan passive)
+#
+# Passiv, nicht aktiv: ath11k verlaesst bei einem aktiven Scan seinen Kanal
+# nicht, solange auf dem Radio ein AP laeuft, ein passiver Scan geht ueber alle
+# Kanaele (MR80X v2, IPQ5018, auf mesh0 wie client0; 25.11.2026). Mesh-Punkte
+# und APs senden Beacons, passiv fehlt also nichts, was hier gesucht wird.
+# Ohne lowpri: das lehnt ath11k ab (-95). MT7986 meldet zeitweise -105
+# (No buffer space), dann einmal nach 3 s wiederholen. Nur wenn passiv gar
+# nichts kommt, zuletzt aktiv.
+# dh_scan_one <if> [scan-optionen]: nach $W/scan.one, 0 wenn ein BSS dabei ist
+dh_scan_one() {
+	local i="$1"
+	shift
+	iw dev "$i" scan "$@" > "$W/scan.one" 2>/dev/null
+	head -n 1 "$W/scan.one" | grep -q '^BSS'
+}
+
 dh_scan() {
 	local W="$1" ifname typ ok count
 	# Eigene WLAN-Interfaces: Name, MAC, Typ, Frequenz (Zeilen "name mac freq typ")
@@ -247,10 +263,11 @@ dh_scan() {
 	: > "$W/scan.all"
 	: > "$W/scan.res"
 	while IFS='|' read -r ifname typ ; do
-		iw dev "$ifname" scan > "$W/scan.one" 2>/dev/null
-		if ! head -n 1 "$W/scan.one" | grep -q '^BSS' && [ "$typ" = AP ] ; then
-			iw dev "$ifname" scan ap-force > "$W/scan.one" 2>/dev/null
-		fi
+		dh_scan_one "$ifname" passive \
+			|| { sleep 3 ; dh_scan_one "$ifname" passive ; } \
+			|| { [ "$typ" = AP ] && dh_scan_one "$ifname" ap-force passive ; } \
+			|| dh_scan_one "$ifname" \
+			|| { [ "$typ" = AP ] && dh_scan_one "$ifname" ap-force ; }
 		ok=0
 		head -n 1 "$W/scan.one" | grep -q '^BSS' && ok=1
 		count="$(grep -c '^BSS ' "$W/scan.one")"

@@ -22,7 +22,7 @@ und 4.3.
 Wann welcher Teil Domain oder Kanal wechselt (Ausgang, Attraktor, mit VPN
 oder Insel): [docs/matrix-domainwechsel.md](../docs/matrix-domainwechsel.md).
 
-**Stand 0.14 (25.11.2026):** `island` scannt auf 2.4 GHz mit kurz abgeschaltetem AP, wenn der Scan dort nur den eigenen Kanal sieht (ath11k, siehe unten); `domainhelper` als Kurzbefehl (0.13-r3). 0.13 (23.11.2026): Auch ältere Codes zählen als ihre Domain (#5), erhoben aus der Git-Historie von FirmwareConfigs, site-ffnef und ansible-ffnef: `<NN>_<name>` mit oder ohne Präfix nach der Nummer (also auch umbenannte wie `18_dusuk`, `13_dus`, `bgl-43_bglgl`, `48_rdv`), `ffnefd<NN>`/`FFNEFd<NN>` der Supernodes (damit besteht auch die Gegenprobe vor `follow` R2 gegen ältere Supernodes), die Namen vor den Domainnummern (`ffnef-vel`, `ffnef_lvr`, `ffbar`, `wip`, `ffgl-bgl`, `ffrrh` …) und die Tippfehler `nef-01_erk` (= `07_erk`) und `nef-mon_05`. Mehrdeutige Codes (`ffnef` ohne `domain_code`, `ffdus` (bis 2020 eine Domain, daraus 12_dusuk und 13_dusfl), Siegerland vor 2020, Kürten, Overath, Köln-rrh, Langenfeld der GL-Gruppe) bleiben unbekannt, ebenso Nachbar-Communities. Folge: Ein Nachbar mit alter Firmware einer anderen Domain am Kabel ist jetzt fremd und kann getrennt werden. 0.12: Nachbarn aus der Sackgasse 2021.1 (`site_code` wie `nef-21_dias_EOL`) zählen als Knoten ihrer Domain (`21_dias`), auch für `lan_switch`; bis 0.11 schaltete ein 25_hvb-Knoten neben einem Sackgassen-Knoten nicht um. 0.11: neu `follow` (#9): Knoten ohne VPN folgen nach 60 min der Domain, aus der ihr Netz über das Kabel kommt, WLAN-Kanäle bleiben (braucht neanderfunk-preserve-wifichannel 3). `bridge` trennt mit DSA nur den Port, ohne Bridge (swconfig) später und nicht gegen eigene Nachbarn am LAN, und verbindet wieder, wenn der getrennte Nachbar in die eigene Domain gewechselt ist. 0.10: `island` in einer Domain mit Ortung (`25_hvb`) nach 5 min statt 60/600 min, ohne Versatz. Der Standardkanal der neuen Domain setzt `preserve_channels_<band>=0` (braucht neanderfunk-banner 5). 0.9: `bridge` trennt nicht gegen Nachbarn aus einer Domain mit Ortung (`25_hvb`), die schalten per `lan_switch` selbst um. 0.8: Fall b von `island` verwirft vor dem Domainwechsel alle Laufzeit-Deltas (sonst schriebe das pauschale `uci commit` in `001-reset-uci` etwa die Offline-SSID in den Flash). 0.7: neu `island`. 0.6: `bridge` trennt bis zum
+**Stand 0.15 (25.11.2026):** Alle Scans passiv (`iw scan passive`), damit ath11k bei laufendem AP alle Kanäle sieht; der Scan mit kurz abgeschaltetem AP aus 0.14 entfällt. 0.14 (25.11.2026): `island` scannt auf 2.4 GHz mit kurz abgeschaltetem AP, wenn der Scan dort nur den eigenen Kanal sieht (ath11k, siehe unten); `domainhelper` als Kurzbefehl (0.13-r3). 0.13 (23.11.2026): Auch ältere Codes zählen als ihre Domain (#5), erhoben aus der Git-Historie von FirmwareConfigs, site-ffnef und ansible-ffnef: `<NN>_<name>` mit oder ohne Präfix nach der Nummer (also auch umbenannte wie `18_dusuk`, `13_dus`, `bgl-43_bglgl`, `48_rdv`), `ffnefd<NN>`/`FFNEFd<NN>` der Supernodes (damit besteht auch die Gegenprobe vor `follow` R2 gegen ältere Supernodes), die Namen vor den Domainnummern (`ffnef-vel`, `ffnef_lvr`, `ffbar`, `wip`, `ffgl-bgl`, `ffrrh` …) und die Tippfehler `nef-01_erk` (= `07_erk`) und `nef-mon_05`. Mehrdeutige Codes (`ffnef` ohne `domain_code`, `ffdus` (bis 2020 eine Domain, daraus 12_dusuk und 13_dusfl), Siegerland vor 2020, Kürten, Overath, Köln-rrh, Langenfeld der GL-Gruppe) bleiben unbekannt, ebenso Nachbar-Communities. Folge: Ein Nachbar mit alter Firmware einer anderen Domain am Kabel ist jetzt fremd und kann getrennt werden. 0.12: Nachbarn aus der Sackgasse 2021.1 (`site_code` wie `nef-21_dias_EOL`) zählen als Knoten ihrer Domain (`21_dias`), auch für `lan_switch`; bis 0.11 schaltete ein 25_hvb-Knoten neben einem Sackgassen-Knoten nicht um. 0.11: neu `follow` (#9): Knoten ohne VPN folgen nach 60 min der Domain, aus der ihr Netz über das Kabel kommt, WLAN-Kanäle bleiben (braucht neanderfunk-preserve-wifichannel 3). `bridge` trennt mit DSA nur den Port, ohne Bridge (swconfig) später und nicht gegen eigene Nachbarn am LAN, und verbindet wieder, wenn der getrennte Nachbar in die eigene Domain gewechselt ist. 0.10: `island` in einer Domain mit Ortung (`25_hvb`) nach 5 min statt 60/600 min, ohne Versatz. Der Standardkanal der neuen Domain setzt `preserve_channels_<band>=0` (braucht neanderfunk-banner 5). 0.9: `bridge` trennt nicht gegen Nachbarn aus einer Domain mit Ortung (`25_hvb`), die schalten per `lan_switch` selbst um. 0.8: Fall b von `island` verwirft vor dem Domainwechsel alle Laufzeit-Deltas (sonst schriebe das pauschale `uci commit` in `001-reset-uci` etwa die Offline-SSID in den Flash). 0.7: neu `island`. 0.6: `bridge` trennt bis zum
 Neustart, Takt 91 s. 0.5: neu `bridge`. Seit 0.4 ganz in Shell:
 `/usr/sbin/neanderfunk-domainhelper` verteilt nur noch auf
 `/lib/gluon/neanderfunk-domainhelper/cmd_<unterbefehl>.sh`, gemeinsame
@@ -301,22 +301,22 @@ Scan ein WLAN-Mesh einer Domain dieser Firmware (Mesh-IDs aus
 `/lib/gluon/domains/*.json`). Läuft im selben 91-s-Takt wie `bridge`,
 gescannt wird höchstens alle 5 min.
 
-- **Scan ohne AP auf 2.4 GHz:** ath11k verlässt beim Scan seinen Kanal
-  nicht, solange auf dem Radio ein AP läuft. Gemessen am Mercusys MR80X v2
-  (IPQ5018, Firmware `WLAN.HK.2.7.0.1-01744`, 24./25.11.2026): mit AP nur
-  Netze des eigenen Kanals, auch mit `scan freq …` und `ap-force`; mit
-  abgeschaltetem AP alle Kanäle; das 5-GHz-Radio scannt normal. Auch auf
-  einem Xiaomi AX3600 (ipq807x, `WLAN.HK.2.9.0.1-02146`) nachgestellt;
-  mt76 und ath9k scannen normal. Findet der Scan kein passendes Mesh und
-  sieht auf 2.4 GHz nichts, was mehr als 15 MHz vom eigenen Kanal entfernt
-  ist, schaltet `island` die APs dieses Radios kurz ab (`uci set` ohne
-  commit, `wifi up`), scannt über das Mesh-Interface und stellt den alten
-  Zustand wieder her; ein schon gesetztes `disabled` (ap-timer) bleibt.
-  Etwa 15 s ohne Client-WLAN auf 2.4 GHz, höchstens alle 30 min (in 25_hvb
-  alle 15 min). Ohne Gateway gehen richtige Domain und der Weg von der
-  Insel vor (adorfer 24.11.). Was gefunden wird, durchläuft dieselben
-  Regeln wie beim normalen Scan. Von Hand: `domainhelper island -n -k`
-  (schaltet den AP wirklich kurz ab, wechselt aber nichts).
+- **Passiver Scan:** Alle Scans des Domainhelpers sind passiv
+  (`iw dev <if> scan passive`). ath11k verlässt bei einem aktiven Scan
+  seinen Kanal nicht, solange auf dem Radio ein AP läuft: gemessen am
+  Mercusys MR80X v2 (IPQ5018, Firmware `WLAN.HK.2.7.0.1-01744`) auf 2.4 GHz
+  über `mesh0` wie über `client0`, auch mit `scan freq …` und `ap-force`
+  nur Netze des eigenen Kanals; auch auf einem Xiaomi AX3600 (ipq807x)
+  nachgestellt. Passiv sieht derselbe Knoten mit laufendem AP alle Kanäle,
+  samt Mesh-Punkten auf anderen Kanälen (25.11.2026). Mesh-Punkte und APs
+  senden Beacons, passiv fehlt also nichts, was hier gesucht wird.
+  `lowpri` (wie im linkcheck) lehnt ath11k ab (-95), deshalb ohne; MT7986
+  meldet zeitweise -105, dann einmal nach 3 s wiederholen. Ein AP-Interface
+  bekommt notfalls `ap-force passive`; nur wenn passiv gar nichts kommt,
+  zuletzt aktiv. `offlinescan` und `channel` (neanderfunk-banner) scannen
+  über iwinfo, das ohnehin passiv scannt. 0.14 schaltete für den 2.4-GHz-Scan
+  von `island` noch kurz die APs ab; das ist mit 0.15 entfallen, `-k` wird
+  still angenommen.
 
 - **a) Mesh der eigenen Domain auf einem anderen Kanal**, ab 60 min ohne
   Gateway: Das Radio dieses Bands geht auf diesen Kanal. `channel = auto`
