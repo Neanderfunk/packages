@@ -2,8 +2,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-domainhelper
-PKG_VERSION:=0.13
-PKG_RELEASE:=3
+PKG_VERSION:=0.14
+PKG_RELEASE:=1
 PKG_LICENSE:=BSD-3-Clause
 
 PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)

@@ -50,7 +50,8 @@ Firmware
 Domain (domainhelper, kurz fuer neanderfunk-domainhelper)
   domainhelper bridge -n  Kabel-Nachbarn anderer Domains, was bridge taete
   domainhelper island -n  ohne Gateway: gesehene Meshes mit Kanal und Pegel,
-                          und warum (nicht) gewechselt wuerde
+                          und warum (nicht) gewechselt wuerde;
+                          -n -k: dazu 2.4 GHz ohne AP scannen (AP kurz aus)
   domainhelper follow -n  ohne VPN: woher das Netz kommt, was follow taete
   domainhelper locate -n  WLAN-Scan und Kabel-Nachbarn als JSON (Ortung)
                           mit -n nur zeigen; ohne -n wird ggf. gewechselt
