@@ -604,6 +604,116 @@ if ! check_disabled "$checkgroup" ; then
   done
 fi
 
+## 7) einzelne Mesh-Peers, die keinen Unicast mehr annehmen
+#
+# Belegt am 25.11.2026 im 21_dias-Labor (MR80X v2, M60): Startet ein Knoten
+# neu, behaelt sein Nachbar oft den alten Stationseintrag (Plink bleibt
+# ESTAB) samt der alten Block-Ack-Sitzung. Der neu gestartete Knoten zaehlt
+# seine Sequenznummern ab 0, der Nachbar verwirft dessen Unicast als "alt",
+# bis die Nummern das alte Fenster ueberholt haben (bis zu 2047 Rahmen, bei
+# wenig Verkehr Stunden). OGMs und Multicast laufen ohne Block-Ack weiter,
+# batman sieht den Nachbarn also. mesh_unicast (Abschnitt 6) merkt davon
+# nichts, solange einer von drei Peers antwortet, und auf dem neu
+# gestarteten Knoten fuehrt es zum naechsten Neustart, der beim Nachbarn
+# die naechste veraltete Sitzung erzeugt. Kernel-Fix: mac80211 "mesh: tear
+# down BA sessions when the peer link goes down" (Florian Maurer).
+#
+# Hier je Peer: Jeder Peer im Zustand ESTAB bekommt zwei Pings an seine
+# Link-Local-Adresse (parallel). Scharf ist ein Peer, wenn er in dieser
+# Laufzeit schon einmal geantwortet hat oder batman ihn auf dem Interface
+# als Nachbarn fuehrt (dann ist es ein Gluon-Knoten, und der antwortet).
+# Bleibt ein scharfer Peer zwei Laeufe hintereinander stumm, wird nur sein
+# Stationseintrag geloescht: "iw dev <mesh> station del <mac>". Der Link
+# steht in Sekunden neu, mit frischen Sitzungen. Hoechstens einmal je Peer
+# in 30 min und hoechstens drei je Lauf. Antwortet auf einem Radio kein
+# einziger Peer, bleibt es bei Abschnitt 6 (wifi restart, reboot).
+checkgroup='mesh_peer_unicast'
+if ! check_disabled "$checkgroup" && [ -z "${wifi_restarted}" ] ; then
+  pdir=/tmp/linkcheck.peer
+  mkdir -p "$pdir"
+  nf_uptime ; now="$NF_UP"
+  dels=0
+  for mesh_radio in $mesh_radios ; do
+    # nur 802.11s: IBSS kennt keinen Plink
+    case "$mesh_radio" in mesh_radio*) ;; *) continue ;; esac
+    mesh_radio_dev "$mesh_radio" || continue
+    dump="/tmp/linkcheck.meshpeers.${mesh_radio}.dump"
+    case "$dumped" in
+      *" $mesh_radio "*) ;;
+      *) mesh_station_dump "$dev" "$dump" || continue ;;
+    esac
+    peers=$(mesh_peers "$mesh_radio" "$dump")
+    [ -n "$peers" ] || continue
+    for mac in $peers ; do
+      ll=$(ll_of_mac "$mac") || continue
+      k="$pdir/$dev.$(echo "$mac" | sed 's/://g')"
+      rm -f "$k.ok"
+      ( ping6 -c 2 -W 1 -w 3 -I "$dev" "$ll" >/dev/null 2>&1 \
+        && : > "$k.ok" ) &
+    done
+    wait
+    anyok=0
+    for mac in $peers ; do
+      k="$pdir/$dev.$(echo "$mac" | sed 's/://g')"
+      [ -e "$k.ok" ] && anyok=1
+    done
+    for mac in $peers ; do
+      k="$pdir/$dev.$(echo "$mac" | sed 's/://g')"
+      if [ -e "$k.ok" ] ; then
+        if [ -e "$k.del" ] ; then
+          logger -s -t "neanderfunk-linkcheck" -p 5 \
+            "[$checkgroup] $dev $mac answers again after station del"
+          rm -f "$k.del"
+        fi
+        rm -f "$k.miss" "$k.held"
+        : > "$k.armed"
+        continue
+      fi
+      # Abschnitt 6 kuemmert sich um ein ganz stummes Radio
+      [ "$anyok" -eq 1 ] || continue
+      if [ ! -e "$k.armed" ] ; then
+        printf '%s\n' "$batn" | grep -q "$dev[[:space:]]*$mac" || continue
+      fi
+      if [ -e "$k.del" ] ; then
+        logger -s -t "neanderfunk-linkcheck" -p 5 \
+          "[$checkgroup] $dev $mac still silent after station del"
+        rm -f "$k.del"
+      fi
+      n=$(cat "$k.miss" 2>/dev/null) ; n=$(( ${n:-0} + 1 ))
+      echo "$n" > "$k.miss"
+      if [ "$n" -lt 2 ] && [ ! -e "$k.last" ] ; then
+        logger -s -t "neanderfunk-linkcheck" -p 5 \
+          "[$checkgroup] $dev $mac: ESTAB, no unicast answer (1st)"
+        continue
+      fi
+      last=$(cat "$k.last" 2>/dev/null)
+      if [ -n "$last" ] && [ $((now - last)) -lt 1800 ] ; then
+        # einmal melden, nicht in jedem Lauf der Sperrzeit
+        [ -e "$k.held" ] || logger -s -t "neanderfunk-linkcheck" -p 5 \
+          "[$checkgroup] $dev $mac: silent again, deleted $((now - last))s ago, waiting"
+        : > "$k.held"
+        continue
+      fi
+      if [ "$dels" -ge 3 ] ; then
+        # naechster Lauf; einmal melden
+        [ -e "$k.held" ] || logger -s -t "neanderfunk-linkcheck" -p 5 \
+          "[$checkgroup] $dev $mac: silent, 3 deletions this run already"
+        : > "$k.held"
+        continue
+      fi
+      ct=$(awk -v m="$mac" '/^Station /{s=($2==m)} s && /connected time/{print $3}' "$dump")
+      if iw dev "$dev" station del "$mac" 2>/dev/null ; then
+        logger -s -t "neanderfunk-linkcheck" -p 5 \
+          "[$checkgroup] $dev $mac: ESTAB ${ct:-?}s, $n runs without unicast, station deleted"
+        echo "$now" > "$k.last"
+        : > "$k.del"
+        rm -f "$k.miss" "$k.held"
+        dels=$((dels + 1))
+      fi
+    done
+  done
+fi
+
 # Nur noch loggen, wenn sich der Zustand geaendert hat - sonst hoechstens
 # stuendlich als Lebenszeichen. Siehe log_status() in common.sh: diese eine
 # Zeile war mit rund 500 Bytes je Lauf der groesste laufende Posten im
