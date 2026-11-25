@@ -2,7 +2,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=neanderfunk-domainhelper
-PKG_VERSION:=0.15
+PKG_VERSION:=0.16
 PKG_RELEASE:=1
 PKG_LICENSE:=BSD-3-Clause
 

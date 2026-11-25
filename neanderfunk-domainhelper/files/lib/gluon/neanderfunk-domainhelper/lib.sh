@@ -227,6 +227,13 @@ dh_lan_target() {
 # Ohne lowpri: das lehnt ath11k ab (-95). MT7986 meldet zeitweise -105
 # (No buffer space), dann einmal nach 3 s wiederholen. Nur wenn passiv gar
 # nichts kommt, zuletzt aktiv.
+#
+# DH_SCAN_ROUNDS Scans je Interface, zusammengefasst: Ein einzelner passiver
+# Scan verpasst viel. Gemessen 25.11.2026 (je 5 Scans, 2.4 GHz, Anteil der
+# Mesh-Punkte je Scan im Mittel/schlechtesten): WR1043ND v2 (ath9k) 64/44 %,
+# M60 (mt7981) 83/67 %, MR80X v2 (ath11k) 98/88 %, Xiaomi 4A (mt76) 100 %;
+# drei Scans hintereinander 96/89 %, 100 %, 100 %, 100 %. scan.all enthaelt
+# alle Runden, also BSSIDs mehrfach (dh_scan_list und locate fassen zusammen).
 # dh_scan_one <if> [scan-optionen]: nach $W/scan.one, 0 wenn ein BSS dabei ist
 dh_scan_one() {
 	local i="$1"
@@ -235,8 +242,10 @@ dh_scan_one() {
 	head -n 1 "$W/scan.one" | grep -q '^BSS'
 }
 
+DH_SCAN_ROUNDS=3
+
 dh_scan() {
-	local W="$1" ifname typ ok count
+	local W="$1" ifname typ ok count opts round
 	# Eigene WLAN-Interfaces: Name, MAC, Typ, Frequenz (Zeilen "name mac freq typ")
 	iw dev 2>/dev/null | awk '
 		function out() { if (n != "") print n, (m == "" ? "-" : m), (f == "" ? 0 : f), t }
@@ -263,14 +272,29 @@ dh_scan() {
 	: > "$W/scan.all"
 	: > "$W/scan.res"
 	while IFS='|' read -r ifname typ ; do
-		dh_scan_one "$ifname" passive \
-			|| { sleep 3 ; dh_scan_one "$ifname" passive ; } \
-			|| { [ "$typ" = AP ] && dh_scan_one "$ifname" ap-force passive ; } \
-			|| dh_scan_one "$ifname" \
-			|| { [ "$typ" = AP ] && dh_scan_one "$ifname" ap-force ; }
+		# erste Runde: die Art finden, die geht; weitere Runden mit derselben
+		opts=-
+		if dh_scan_one "$ifname" passive ; then opts=passive
+		elif sleep 3 && dh_scan_one "$ifname" passive ; then opts=passive
+		elif [ "$typ" = AP ] && dh_scan_one "$ifname" ap-force passive ; then opts='ap-force passive'
+		elif dh_scan_one "$ifname" ; then opts=
+		elif [ "$typ" = AP ] && dh_scan_one "$ifname" ap-force ; then opts=ap-force
+		fi
+		cp "$W/scan.one" "$W/scan.acc"
+		if [ "$opts" != - ] ; then
+			round=1
+			while [ "$round" -lt "$DH_SCAN_ROUNDS" ] ; do
+				round=$((round + 1))
+				sleep 1
+				# shellcheck disable=SC2086
+				dh_scan_one "$ifname" $opts && cat "$W/scan.one" >> "$W/scan.acc"
+			done
+		fi
+		mv "$W/scan.acc" "$W/scan.one"
 		ok=0
 		head -n 1 "$W/scan.one" | grep -q '^BSS' && ok=1
-		count="$(grep -c '^BSS ' "$W/scan.one")"
+		count="$(sed -n 's/^BSS \([0-9a-f:]\{17\}\).*/\1/p' "$W/scan.one" | sort -u | wc -l)"
+		count=$((count + 0))
 		echo "$ifname $ok $count" >> "$W/scan.res"
 		cat "$W/scan.one" >> "$W/scan.all"
 	done < "$W/targets"
@@ -278,13 +302,21 @@ dh_scan() {
 
 # dh_scan_list <verzeichnis>: aus scan.all je BSS eine Zeile, DH_US-getrennt:
 #     bssid freq signal ssid mesh_id
-# ohne eigene Interfaces, ohne Eintraege ohne Pegel; doppelte BSSIDs bleiben
-# (Nachbearbeitung je Aufrufer). Ausgabe nach <verzeichnis>/scan.list
+# ohne eigene Interfaces, ohne Eintraege ohne Pegel; je BSSID eine Zeile mit
+# dem staerksten Pegel (bis 0.15 blieben doppelte stehen). Ausgabe nach
+# <verzeichnis>/scan.list
 dh_scan_list() {
 	awk -v US="$DH_US" -v ownl="$(tr '\n' ' ' < "$1/own")" '
 		BEGIN { n = split(ownl, o, " "); for (i = 1; i <= n; i++) own[o[i]] = 1 }
 		function rnd(x,   y, i) { y = x + 0.5; i = int(y); if (i > y) i--; return i }
-		function flush() { if (b != "" && s != "" && !(b in own)) print b US f US s US ssid US mesh }
+		# eine Zeile je BSSID (mehrere Scan-Runden, zwei Interfaces), der
+		# staerkste Pegel gewinnt, Reihenfolge des ersten Auftretens
+		function flush() {
+			if (b == "" || s == "" || (b in own)) return
+			if (!(b in line)) ord[++n2] = b
+			else if (sig[b] >= s) return
+			sig[b] = s; line[b] = b US f US s US ssid US mesh
+		}
 		/^BSS[ \t]/ {
 			flush()
 			b = tolower($0); sub(/^bss[ \t]+/, "", b); b = substr(b, 1, 17)
@@ -297,7 +329,7 @@ dh_scan_list() {
 		/^\tsignal:/ { v = $0; sub(/^\tsignal:[ \t]*/, "", v); if (v ~ /^-?[0-9.]+[ \t]*dBm/) s = rnd(v + 0) }
 		/^\tSSID:/ { v = $0; sub(/^\tSSID: ?/, "", v); ssid = v }
 		/^\tMESH ID:/ { v = $0; sub(/^\tMESH ID: ?/, "", v); mesh = v }
-		END { flush() }' "$1/scan.all" > "$1/scan.list"
+		END { flush(); for (i = 1; i <= n2; i++) print line[ord[i]] }' "$1/scan.all" > "$1/scan.list"
 }
 
 # --- Domains und Gateways ------------------------------------------------------

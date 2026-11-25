@@ -19,12 +19,11 @@
 -- WLAN-Mesh notduerftig wieder anbinden - etwa wenn Richtfunk, Powerline oder
 -- ein Kabel im LAN-Mesh ausgefallen ist.
 
--- iwinfo scannt passiv (TRIGGER_SCAN ohne SSID-Liste). Das ist wichtig: ath11k
--- verlaesst bei einem aktiven Scan seinen Kanal nicht, solange auf dem Radio
--- ein AP laeuft, passiv sieht es alle Kanaele (MR80X v2, 25.11.2026).
+-- Gescannt wird je Radio dreimal (neanderfunk.wifiscan): ein einzelner
+-- passiver Scan verpasst auf manchen Chips ein Drittel der Netze.
 
 local uci = require('simple-uci').cursor()
-local iwinfo = require('iwinfo')
+local wifiscan = require('neanderfunk.wifiscan')
 
 local LABEL = { ['2g'] = '2.4', ['5g'] = '5', ['6g'] = '6' }
 
@@ -69,7 +68,7 @@ for _, r in ipairs(radios) do
 	if r.disabled then
 		print('offlinescan: ' .. r.name .. ' ist abgeschaltet, nicht gescannt')
 	else
-		local cells = iwinfo.nl80211.scanlist(r.name) or {}
+		local cells = wifiscan.scan(r.name)
 		if #cells == 0 then
 			print('offlinescan: ' .. r.name .. ': Scan ohne Ergebnis (Treiber scannt nicht, solange das Radio sendet?)')
 		end

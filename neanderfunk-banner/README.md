@@ -194,7 +194,10 @@ It also installs these commands (all listed by `help`):
   `prefix_owe`). One line per node and channel: name (the SSID suffix: node
   name, MAC or nothing), band, channel, signal, BSSID, strongest first. Such a
   node's mesh is on the same channel, so a neighbour can reconnect it via wifi
-  mesh with `channel <channel>`.
+  mesh with `channel <channel>`. Each radio is scanned three times and merged
+  (`neanderfunk.wifiscan`), since a single passive scan missed up to a third
+  of the networks on some chips (numbers in neanderfunk-domainhelper's
+  README); on a dual-band MR80X v2 that takes about 35 s.
 - `flash <url|directory-url|file> [sysupgrade options]` - downloads a
   firmware image to `/tmp` (an `https://` URL is fetched as `http://`, not
   every node has TLS), shows size, free RAM and sha256, checks it with
