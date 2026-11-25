@@ -661,9 +661,10 @@ if ! check_disabled "$checkgroup" && [ -z "${wifi_restarted}" ] ; then
       k="$pdir/$dev.$(echo "$mac" | sed 's/://g')"
       if [ -e "$k.ok" ] ; then
         if [ -e "$k.del" ] ; then
+          last=$(cat "$k.last" 2>/dev/null)
           logger -s -t "neanderfunk-linkcheck" -p 5 \
-            "[$checkgroup] $dev $mac answers again after station del"
-          rm -f "$k.del"
+            "[$checkgroup] $dev $mac answers again, $((now - ${last:-now}))s after station del"
+          rm -f "$k.del" "$k.mute"
         fi
         rm -f "$k.miss" "$k.held"
         : > "$k.armed"
@@ -674,10 +675,12 @@ if ! check_disabled "$checkgroup" && [ -z "${wifi_restarted}" ] ; then
       if [ ! -e "$k.armed" ] ; then
         printf '%s\n' "$batn" | grep -q "$dev[[:space:]]*$mac" || continue
       fi
-      if [ -e "$k.del" ] ; then
+      # Nach dem Loeschen einmal melden, dass er noch schweigt; $k.del
+      # bleibt, damit die spaetere Antwort mit Abstand gemeldet wird.
+      if [ -e "$k.del" ] && [ ! -e "$k.mute" ] ; then
         logger -s -t "neanderfunk-linkcheck" -p 5 \
           "[$checkgroup] $dev $mac still silent after station del"
-        rm -f "$k.del"
+        : > "$k.mute"
       fi
       n=$(cat "$k.miss" 2>/dev/null) ; n=$(( ${n:-0} + 1 ))
       echo "$n" > "$k.miss"
@@ -707,7 +710,7 @@ if ! check_disabled "$checkgroup" && [ -z "${wifi_restarted}" ] ; then
           "[$checkgroup] $dev $mac: ESTAB ${ct:-?}s, $n runs without unicast, station deleted"
         echo "$now" > "$k.last"
         : > "$k.del"
-        rm -f "$k.miss" "$k.held"
+        rm -f "$k.miss" "$k.held" "$k.mute"
         dels=$((dels + 1))
       fi
     done
