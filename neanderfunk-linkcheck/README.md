@@ -3,6 +3,16 @@ neanderfunk-linkcheck
 
 this script looks for wifi and lan mesh neighbours. 
 goal is to detect crashed/flapping drivers on wifi and eth, even on hw level.
+
+Since version 3 it also mitigates the mac80211 mesh block ack fault: after a
+neighbour restarts, a node may keep the old station entry together with its
+block ack session and drop that neighbour's unicast frames, while batman
+still sees the neighbour through its OGMs. `mesh_peer_unicast` then deletes
+just that station entry instead of restarting wifi or the node (details in
+the section on `mesh_peer_unicast` below). The cause is fixed in the kernel by the
+mac80211 patch in gluon-patches-hardware; linkcheck covers neighbours that
+do not have it yet.
+
 After loss of all neighbors on an interface (where there have been 2 or more in the past), the box is rechecking 3 times (every 5 minutes) and if an interface stays "an island" without not at least one neighbour (where 2 or had been seen since last boot): the box is reboot. 
 
 How triggering an interface works:
