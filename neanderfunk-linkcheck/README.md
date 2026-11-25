@@ -120,8 +120,9 @@ Checks
 | `bridge_ports` | a port that was part of a bridge dropped out of it | wifi restart, reboot |
 | `mesh_neighbours` | a wifi mesh radio that had >=2 neighbours now has none | wifi restart, reboot |
 | `mesh_unicast` | a wifi mesh radio has established peers, but none of up to three answers a unicast ping6 to its link-local address on that interface (seen on MT7986 after a scan: broadcast and batman OGMs keep working, unicast is dead on both radios, `wifi down; wifi up` fixes it). Armed after the first answer | wifi restart, reboot |
+| `mesh_peer_unicast` | per 802.11s peer: an ESTAB peer that has answered before (or that batman lists as a neighbour on that interface) answers no unicast ping6 to its link-local address in two runs in a row, while other peers on the same radio still answer. See below | `iw dev <mesh> station del <peer>` for that peer only; never a wifi restart or reboot |
 | `no_gateway` | no batman gateway in range for 4 runs (`gateway.sh`) | reboot |
-| `ipv6_anycast` | the IPv6 anycast address unreachable for 4 runs (`gateway.sh`) | reboot |
+| `ipv6_anycast` | `::ac1` unreachable for 3 runs of 20 pings, in every public prefix and in the domain's ULA prefix (`gateway.sh`) | reboot |
 | `public_prefix` | br-client has lost its public IPv6 prefix, having had one (`gateway.sh`) | reboot |
 
 A wifi restart happens at most once per run, no matter how many checks reach
@@ -147,6 +148,42 @@ minutes without a single reply (until 14.10.2026: 10 pings, four runs). Both use
 in neanderfunk-hotfix; they ask whether the network still works, not whether
 this node is healthy, so they belong here.
 
+The anycast targets are `<prefix>::ac1` for every public /64 on br-client
+(learnt from the supernodes' router advertisements, one per supernode the node
+hears) and, last, `::ac1` in the domain's ULA prefix (`prefix6` from
+site.conf). A reply from any of them is enough. The supernodes carry the ULA
+address all alike (since 27.10.2026, not yet on every supernode), so it does
+not depend on which supernode currently announces its public prefix: after a
+switch, neighbour discovery finds the next one, while the old public prefix
+stays on the node until its lifetime runs out. Without it, a node that lost
+its public prefix counted that as "anycast unreachable" and rebooted after
+three runs. It comes last so that it only costs time (up to 25 s) when no
+public `::ac1` answers.
+
+
+`mesh_peer_unicast` is for a different fault than `mesh_unicast`, found in
+the 21_dias lab on 2026-11-25: when a node restarts, a neighbour often keeps
+its old station entry (the peer link stays ESTAB) together with the old
+block ack session. The restarted node counts its sequence numbers from 0
+again, and the neighbour drops its unicast frames as old until they pass the
+old reorder window - up to 2047 frames, hours on a quiet link. OGMs and
+multicast go without block ack, so batman still sees the neighbour. Measured:
+a WR1043ND v2 held an 8.5 h old entry for an MR80X v2 that had been up for
+45 minutes; deleting that entry on the WR1043ND brought unicast back at
+once, in 4 of 5 cases within one run. Deleting on the restarted node does
+not help as long as the neighbours run a mac80211 without "mesh: tear down
+BA sessions when the peer link goes down" (Florian Maurer, linux-wireless,
+in gluon-patches-hardware `kernel/mac80211-mesh-ba-teardown.sh` for Gluon
+2025.1): the neighbour keeps its old session through the re-peering. With
+that patch on the neighbour, the deletion on either side heals. Gluon 2021.1
+(mac80211 4.19) does not carry the patch, so here this check heals the side
+that keeps the old entry, which is the case a 2021.1 node next to a
+frequently restarting node is in.
+
+At most one deletion per peer in 30 minutes and three per run. A radio on
+which no peer answers at all is left to `mesh_unicast`. Each deletion is
+logged with the age of the station entry and the number of silent runs, and
+the next run logs whether the peer answers again.
 
 What it logs, and how often
 ---------------------------
