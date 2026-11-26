@@ -3,7 +3,9 @@ Domainwechsel: Testmatrix
 
 Übersicht, wann ein Knoten mit der Multidomain-Firmware von selbst Domain
 oder Kanal wechselt, wer das auslöst und was davon getestet ist. Stand
-neanderfunk-domainhelper 0.11, nodeplacer 0.1-r2, 22.11.2026.
+neanderfunk-domainhelper 0.16, nodeplacer 0.1-r3, 26.11.2026. Die
+Testvermerke stammen von 0.11 (22.11.); 0.12 bis 0.16 ändern am Ablauf der
+Matrix nichts, nur Erkennung, Gegenprobe und Scan (siehe unten).
 Hintergrund: [entwurf-automesh.md](entwurf-automesh.md) (Abschnitt 0 und
 Feature-Tabelle 17), [konzept-hvb-ortung.md](konzept-hvb-ortung.md).
 
@@ -53,6 +55,24 @@ Regeln, die für alle Fälle gelten
 - **Takt und Versatz:** `bridge` und `island` laufen alle 91 s; `island`
   scannt höchstens alle 5 min; 0 bis 15 min Versatz je Knoten aus der MAC.
   Nach einem Wechsel frühestens 6 h später der nächste.
+- **Scan (ab 0.15/0.16):** passiv, drei Runden je Radio, je BSSID der
+  stärkste Pegel. Aktiv sah ath11k (MR80X v2) bei laufendem AP nur den
+  eigenen Kanal; ein einzelner passiver Scan verpasst je nach Chip bis zur
+  Hälfte der Mesh-Punkte. Der Scan mit kurz abgeschaltetem AP (0.14) ist
+  wieder weg.
+- **Domain eines Nachbarn** (`bridge`, `follow`, `locate`): `domain_code`,
+  sonst `site_code` ohne Präfix. Sackgassen-Knoten (`..._EOL`, 2021.1)
+  zählen als ihre Domain (0.12). Ältere Codes aus der Git-Historie werden
+  ihrer Domain zugeordnet (0.13); mehrdeutige wie `ffnef` ohne
+  `domain_code` oder das alte `ffdus` (heute 12 und 13) bleiben unbekannt,
+  und unbekannt löst nie etwas aus.
+- **Gegenprobe bei `follow` R2:** Vor dem Wechsel nennt der Supernode
+  hinter dem gewählten Gateway per respondd seine Domain. Keine oder eine
+  andere Antwort: kein Wechsel. Geprüft auf einem M60, ein Wechsel per R2
+  selbst ist weiter *nicht getestet*.
+- **Letzter Wechsel** steht in sysconfig
+  (`neanderfunk_domainhelper_last_switch`, „von nach wie Zeit“, auch bei
+  nodeplacer) und geht per respondd und Statusseite nach außen.
 - **Wartezeiten:** außerhalb von 25_hvb lang (60 min Kanal, 600 min
   Domain), keine hastigen Wechsel. In 25_hvb so bald wie möglich: 5 min
   ohne Gateway, ohne Versatz, nächster Wechsel nach 15 min (adorfer
